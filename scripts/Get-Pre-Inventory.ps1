@@ -1,7 +1,10 @@
-param([string]$Destination = (Join-Path (Split-Path $PSScriptRoot -Parent) 'nodes/pre/protocols'))
+param([string]$Destination = (Join-Path (Split-Path $PSScriptRoot -Parent) 'nodes/pre/protocols'),
+      [ValidateSet('baseline','current')][string]$Snapshot = 'baseline')
 $ErrorActionPreference = 'Stop'
 $project = Split-Path $PSScriptRoot -Parent
-$manifest = Get-Content -Raw -LiteralPath (Join-Path $project 'docs/pre-source-manifest.json') | ConvertFrom-Json
+$manifestName = if ($Snapshot -eq 'current') { 'docs/pre-current-source-manifest.json' } else { 'docs/pre-source-manifest.json' }
+if ($Snapshot -eq 'current' -and -not $PSBoundParameters.ContainsKey('Destination')) { $Destination = Join-Path $project 'nodes/pre-current/protocols' }
+$manifest = Get-Content -Raw -LiteralPath (Join-Path $project $manifestName) | ConvertFrom-Json
 $destinationPath = [IO.Path]::GetFullPath($Destination)
 [void][IO.Directory]::CreateDirectory($destinationPath)
 $stage = Join-Path $destinationPath ('download-'+[guid]::NewGuid().ToString('N'))

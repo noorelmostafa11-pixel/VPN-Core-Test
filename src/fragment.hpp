@@ -37,7 +37,7 @@ inline std::vector<FragmentSpec> fragment_specs(const Json& original) {
     const auto& fm=normalized;
     if(fm.kind==Json::Null)return {};
     if(fm.kind!=Json::Object)throw std::runtime_error("PARSE_INVALID: FinalMask must be an object");
-    for(const auto& p:fm.object)if(p.first!="tcp"&&p.first!="udp")throw std::runtime_error("FEATURE_UNIMPLEMENTED: FinalMask type");
+    for(const auto& p:fm.object)if(p.first!="tcp"&&p.first!="udp")throw Failure("PARSE_INVALID: FinalMask root must contain TCP or UDP mask lists","FINALMASK_STRUCTURE_INVALID");
     // UDP masks are inactive for TCP carriers. UDP carriers are checked below.
     if(fm.at("udp").kind!=Json::Null&&fm.at("udp").kind!=Json::Array)throw std::runtime_error("PARSE_INVALID: FinalMask UDP list");
     auto& tcp=fm.at("tcp");if(tcp.kind==Json::Null)return {};

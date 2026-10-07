@@ -43,13 +43,15 @@ class TLSProfileTests(unittest.TestCase):
     core=old.ExpandedTests.core
     uri=old.ExpandedTests.uri
     socks=old.ExpandedTests.socks
-    def exchange(self,fp,transport='raw',protocol='vless',tls12=False):
+    def exchange(self,fp,transport='raw',protocol='vless',tls12=False,alpn=''):
         context=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER);context.load_cert_chain(old.original.CoreTests.cert,old.original.CoreTests.key);context.minimum_version=ssl.TLSVersion.TLSv1_2
         if tls12:context.maximum_version=ssl.TLSVersion.TLSv1_2
         context.set_alpn_protocols(['h2','http/1.1'])
         p=CapturePeer(protocol,'aes-128-gcm' if protocol=='vmess' else '',transport,context)
         try:
-            with self.core(self.uri(p)+'&fp='+fp) as (port,log):
+            uri=self.uri(p)+'&fp='+fp
+            if alpn:uri+='&alpn='+quote(alpn,safe='')
+            with self.core(uri) as (port,log):
                 try:s=self.socks(port)
                 except Exception:
                     time.sleep(.1);raise AssertionError(log.read_text())
@@ -64,6 +66,7 @@ class TLSProfileTests(unittest.TestCase):
             # Profile advertises certificate compression, then provider must
             # have its matching decoder. This also distinguishes native TLS.
             if fp=='chrome':self.assertIn(27,[k for k,_ in extensions])
+            if fp=='randomizednoalpn':self.assertNotIn(16,[k for k,_ in extensions])
         finally:p.close()
     def test_01_all_inventory_profiles(self):
         for fp in ['chrome','firefox','safari','ios','android','edge','360','qq','random','randomized']:
@@ -75,10 +78,18 @@ class TLSProfileTests(unittest.TestCase):
     def test_04_trojan_profile(self):self.exchange('firefox',protocol='trojan')
     def test_05_websocket_alpn(self):self.exchange('chrome',transport='websocket')
     def test_06_grpc_alpn(self):self.exchange('chrome',transport='grpc')
-    def test_07_wrong_name_rejected(self):
+    def test_09_randomized_without_alpn(self):
+        self.exchange('randomizednoalpn')
+        self.exchange('randomizednoalpn',tls12=True)
+    def test_10_randomized_without_alpn_websocket_parallel(self):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(lambda _:self.exchange('randomizednoalpn',transport='websocket',alpn='h3,h2,http/1.1'),range(8)))
+    def test_11_randomized_without_alpn_wrong_certificate(self):
+        self.test_07_wrong_name_rejected(fp='randomizednoalpn')
+    def test_07_wrong_name_rejected(self,fp='chrome'):
         p=old.Peer('vless',tls_context=self.context)
         try:
-            uri=self.uri(p).replace('sni=localhost','sni=wrong.invalid')+'&fp=chrome&allowInsecure=1'
+            uri=self.uri(p).replace('sni=localhost','sni=wrong.invalid')+'&fp='+fp+'&allowInsecure=1'
             with self.core(uri) as (port,log):
                 s=socket.create_connection(('127.0.0.1',port),5);s.settimeout(8);s.sendall(b'\5\1\0');self.assertEqual(exact(s,2),b'\5\0');s.sendall(b'\5\1\0\3\x0cexample.test\1\xbb');self.assertNotEqual(exact(s,10)[1],0);s.close()
                 deadline=time.monotonic()+2

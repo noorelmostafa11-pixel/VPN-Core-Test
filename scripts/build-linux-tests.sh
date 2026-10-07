@@ -23,4 +23,5 @@ done
 ./bin/vpn-core-test --self-test
 ./bin/vpn-core-test --check-components
 ./bin/schannel-state-probe
+python3 tests/run_randomized_profiles.py --go "$GO_BINARY"
 python3 tests/run_validation.py

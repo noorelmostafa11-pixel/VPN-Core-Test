@@ -3,7 +3,7 @@ name: Core Source Validation
 on:
   push:
     branches: [main, 'repair/**']
-    paths: ['src/**', 'scripts/**', 'tests/**', 'tls-provider/**', 'VERSION', '.github/workflows/**', 'NOTICE.md', '.gitattributes']
+    paths: ['src/**', 'scripts/**', 'tests/**', 'tls-provider/**', 'VERSION', '.github/workflows/**', 'docs/pre-current-source-manifest.json', 'NOTICE.md', '.gitattributes']
   pull_request:
   workflow_dispatch:
     inputs:
@@ -51,12 +51,18 @@ jobs:
         env:
           VPN_CORE_POWERSHELL: /usr/bin/pwsh
         run: bash scripts/build-linux-tests.sh 2>&1 | tee validation-linux.log
+      - name: Verify support for every current pinned Pre configuration
+        run: |
+          python scripts/Prepare-Pre-Snapshot.py
+          python scripts/Audit-Pre-Support.py --core bin/vpn-core-test --output pre-current-support
       - name: Preserve validation evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: linux-validation-${{ github.sha }}
-          path: validation-linux.log
+          path: |
+            validation-linux.log
+            pre-current-support/
           retention-days: 90
 
   windows:
@@ -129,6 +135,13 @@ jobs:
           & .\scripts\Test-Batch.ps1 -Nodes nodes/pre/protocols -InspectOnly -OutputDirectory inspection-results
           $report=Get-Content inspection-results/summary.json -Raw | ConvertFrom-Json
           if (-not $report.completed -or $report.inventory -ne 72767 -or $report.inventory_error -or $report.batch_error) { throw 'Full inventory did not complete' }
+      - name: Verify Windows support for every current pinned Pre configuration
+        shell: pwsh
+        run: |
+          & python scripts/Prepare-Pre-Snapshot.py
+          if ($LASTEXITCODE -ne 0) { throw 'Current Pre snapshot integrity failed' }
+          & python scripts/Audit-Pre-Support.py --core bin/vpn-core.exe --output pre-current-support
+          if ($LASTEXITCODE -ne 0) { throw 'Current Pre support coverage failed' }
       - name: Assemble the complete release from this commit
         shell: pwsh
         run: |
@@ -143,6 +156,7 @@ jobs:
             validation-windows-*.log
             inventory-comparison.json
             inspection-results/summary.json
+            pre-current-support/
           retention-days: 90
       - name: Upload complete Windows distribution
         uses: actions/upload-artifact@v4
