@@ -1,14 +1,16 @@
 """Make a complete Windows distribution with original source, licenses and build provenance."""
-import argparse,hashlib,json,os,pathlib,zipfile
+import argparse,hashlib,json,os,pathlib,subprocess,zipfile
 p=argparse.ArgumentParser();p.add_argument('--output',default='dist');a=p.parse_args()
 root=pathlib.Path(__file__).resolve().parents[1];version=(root/'VERSION').read_text().strip();files={}
+reported=subprocess.run([str(root/'bin/vpn-core.exe'),'--version'],capture_output=True,text=True,check=True,timeout=20).stdout.strip()
+if not reported.startswith('vpn-core '+version+'-expanded;'):raise SystemExit('Release binary version does not match VERSION')
 for folder in ['src','scripts','tests','tls-provider','third_party','nodes/pre/protocols']:
     for file in (root/folder).rglob('*'):
         if file.is_file() and '__pycache__' not in file.parts and file.suffix not in {'.pyc','.log'}:
             files[file.relative_to(root).as_posix()]=file.read_bytes()
-for name in ['BASELINE-0.4.2.json','COMPONENTS.md','PROTOCOL-SOURCES.md','REPAIRS-0.4.2.md','SUPPORT-0.4.0.md','REPAIRS-0.4.3.md','RELEASE-NOTES.md','pre-source-manifest.json']:
+for name in ['BASELINE-0.4.2.json','BASELINE-NETWORK.json','COMPONENTS.md','PROTOCOL-SOURCES.md','REPAIRS-0.4.2.md','SUPPORT-0.4.0.md','REPAIRS-0.4.3.md','RELEASE-NOTES.md','pre-source-manifest.json']:
     files['docs/'+name]=(root/'docs'/name).read_bytes()
-for name in ['README.md','OWNERSHIP.md','NOTICE.md','VERSION','.gitignore']:
+for name in ['README.md','OWNERSHIP.md','NOTICE.md','VERSION','.gitignore','.gitattributes']:
     files[name]=(root/name).read_bytes()
 hashes=json.loads((root/'bin/build-hashes.json').read_text(encoding='utf-8-sig'))
 for name in ['vpn-core.exe','vpn-tls.dll','vpn-tls.h','build-hashes.json']:

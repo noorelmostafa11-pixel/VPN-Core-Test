@@ -10,6 +10,8 @@
 
 تحتفظ Actions لمدة 90 يومًا بتقارير Linux وWindows والحصر وتقارير الشبكة لكل shard، مع SHA الكوميت في الاسم وSHA256 الكور في `summary.json`. لا يعد تشغيل ناجح دليلًا على نجاح كل العقد: يجب مراجعة عدد PASS وأسباب FAIL، و`completed` و`finished` و`runner_failures`.
 
+بعد اكتمال الشاردات، يظهر artifact `network-comparison-<commit>` يجمع النتائج ويقارن كل node ID بنتيجته في تشغيل 0.4.2 رقم `37582872374`، ويعرض الانتقالات بين PASS وFAIL. تغيّر حالة عقدة حية قد يرجع للشبكة أو الخادم، فلا نعتبره وحده إثباتًا لنجاح إصلاح في الكور.
+
 ## تحميل النسخة
 
 نسخة Windows الكاملة موجودة في artifact باسم `windows-release-<commit>` داخل التشغيل. يحتوي ZIP على EXE وDLL والسورس والـvendor والتراخيص والسكربتات وقوائم العقد المثبتة وmanifest لجميع الملفات. بعد نجاح تحقق البناء على `main` تُنشر أيضًا في [Releases](https://github.com/noorelmostafa11-pixel/VPN-Core-Test/releases)، مع SHA256 وcommit المصدر. اختبار الشبكة العام له تقارير منفصلة وقد يظل جاريًا وقت نشر البناء.

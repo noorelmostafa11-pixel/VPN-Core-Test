@@ -1,0 +1,2 @@
+# Preserve the exact pinned component bytes and source hashes on every platform.
+* -text

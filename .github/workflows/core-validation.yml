@@ -3,7 +3,7 @@ name: Core Source Validation
 on:
   push:
     branches: [main, 'repair/**']
-    paths: ['src/**', 'scripts/**', 'tests/**', 'tls-provider/**', 'VERSION', '.github/workflows/**', 'NOTICE.md']
+    paths: ['src/**', 'scripts/**', 'tests/**', 'tls-provider/**', 'VERSION', '.github/workflows/**', 'NOTICE.md', '.gitattributes']
   pull_request:
   workflow_dispatch:
     inputs:
@@ -31,6 +31,8 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v5
         with:
           go-version: '1.27.1'
@@ -61,6 +63,8 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v5
         with:
           go-version: '1.27.1'
@@ -169,6 +173,8 @@ jobs:
         shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -230,6 +236,36 @@ jobs:
           if-no-files-found: warn
           retention-days: 90
 
+  aggregate:
+    name: Compare all node outcomes with baseline 0.4.2
+    needs: network
+    if: always() && needs.network.result != 'skipped'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: vpn-${{ github.sha }}-shard-*
+          path: network-reports
+      - name: Check coverage and compare unchanged node IDs
+        run: python3 scripts/Summarize-Network.py --reports network-reports --output network-comparison
+      - name: Show comparison in the run summary
+        if: always()
+        run: |
+          if [ -f network-comparison/network-summary.md ]; then
+            cat network-comparison/network-summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Preserve combined comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: network-comparison-${{ github.sha }}
+          path: network-comparison/
+          retention-days: 90
+
   release:
     name: Publish validated complete Windows build
     needs: [linux, windows]
@@ -239,6 +275,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           name: windows-release-${{ github.sha }}
