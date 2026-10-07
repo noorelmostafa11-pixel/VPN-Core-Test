@@ -1,5 +1,7 @@
+// Copyright (c) 2026 Vpn project owner (noorelmostafa11-pixel). See NOTICE.md.
 #pragma once
 #include "net.hpp"
+#include "tls-diagnostics.hpp"
 #include <memory>
 #ifdef VPN_CORE_SCHANNEL_TEST
 #include "../tests/fake_schannel.hpp"
@@ -44,7 +46,7 @@ class NativeTls {
         SecBufferDesc desc{SECBUFFER_VERSION,2,in};Output out;ULONG attributes=0;TimeStamp expiry{};
         auto status=InitializeSecurityContextW(&cred_,&ctx_,name_.data(),flags_,0,0,&desc,0,&ctx_,&out.desc,&attributes,&expiry);
         if(status==SEC_E_INCOMPLETE_MESSAGE)return false;
-        if(status!=SEC_E_OK&&status!=SEC_I_CONTINUE_NEEDED)throw Failure("TLS_FAILED: post-handshake verification failed","TLS_POST_HANDSHAKE_VERIFY",uint32_t(status));
+        if(status!=SEC_E_OK&&status!=SEC_I_CONTINUE_NEEDED)throw Failure("TLS_FAILED: post-handshake verification failed",native_tls_reason(uint32_t(status),"TLS_POST_HANDSHAKE_VERIFY"),uint32_t(status));
         auto token=out.token();control_.insert(control_.end(),token.begin(),token.end());
         size_t extra=in[1].BufferType==SECBUFFER_EXTRA?in[1].cbBuffer:0;
         if(extra>cipher_.size()||(extra==cipher_.size()&&extra))throw Failure("TLS_FAILED: post-handshake made no progress","TLS_POST_HANDSHAKE_BUFFER");
@@ -81,7 +83,7 @@ public:
         if(!encoded.empty()){if(encoded.size()>65535)throw std::runtime_error("TLS_FAILED: ALPN list too large");ULONG list_size=ULONG(sizeof(SEC_APPLICATION_PROTOCOL_NEGOTIATION_EXT)+sizeof(unsigned short)+encoded.size());application.resize(sizeof(ULONG)+list_size);auto ext=SecApplicationProtocolNegotiationExt_ALPN;auto count=static_cast<unsigned short>(encoded.size());std::memcpy(application.data(),&list_size,sizeof(list_size));std::memcpy(application.data()+sizeof(ULONG),&ext,sizeof(ext));std::memcpy(application.data()+sizeof(ULONG)+sizeof(ext),&count,sizeof(count));std::copy(encoded.begin(),encoded.end(),application.begin()+std::ptrdiff_t(sizeof(ULONG)+sizeof(ext)+sizeof(count)));application_buffer={ULONG(application.size()),SECBUFFER_APPLICATION_PROTOCOLS,application.data()};}
         status=InitializeSecurityContextW(&cred_,nullptr,name_.data(),flags_,0,0,application.empty()?nullptr:&application_desc,0,&ctx_,&first.desc,&attributes,&expiry);
         have_ctx_=SecIsValidHandle(&ctx_);
-        if(status!=SEC_I_CONTINUE_NEEDED&&status!=SEC_E_OK)throw Failure("TLS_FAILED: cannot start Windows TLS handshake","TLS_HANDSHAKE_START",uint32_t(status));
+        if(status!=SEC_I_CONTINUE_NEEDED&&status!=SEC_E_OK)throw Failure("TLS_FAILED: cannot start Windows TLS handshake",native_tls_reason(uint32_t(status),"TLS_HANDSHAKE_START"),uint32_t(status));
         auto output=first.token();send_all(socket,output.data(),output.size(),deadline);
         Bytes input;
         while(status!=SEC_E_OK) {
@@ -92,7 +94,7 @@ public:
                 SecBufferDesc desc{SECBUFFER_VERSION,2,in};Output next;
                 status=InitializeSecurityContextW(&cred_,&ctx_,name_.data(),flags_,0,0,&desc,0,&ctx_,&next.desc,&attributes,&expiry);
                 if(status==SEC_E_INCOMPLETE_MESSAGE)break;
-                if(status!=SEC_E_OK&&status!=SEC_I_CONTINUE_NEEDED)throw Failure("TLS_FAILED: Windows handshake/certificate verification failed","TLS_HANDSHAKE_VERIFY",uint32_t(status));
+                if(status!=SEC_E_OK&&status!=SEC_I_CONTINUE_NEEDED)throw Failure("TLS_FAILED: Windows handshake/certificate verification failed",native_tls_reason(uint32_t(status),"TLS_HANDSHAKE_VERIFY"),uint32_t(status));
                 output=next.token();send_all(socket,output.data(),output.size(),deadline);
                 size_t extra=in[1].BufferType==SECBUFFER_EXTRA?in[1].cbBuffer:0;
                 if(extra>input.size())throw std::runtime_error("Invalid Windows TLS buffer state");

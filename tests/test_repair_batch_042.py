@@ -6,7 +6,7 @@ from test_repairs_042 import URI
 
 @unittest.skipUnless(PW and os.name=='posix','Requires PowerShell plus POSIX child harness')
 class RepairBatchTests(unittest.TestCase):
-    def run_case(self,curl_exit,expected_reason,expected_scope):
+    def run_case(self,curl_exit,expected_reason,expected_scope,tunnel_ready=None):
         with tempfile.TemporaryDirectory() as td:
             td=pathlib.Path(td);nodes=td/'nodes.txt';nodes.write_text(URI+'\n')
             core=td/'core';curl=td/'curl';report=td/'report'
@@ -16,7 +16,7 @@ if '--inspect-list' in sys.argv:os.execv('''+repr(str(BIN))+''',[str('''+repr(st
 cfg=dict(line.split('=',1) for line in pathlib.Path(sys.argv[2]).read_text().splitlines())
 pathlib.Path(cfg['ready_file']).write_text(json.dumps({'pid':os.getpid(),'port':12345}))
 def fail(reason,phase,connection):
- print('[connection '+str(connection)+'] diagnostic='+json.dumps({'event':'failure','connection_id':connection,'timestamp_unix_ms':int(time.time()*1000),'phase':phase,'reason_code':reason,'native_status':311,'http_status':0,'tls_version':'','alpn':''}),flush=True)
+ print('[connection '+str(connection)+'] diagnostic='+json.dumps({'event':'failure','connection_id':connection,'timestamp_unix_ms':int(time.time()*1000),'phase':phase,'reason_code':reason,'native_status':311,'http_status':0,'tls_version':'','alpn':'','tunnel_ready':'''+repr(tunnel_ready)+'''}),flush=True)
 fail('TLS_CERTIFICATE_NAME','TLS_FAILED',1)
 time.sleep(.1)
 fail('XHTTP_CLIENT_WAIT','RELAY_FAILED',2)

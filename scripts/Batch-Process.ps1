@@ -1,5 +1,8 @@
 # Process lifecycle shared by inventory inspection and batch worker runspaces.
 # Windows PowerShell 5.1 / .NET Framework 4.5+ and PowerShell 7.
+if (-not ('VpnBatch.ProcessOutput' -as [type])) {
+    Add-Type -Path (Join-Path $PSScriptRoot 'BatchProcessHelpers.cs') -ErrorAction Stop
+}
 function Read-BatchDiagnostic {
     param([string]$Path)
     if (-not (Test-Path -LiteralPath $Path)) { return }
@@ -9,7 +12,8 @@ function Read-BatchDiagnostic {
             $connectionId = [uint64]$Matches[1]
             $value = $Matches[2] | ConvertFrom-Json
             if ($value.event -notin @('failure','negotiated')) { continue }
-            $safe = [ordered]@{event=$value.event;connection_id=$connectionId;timestamp_unix_ms=$null;tls_version='';alpn='';phase='';reason_code='';native_status=0;native_status_hex='';http_status=0;http_header_name=''}
+            $safe = [ordered]@{event=$value.event;connection_id=$connectionId;timestamp_unix_ms=$null;tls_version='';alpn='';phase='';reason_code='';native_status=0;native_status_hex='';http_status=0;http_header_name='';tunnel_ready=$null}
+            if ($value.PSObject.Properties['tunnel_ready'] -and $value.tunnel_ready -is [bool]) { $safe.tunnel_ready=$value.tunnel_ready }
             if ($value.PSObject.Properties['timestamp_unix_ms'] -and [string]$value.timestamp_unix_ms -match '^[0-9]{1,16}$') { $safe.timestamp_unix_ms=[uint64]$value.timestamp_unix_ms }
             if ($value.tls_version -match '^TLS(?:v)?1\.[23]$') { $safe.tls_version=$value.tls_version }
             if ($value.alpn -in @('h2','http/1.1','h3','')) { $safe.alpn=$value.alpn } else { $safe.alpn='OTHER' }
@@ -44,8 +48,8 @@ function Start-BatchChild {
     $outputFile = $null; $errorFile = $null; $child = $null
     try {
         # Buffer size 1 makes short, live core logs visible without waiting for exit.
-        $outputFile = New-Object IO.FileStream($Stdout,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read,1,$true)
-        $errorFile = New-Object IO.FileStream($Stderr,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read,1,$true)
+        $outputFile = New-Object IO.FileStream($Stdout,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read,1,$false)
+        $errorFile = New-Object IO.FileStream($Stderr,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read,1,$false)
         $info = New-Object Diagnostics.ProcessStartInfo
         $info.FileName = $FilePath
         $info.Arguments = $Arguments
@@ -61,8 +65,8 @@ function Start-BatchChild {
         $child = [pscustomobject]@{Process=$process;Id=$process.Id;Handle=$handle;StdoutFile=$outputFile;StderrFile=$errorFile;StdoutTask=$null;StderrTask=$null;Closed=$false}
         # Drain both pipes immediately and concurrently; never wait with full pipes.
         # Copy raw UTF-8 bytes without PowerShell's text decoding/re-encoding.
-        $child.StdoutTask = $process.StandardOutput.BaseStream.CopyToAsync($outputFile)
-        $child.StderrTask = $process.StandardError.BaseStream.CopyToAsync($errorFile)
+        $child.StdoutTask = [VpnBatch.ProcessOutput]::Copy($process.StandardOutput.BaseStream,$outputFile)
+        $child.StderrTask = [VpnBatch.ProcessOutput]::Copy($process.StandardError.BaseStream,$errorFile)
         return $child
     } catch {
         if ($child) { Stop-BatchChild $child $Owned }
@@ -83,9 +87,10 @@ function Start-BatchChild {
 }
 
 function Wait-BatchChild {
-    param($Child,[int]$TimeoutMilliseconds)
+    param($Child,[int]$TimeoutMilliseconds,[ValidateRange(0,120000)][int]$OutputDrainMilliseconds=10000)
     $finished = $Child.Process.WaitForExit($TimeoutMilliseconds)
     $reason = ''; $exitCode = $null; $outputComplete = $false
+    $drain = [Diagnostics.Stopwatch]::StartNew(); $drain.Stop()
     if (-not $finished) {
         $reason = 'TIMEOUT'
         try { $Child.Process.Kill() } catch {}
@@ -100,12 +105,15 @@ function Wait-BatchChild {
         } catch { if (-not $reason) { $reason = 'EXIT_CODE_QUERY_FAILED' } }
         try {
             $tasks = [Threading.Tasks.Task[]]@($Child.StdoutTask,$Child.StderrTask)
-            $outputComplete = [Threading.Tasks.Task]::WaitAll($tasks,3000)
+            $drain.Start()
+            $outputComplete = [Threading.Tasks.Task]::WaitAll($tasks,$OutputDrainMilliseconds)
+            $drain.Stop()
             if ($outputComplete) { $Child.StdoutFile.Flush(); $Child.StderrFile.Flush() }
             elseif (-not $reason) { $reason = 'OUTPUT_DRAIN_TIMEOUT' }
         } catch { if (-not $reason) { $reason = 'OUTPUT_CAPTURE_FAILED' } }
+        finally { $drain.Stop() }
     }
-    return [pscustomobject]@{Finished=$finished;OutputComplete=$outputComplete;ExitCode=$exitCode;Reason=$reason}
+    return [pscustomobject]@{Finished=$finished;OutputComplete=$outputComplete;ExitCode=$exitCode;Reason=$reason;DrainTimeoutMilliseconds=$OutputDrainMilliseconds;DrainMilliseconds=[Math]::Round($drain.Elapsed.TotalMilliseconds,3);StdoutBytes=$Child.StdoutFile.Length;StderrBytes=$Child.StderrFile.Length;StdoutState=$Child.StdoutTask.Status.ToString();StderrState=$Child.StderrTask.Status.ToString()}
 }
 
 function Stop-BatchChild {

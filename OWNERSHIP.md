@@ -6,9 +6,9 @@ They do not contain copied Xray, V2Ray or Trojan engine source and are not a
 fork of an existing VPN engine. Published protocol formats and SHA-224
 mathematical constants, and the standardized RFC 7541 Huffman table were used to implement interoperable messages.
 
-No public open-source license has been selected for the project's original
-files in this delivery. The project owner can choose a distribution license
-when preparing a release.
+All rights to the project's original files are reserved. No public open-source
+license has been selected. See `NOTICE.md` for the project owner's distribution
+notice; upstream component licenses continue to apply to their own files.
 
 The Windows executable uses Windows system APIs and compiler runtimes.
 MinGW-w64 startup/thread support and GCC C++ runtimes are linked by the build.

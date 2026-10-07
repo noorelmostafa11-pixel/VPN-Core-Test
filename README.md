@@ -1,28 +1,29 @@
-# VPN-Core-Test
+# vpn-core 0.4.3
 
-Public repository for manual Windows node testing of the **precompiled vpn-core 0.4.2**. No compilation or core-source changes are required.
+المستودع هو المصدر الأساسي لتطوير الكور واختباره. تنفيذ البروتوكولات VLESS وTrojan وVMess وShadowsocks خاص بالمشروع؛ المكونات الخارجية وتراخيصها محفوظة كما هي. Windows هو هدف البناء الحالي. Android/TUN/JNI لم يُبنَ أو يُختبر في هذا الإصدار.
 
-## Required test bundle
+## التطوير والاختبار على GitHub
 
-Upload **`VPN-Core-Test-Public-Bundle.zip`** at the repository root using **Add file → Upload files**. It is a ZIP archive containing:
+عدّل السورس على فرع، ثم راجع **Actions → Core Source Validation**. كل تعديل للسورس على `main` يُبنى من المصدر، يمر باختبارات البروتوكولات على Linux وباختبارات Windows الفعلي وPowerShell 5.1 و7، ثم يبدأ اختبار جميع **72,767** عقدة من اللقطة المثبتة في 15 shard، بتوازي 8 ومهلة اتصال 10 ثوانٍ لكل shard. لا حاجة لاختبارات اللاب.
 
-- `bin/vpn-core.exe` and `bin/vpn-tls.dll`, plus a checksum manifest
-- `scripts/Test-Batch.ps1` and `scripts/Batch-Process.ps1`
-- Four pinned Pre protocol lists (72,767 entries)
-- Pre source manifest and feature census
+يمكن إعادة الاختبار من **Actions → Windows Pre Node Test → Run workflow**. هذا التشغيل يبني الكور من commit المختار، ولا يستخدم EXE قديمًا من ZIP كمرشح جديد. ملف `VPN-Core-Test-Public-Bundle.zip` مرجع 0.4.2 ولقطة عقد ثابتة فقط؛ hashes وnode IDs لا تتغير.
 
-Expected ZIP SHA-256:
-`ba3c587921d8b9a8ad6487137eccb71a736f5137039a80d90ebe1535e9f05cfd`
+تحتفظ Actions لمدة 90 يومًا بتقارير Linux وWindows والحصر وتقارير الشبكة لكل shard، مع SHA الكوميت في الاسم وSHA256 الكور في `summary.json`. لا يعد تشغيل ناجح دليلًا على نجاح كل العقد: يجب مراجعة عدد PASS وأسباب FAIL، و`completed` و`finished` و`runner_failures`.
 
-The repository is public: all uploaded binary files and node URLs are public. Do not add private credentials.
+## تحميل النسخة
 
-## Running tests
+نسخة Windows الكاملة موجودة في artifact باسم `windows-release-<commit>` داخل التشغيل. يحتوي ZIP على EXE وDLL والسورس والـvendor والتراخيص والسكربتات وقوائم العقد المثبتة وmanifest لجميع الملفات. بعد نجاح تحقق البناء على `main` تُنشر أيضًا في [Releases](https://github.com/noorelmostafa11-pixel/VPN-Core-Test/releases)، مع SHA256 وcommit المصدر. اختبار الشبكة العام له تقارير منفصلة وقد يظل جاريًا وقت نشر البناء.
 
-1. Verify the ZIP is committed at repository root.
-2. Open **Actions → Windows Pre Node Test → Run workflow**.
-3. The workflow runs **15 Windows-2022 shards** at up to **8 concurrent node tests per shard**, each line assigned to exactly one shard. It checks the supplied EXE and DLL checksums and runs self-test before network tests.
-4. Download artifacts named `vpn-shard-0` through `vpn-shard-14` from the workflow run. Each shard reports `results.csv`, `results.ndjson`, and `summary.json`.
+لتشغيل الكور فقط، فك النسخة الكاملة في مجلد جديد واستخدم `scripts/New-Config.ps1` ثم `bin/vpn-core.exe --config node.ini`. لا يلزم Python أو compiler للمستخدم. Python/Go/MinGW مطلوبون للبناء والاختبارات، ويُجهَّزون تلقائيًا في Actions.
 
-All tests use `https://example.com/`, with a 10-second request timeout. Results are specific to the GitHub-hosted network, not necessarily the local machine. The workflow only runs when manually dispatched and **never builds or modifies the core**.
+## ما تغيّر
 
-> Note: This workflow is not usable until the ZIP has been uploaded at repository root.
+- مشغّل الدفعات يقرأ stdout/stderr بقراءتين مستقلتين، ويتيح `OutputDrainSeconds` بقيمة افتراضية 10 بدل سقف 3 ثوانٍ، ويسجل زمن التفريغ وحالة المهمات وحجم المخرجات.
+- يحفظ تكرار حقول HTTP غير المفسرة دون دمج قيمها أو رفض الترقية بسببها، مع استمرار رفض تكرار حقول الترقية والتأطير الحساسة.
+- يميز أخطاء Schannel الرقمية، ويسجل هل وصل الاتصال إلى إرسال نجاح SOCKS، ويترك سبب فشل HTTPS غير المحسوم واضحًا.
+
+تفاصيل الأدلة وحدود الإصلاح في [docs/REPAIRS-0.4.3.md](docs/REPAIRS-0.4.3.md). النسخة الأصلية محفوظة على [`baseline/0.4.2`](https://github.com/noorelmostafa11-pixel/VPN-Core-Test/tree/baseline/0.4.2). لا توجد إعادة كتابة لـHost/Path/SNI/UUID أو مفاتيح REALITY أو إعدادات ALPN، ولا تجاوز للتحقق من الشهادات.
+
+## الملكية
+
+الريبو Public لتشغيل الاختبارات حسب قرار المالك. الكود الأصلي محفوظ الحقوق كما هو موضح في [NOTICE.md](NOTICE.md) و[OWNERSHIP.md](OWNERSHIP.md)؛ لم نضف MIT أو ترخيصًا عامًا للكود الأصلي. الريبو العام قابل للعرض والنسخ وFork، وإشعار الملكية وبصمات البناء يوفران توثيقًا للمصدر، وليس منعًا تقنيًا للنسخ. تراخيص المكونات الخارجية مستمرة دون تغيير.

@@ -4,15 +4,16 @@ param(
     [string]$Curl = 'curl.exe',
     [ValidateRange(1,32)][int]$Concurrency = 8,
     [ValidateRange(0,100000)][int]$Limit = 0,
-    [ValidateRange(1,120)][int]$TimeoutSeconds = 20,
+    [ValidateRange(1,120)][int]$TimeoutSeconds = 10,
     [string]$Url = 'https://example.com/',
     [string]$ExpectedBodySha256 = '',
     [string]$OutputDirectory = '',
     [string]$TestCaFile = '',
+    [ValidateRange(1,120)][int]$OutputDrainSeconds = 10,
     [switch]$InspectOnly
 )
 # Windows PowerShell 5.1 / PowerShell 7. No Python dependency.
-# Batch script revision 0.4.2: retain only whitelisted structured diagnostics.
+# Batch script revision 0.4.3: retain only whitelisted structured diagnostics.
 Set-StrictMode -Version 2
 $ErrorActionPreference = 'Stop'
 $processHelper = Join-Path $PSScriptRoot 'Batch-Process.ps1'
@@ -49,6 +50,8 @@ $selectedCount = 0
 $completed = $false
 $inventoryError = $null
 $inspectionChild = $null
+$batchError = $null
+$batchStage = 'INITIALIZE'
 function Get-ReportCause($Row,[string]$Key,[string]$Field) {
     if ($Row.PSObject.Properties[$Key] -and $Row.$Key -and $Row.$Key.PSObject.Properties[$Field]) { return $Row.$Key.$Field }
     return $null
@@ -58,13 +61,13 @@ function Save-Row($row) {
     $writer.WriteLine(($row | ConvertTo-Json -Depth 12 -Compress))
 }
 $worker = {
-    param($item,$corePath,$curlPath,$urlValue,$timeoutValue,$expectedHash,$tempRoot,$processes,$caFile,$helperPath)
+    param($item,$corePath,$curlPath,$urlValue,$timeoutValue,$expectedHash,$tempRoot,$processes,$caFile,$helperPath,$outputDrainValue)
     $ErrorActionPreference = 'Stop'
     . $helperPath
     $dir = [IO.Directory]::CreateDirectory((Join-Path $tempRoot ([guid]::NewGuid().ToString('N')))).FullName
     $p = $null; $request = $null; $readyObserved = $false; $beforeCleanup = @()
     $timer = [Diagnostics.Stopwatch]::StartNew()
-    $r = [ordered]@{feature_family=$item.Row.feature_family;plugin=$item.Row.plugin;plugin_mux=$item.Row.plugin_mux;websocket_early_data=$item.Row.websocket_early_data;vmess_authentication=$item.Row.vmess_authentication;alter_id=$item.Row.alter_id;source=$item.Row.source;line=$item.Row.line;node_id=$item.Row.node_id;protocol=$item.Row.protocol;transport=$item.Row.transport;security=$item.Row.security;cipher=$item.Row.cipher;flow=$item.Row.flow;fingerprint=$item.Row.fingerprint;mode=$item.Row.mode;header_type=$item.Row.header_type;finalmask=$item.Row.finalmask;alpn_compatibility=$item.Row.alpn_compatibility;alpn_configuration_reason_code=$item.Row.alpn_configuration_reason_code;status='FAIL';failure_scope='RUNNER';phase='STARTUP_FAILED';runner_reason_code='';readiness_reason='';core_exit_code=$null;core_output_complete=$null;core_stopped_by_runner=$false;curl_wait_reason='';curl_output_complete=$null;curl_error_class='';first_core_failure=$null;last_core_failure=$null;core_failure_count=0;reason_code='';native_status=0;native_status_hex='';transport_http_status=0;transport_http_header_name='';negotiated_alpn='';tls_version='';network_test_performed=$false;curl_exit_code=$null;http_code=0;bytes=0;seconds=0;body_sha256='';missing_features=@()}
+    $r = [ordered]@{feature_family=$item.Row.feature_family;plugin=$item.Row.plugin;plugin_mux=$item.Row.plugin_mux;websocket_early_data=$item.Row.websocket_early_data;vmess_authentication=$item.Row.vmess_authentication;alter_id=$item.Row.alter_id;source=$item.Row.source;line=$item.Row.line;node_id=$item.Row.node_id;protocol=$item.Row.protocol;transport=$item.Row.transport;security=$item.Row.security;cipher=$item.Row.cipher;flow=$item.Row.flow;fingerprint=$item.Row.fingerprint;mode=$item.Row.mode;header_type=$item.Row.header_type;finalmask=$item.Row.finalmask;alpn_compatibility=$item.Row.alpn_compatibility;alpn_configuration_reason_code=$item.Row.alpn_configuration_reason_code;status='FAIL';failure_scope='RUNNER';phase='STARTUP_FAILED';runner_reason_code='';readiness_reason='';core_exit_code=$null;core_output_complete=$null;core_stopped_by_runner=$false;curl_wait_reason='';curl_output_complete=$null;curl_error_class='';curl_drain_ms=$null;curl_stdout_bytes=$null;curl_stderr_bytes=$null;curl_stdout_state='';curl_stderr_state='';runner_error_type='';runner_error_line=$null;core_tunnel_ready_count=0;first_core_failure=$null;last_core_failure=$null;core_failure_count=0;reason_code='';native_status=0;native_status_hex='';transport_http_status=0;transport_http_header_name='';negotiated_alpn='';tls_version='';network_test_performed=$false;curl_exit_code=$null;http_code=0;bytes=0;seconds=0;body_sha256='';missing_features=@()}
     try {
         $ready = Join-Path $dir 'ready.json'
         $config = Join-Path $dir 'node.ini'
@@ -89,8 +92,9 @@ $worker = {
         $arguments += '"' + $urlValue.Replace('"','%22') + '"'
         $r.phase = 'HTTPS_FAILED'; $r.network_test_performed = $true
         $request = Start-BatchChild $curlPath $arguments $metrics $curlError $processes
-        $requestResult = Wait-BatchChild $request (($timeoutValue+5)*1000)
+        $requestResult = Wait-BatchChild $request (($timeoutValue+5)*1000) ($outputDrainValue*1000)
         $r.curl_exit_code=$requestResult.ExitCode; $r.curl_wait_reason=$requestResult.Reason; $r.curl_output_complete=$requestResult.OutputComplete
+        $r.curl_drain_ms=$requestResult.DrainMilliseconds; $r.curl_stdout_bytes=$requestResult.StdoutBytes; $r.curl_stderr_bytes=$requestResult.StderrBytes; $r.curl_stdout_state=$requestResult.StdoutState; $r.curl_stderr_state=$requestResult.StderrState
         $r.curl_error_class=Get-BatchCurlClass $requestResult.ExitCode
         if ($requestResult.Reason) { $r.runner_reason_code=$requestResult.Reason; $r.phase = $requestResult.Reason; throw ('HTTPS process failed: '+$requestResult.Reason) }
         $curlExitCode = $requestResult.ExitCode
@@ -111,6 +115,7 @@ $worker = {
 
         }
     } catch {
+        $r.runner_error_type=$_.Exception.GetType().FullName; $r.runner_error_line=$_.InvocationInfo.ScriptLineNumber
         if ($r.readiness_reason -and -not $readyObserved) { $r.runner_reason_code=$r.readiness_reason }
         elseif (-not $r.runner_reason_code) { $r.runner_reason_code='BATCH_WORKER_FAILED' }
         if ($r.readiness_reason -eq 'CORE_READY_TIMEOUT') { $r.phase='STARTUP_FAILED' }
@@ -130,6 +135,7 @@ $worker = {
         foreach ($path in @('core-out.log','core-err.log')) { $diagnostics += @(Read-BatchDiagnostic (Join-Path $dir $path)) }
         $failures=@($diagnostics | Where-Object { $_.event -eq 'failure' } | Sort-Object timestamp_unix_ms)
         $r.core_failure_count=$failures.Count
+        $r.core_tunnel_ready_count=@($diagnostics | Where-Object { $_.event -eq 'negotiated' }).Count
         if ($failures.Count) {
             $r.first_core_failure=$failures[0]; $r.last_core_failure=$failures[-1]
             $r.first_core_failure | Add-Member NoteProperty observed_before_cleanup ([bool]$preFailures.Count)
@@ -142,7 +148,8 @@ $worker = {
             $first=@($preFailures | Sort-Object timestamp_unix_ms)[0]
             # Keep explicit runner/wait failure while retaining both core causes.
             if (-not $r.runner_reason_code) {
-                if ($r.curl_error_class -in @('HTTPS_TLS_HANDSHAKE','HTTPS_CERTIFICATE','HTTPS_CERTIFICATE_ISSUER','HTTPS_CERTIFICATE_PIN','HTTPS_CERTIFICATE_STATUS')) { $r.phase='HTTPS_FAILED'; $r.reason_code=$r.curl_error_class; $r.failure_scope='HTTPS_DESTINATION_TLS' }
+                if ($r.curl_error_class -in @('HTTPS_CERTIFICATE','HTTPS_CERTIFICATE_ISSUER','HTTPS_CERTIFICATE_PIN','HTTPS_CERTIFICATE_STATUS')) { $r.phase='HTTPS_FAILED'; $r.reason_code=$r.curl_error_class; $r.failure_scope='HTTPS_DESTINATION_TLS' }
+                elseif ($r.curl_error_class -eq 'HTTPS_TLS_HANDSHAKE' -and $first.tunnel_ready -ne $false) { $r.phase='HTTPS_FAILED'; $r.reason_code=$r.curl_error_class; $r.failure_scope='HTTPS_REQUEST_OR_TUNNEL' }
                 else { $r.phase=$first.phase; $r.reason_code=$first.reason_code; $r.failure_scope='OUTER_TUNNEL' }
             }
             $r.native_status=$first.native_status; $r.native_status_hex=$first.native_status_hex; $r.transport_http_status=$first.http_status; $r.transport_http_header_name=$first.http_header_name
@@ -151,7 +158,8 @@ $worker = {
         elseif ($r.runner_reason_code) { $r.reason_code=$r.runner_reason_code; $r.failure_scope='RUNNER' }
         elseif (-not $preFailures.Count) {
             $r.failure_scope='HTTPS_REQUEST'
-            if ($r.curl_error_class -in @('HTTPS_TLS_HANDSHAKE','HTTPS_CERTIFICATE','HTTPS_CERTIFICATE_ISSUER','HTTPS_CERTIFICATE_PIN','HTTPS_CERTIFICATE_STATUS')) { $r.failure_scope='HTTPS_DESTINATION_TLS'; $r.phase='HTTPS_FAILED'; $r.reason_code=$r.curl_error_class }
+            if ($r.curl_error_class -in @('HTTPS_CERTIFICATE','HTTPS_CERTIFICATE_ISSUER','HTTPS_CERTIFICATE_PIN','HTTPS_CERTIFICATE_STATUS')) { $r.failure_scope='HTTPS_DESTINATION_TLS'; $r.phase='HTTPS_FAILED'; $r.reason_code=$r.curl_error_class }
+            elseif ($r.curl_error_class -eq 'HTTPS_TLS_HANDSHAKE') { $r.failure_scope='HTTPS_REQUEST_OR_TUNNEL'; $r.phase='HTTPS_FAILED'; $r.reason_code=$r.curl_error_class }
             elseif ($r.curl_error_class -eq 'HTTPS_CA_FILE') { $r.failure_scope='RUNNER_CONFIGURATION'; $r.reason_code='HTTPS_CA_FILE' }
         }
         if ($r.status -eq 'FAIL' -and -not $r.reason_code) { $r.reason_code=$r.phase }
@@ -161,7 +169,8 @@ $worker = {
     [pscustomobject]$r
 }
 try {
-    Write-Host 'Batch runner: 0.4.2 (direct .NET processes; structured diagnostics)'
+    Write-Host 'Batch runner: 0.4.3 (direct .NET processes; structured diagnostics)'
+    $batchStage='INVENTORY'
     $files = if (Test-Path -LiteralPath $Nodes -PathType Container) { @(Get-ChildItem -LiteralPath $Nodes -Filter '*.txt' -File | Sort-Object Name) } else { @(Get-Item -LiteralPath $Nodes) }
     if (-not @($files).Count) { throw 'No node files found. Run scripts/Get-Pre-Inventory.ps1 or pass -Nodes.' }
     foreach ($file in $files) {
@@ -170,7 +179,7 @@ try {
         $inspect = Join-Path $scratch ([guid]::NewGuid().ToString('N') + '.ndjson')
         $errorFile = $inspect + '.err'
         $inspectionChild = Start-BatchChild $Core ('--inspect-list "' + $file.FullName + '"') $inspect $errorFile $owned
-        $inspectionResult = Wait-BatchChild $inspectionChild 120000
+        $inspectionResult = Wait-BatchChild $inspectionChild 120000 ($OutputDrainSeconds*1000)
         $inspectionExitCode = $inspectionResult.ExitCode
         if ($inspectionResult.Reason -or $null -eq $inspectionExitCode -or $inspectionExitCode -ne 0) {
             $failureReason = if ($inspectionResult.Reason) { $inspectionResult.Reason } elseif ($null -eq $inspectionExitCode) { 'EXIT_CODE_UNAVAILABLE' } else { 'NONZERO_EXIT' }
@@ -180,7 +189,7 @@ try {
             $stderr = [regex]::Replace($stderr,'(?i)\b(?:vless|vmess|trojan|ss)://\S+','[REDACTED_URI]')
             $stderr = [regex]::Replace($stderr,'(?i)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b','[REDACTED_ID]')
             if ($stderr.Length -gt 8192) { $stderr = $stderr.Substring(0,8192) }
-            $inventoryError = [ordered]@{source=$file.Name;reason=$failureReason;exit_code=$inspectionExitCode;exit_code_hex=$exitHex;stderr=$stderr;stdout_bytes=(Get-Item -LiteralPath $inspect).Length;process_mode='direct-dotnet';process_exited=$inspectionChild.Process.HasExited;output_complete=$inspectionResult.OutputComplete}
+            $inventoryError = [ordered]@{source=$file.Name;reason=$failureReason;exit_code=$inspectionExitCode;exit_code_hex=$exitHex;stderr=$stderr;stdout_bytes=(Get-Item -LiteralPath $inspect).Length;process_mode='direct-dotnet';process_exited=$inspectionChild.Process.HasExited;output_complete=$inspectionResult.OutputComplete;drain_ms=$inspectionResult.DrainMilliseconds;stdout_state=$inspectionResult.StdoutState;stderr_state=$inspectionResult.StderrState}
             [IO.File]::WriteAllText((Join-Path $OutputDirectory 'inventory-diagnostic.json'),($inventoryError | ConvertTo-Json -Depth 8),$encoding)
             $exitLabel = if ($null -eq $inspectionExitCode) { 'unavailable' } else { [string]$inspectionExitCode + ' (' + $exitHex + ')' }
             throw ('Inventory inspection failed: '+$file.Name+'; reason='+$failureReason+'; exit='+$exitLabel+'. See inventory-diagnostic.json in the report directory.')
@@ -198,6 +207,7 @@ try {
             $catalog.Add([pscustomobject]@{Row=$row;Uri=$uris[$row.line-1].Trim();Key=($file.Name+':'+$row.line)})
         }
     }
+    $batchStage='SELECT'
     # Round-robin across actual feature groups; Limit does not take the first N links.
     $candidates = @($catalog | Where-Object { $_.Row.parsed -and $_.Row.connectable_by_this_build })
     $groups = @($candidates | Group-Object { $_.Row.feature_family+'|'+$_.Row.protocol+'|'+$_.Row.transport+'|'+$_.Row.security+'|'+$_.Row.cipher+'|'+$_.Row.flow+'|'+$_.Row.fingerprint+'|'+$_.Row.mode+'|'+$_.Row.header_type+'|'+$_.Row.finalmask } | Sort-Object Name)
@@ -210,6 +220,7 @@ try {
     if ($Limit -gt 0 -and $queue.Count -gt $Limit) { $queue = @($queue | Select-Object -First $Limit) }
     $selectedCount=$queue.Count
     foreach ($item in $queue) { $scheduled.Add($item.Key) | Out-Null }
+    $batchStage='SAVE_INSPECTION'
     foreach ($item in $catalog) {
         $row = $item.Row
         if (-not $row.parsed) { $row | Add-Member NoteProperty status 'PARSE_INVALID'; Save-Row $row }
@@ -218,12 +229,13 @@ try {
     }
     Write-Host ('Inventory: '+$catalog.Count+'; supported configurations: '+$candidates.Count+'; selected: '+$queue.Count+'; concurrency: '+$Concurrency)
     if (-not $InspectOnly) {
+        $batchStage='NETWORK'
         $pool = [RunspaceFactory]::CreateRunspacePool(1,$Concurrency); $pool.Open()
         $index = 0
         while ($index -lt $queue.Count -or $jobs.Count -gt 0) {
             while ($index -lt $queue.Count -and $jobs.Count -lt $Concurrency) {
                 $ps = [PowerShell]::Create(); $ps.RunspacePool = $pool
-                $ps.AddScript($worker.ToString()).AddArgument($queue[$index]).AddArgument($Core).AddArgument($Curl).AddArgument($Url).AddArgument($TimeoutSeconds).AddArgument($ExpectedBodySha256).AddArgument($scratch).AddArgument($owned).AddArgument($TestCaFile).AddArgument($processHelper) | Out-Null
+                $ps.AddScript($worker.ToString()).AddArgument($queue[$index]).AddArgument($Core).AddArgument($Curl).AddArgument($Url).AddArgument($TimeoutSeconds).AddArgument($ExpectedBodySha256).AddArgument($scratch).AddArgument($owned).AddArgument($TestCaFile).AddArgument($processHelper).AddArgument($OutputDrainSeconds) | Out-Null
                 $jobs.Add([pscustomobject]@{Shell=$ps;Handle=$ps.BeginInvoke();Item=$queue[$index]}); $index++
             }
             for ($j=$jobs.Count-1; $j -ge 0; $j--) {
@@ -240,6 +252,11 @@ try {
         }
     }
     $completed = $true
+} catch {
+    # Persist only typed error metadata, before cleanup can raise another error.
+    $batchError=[ordered]@{stage=$batchStage;exception_type=$_.Exception.GetType().FullName;script_line=$_.InvocationInfo.ScriptLineNumber}
+    [IO.File]::WriteAllText((Join-Path $OutputDirectory 'batch-diagnostic.json'),($batchError | ConvertTo-Json -Depth 4),$encoding)
+    throw
 } finally {
     # Release blocking curl waits before stopping runspaces.
     foreach ($entry in $owned.ToArray()) { try { if (-not $entry.Value.HasExited) { $entry.Value.Kill() } } catch {} }
@@ -253,8 +270,9 @@ try {
         if (-not $known.Contains($item.Key)) { $r=$item.Row; $r | Add-Member NoteProperty status 'CANCELLED'; Save-Row $r }
     }
     $writer.Dispose()
-    $results | Select-Object source,line,node_id,protocol,transport,security,cipher,flow,fingerprint,mode,header_type,finalmask,alpn_compatibility,alpn_configuration_reason_code,status,failure_scope,phase,reason_code,uri_parsed,config_valid,runner_reason_code,readiness_reason,core_exit_code,core_output_complete,core_stopped_by_runner,curl_wait_reason,curl_output_complete,curl_error_class,core_failure_count,@{n='first_core_reason';e={Get-ReportCause $_ 'first_core_failure' 'reason_code'}},@{n='first_core_phase';e={Get-ReportCause $_ 'first_core_failure' 'phase'}},@{n='first_core_connection_id';e={Get-ReportCause $_ 'first_core_failure' 'connection_id'}},@{n='first_core_timestamp_ms';e={Get-ReportCause $_ 'first_core_failure' 'timestamp_unix_ms'}},@{n='last_core_reason';e={Get-ReportCause $_ 'last_core_failure' 'reason_code'}},@{n='last_core_phase';e={Get-ReportCause $_ 'last_core_failure' 'phase'}},@{n='last_core_connection_id';e={Get-ReportCause $_ 'last_core_failure' 'connection_id'}},@{n='last_core_timestamp_ms';e={Get-ReportCause $_ 'last_core_failure' 'timestamp_unix_ms'}},native_status,native_status_hex,transport_http_status,transport_http_header_name,negotiated_alpn,tls_version,curl_exit_code,http_code,bytes,seconds,body_sha256,@{n='missing_features';e={$_.missing_features -join ';'}} | Export-Csv -LiteralPath (Join-Path $OutputDirectory 'results.csv') -NoTypeInformation -Encoding UTF8
-    $summary = [ordered]@{schema='vpn-batch-v4';script_revision='0.4.2';process_mode='direct-dotnet';completed=$completed;inventory_error=$inventoryError;core_sha256=(Get-FileHash -LiteralPath $Core -Algorithm SHA256).Hash.ToLowerInvariant();powershell_version=$PSVersionTable.PSVersion.ToString();platform=[Environment]::OSVersion.VersionString;source_files=@($sourceHashes.ToArray());generated_utc=[DateTime]::UtcNow.ToString('o');inventory=$catalog.Count;selected=$selectedCount;finished=@($results | Where-Object { $_.status -in @('PASS','FAIL') }).Count;timeout_seconds=$TimeoutSeconds;connect_timeout_ms=([Math]::Min(120000,$TimeoutSeconds*1000));idle_timeout_ms=([Math]::Min(600000,$TimeoutSeconds*1000));readiness_timeout_ms=10000;curl_wait_timeout_ms=(($TimeoutSeconds+5)*1000);inventory_wait_timeout_ms=120000;inspect_only=[bool]$InspectOnly;concurrency=$Concurrency;url=$Url;statuses=@($results | Group-Object status | ForEach-Object {[ordered]@{status=$_.Name;count=$_.Count}});groups=@($results | Group-Object { $_.feature_family+'|'+$_.protocol+'|'+$_.transport+'|'+$_.security+'|'+$_.cipher+'|'+$_.fingerprint+'|'+$_.mode+'|'+$_.finalmask } | ForEach-Object {[ordered]@{group=$_.Name;statuses=@($_.Group | Group-Object status | ForEach-Object {[ordered]@{status=$_.Name;count=$_.Count}})}})}
+    $results | Select-Object source,line,node_id,protocol,transport,security,cipher,flow,fingerprint,mode,header_type,finalmask,alpn_compatibility,alpn_configuration_reason_code,status,failure_scope,phase,reason_code,uri_parsed,config_valid,runner_reason_code,readiness_reason,core_exit_code,core_output_complete,core_stopped_by_runner,curl_wait_reason,curl_output_complete,curl_error_class,curl_drain_ms,curl_stdout_bytes,curl_stderr_bytes,curl_stdout_state,curl_stderr_state,runner_error_type,runner_error_line,core_tunnel_ready_count,core_failure_count,@{n='first_core_reason';e={Get-ReportCause $_ 'first_core_failure' 'reason_code'}},@{n='first_core_phase';e={Get-ReportCause $_ 'first_core_failure' 'phase'}},@{n='first_core_tunnel_ready';e={Get-ReportCause $_ 'first_core_failure' 'tunnel_ready'}},@{n='first_core_connection_id';e={Get-ReportCause $_ 'first_core_failure' 'connection_id'}},@{n='first_core_timestamp_ms';e={Get-ReportCause $_ 'first_core_failure' 'timestamp_unix_ms'}},@{n='last_core_reason';e={Get-ReportCause $_ 'last_core_failure' 'reason_code'}},@{n='last_core_phase';e={Get-ReportCause $_ 'last_core_failure' 'phase'}},@{n='last_core_connection_id';e={Get-ReportCause $_ 'last_core_failure' 'connection_id'}},@{n='last_core_timestamp_ms';e={Get-ReportCause $_ 'last_core_failure' 'timestamp_unix_ms'}},native_status,native_status_hex,transport_http_status,transport_http_header_name,negotiated_alpn,tls_version,curl_exit_code,http_code,bytes,seconds,body_sha256,@{n='missing_features';e={$_.missing_features -join ';'}} | Export-Csv -LiteralPath (Join-Path $OutputDirectory 'results.csv') -NoTypeInformation -Encoding UTF8
+    $commit=[Environment]::GetEnvironmentVariable('GITHUB_SHA'); if ($commit -notmatch '^[a-fA-F0-9]{40}$') { $commit='' }
+    $summary = [ordered]@{source_commit=$commit;cancelled=@($results | Where-Object { $_.status -eq 'CANCELLED' }).Count;runner_failures=@($results | Where-Object { $_.PSObject.Properties['failure_scope'] -and $_.failure_scope -in @('RUNNER','RUNNER_CONFIGURATION') }).Count;schema='vpn-batch-v5';script_revision='0.4.3';process_mode='direct-dotnet';completed=$completed;batch_error=$batchError;output_drain_timeout_ms=($OutputDrainSeconds*1000);inventory_error=$inventoryError;core_sha256=(Get-FileHash -LiteralPath $Core -Algorithm SHA256).Hash.ToLowerInvariant();powershell_version=$PSVersionTable.PSVersion.ToString();platform=[Environment]::OSVersion.VersionString;source_files=@($sourceHashes.ToArray());generated_utc=[DateTime]::UtcNow.ToString('o');inventory=$catalog.Count;selected=$selectedCount;finished=@($results | Where-Object { $_.status -in @('PASS','FAIL') }).Count;timeout_seconds=$TimeoutSeconds;connect_timeout_ms=([Math]::Min(120000,$TimeoutSeconds*1000));idle_timeout_ms=([Math]::Min(600000,$TimeoutSeconds*1000));readiness_timeout_ms=10000;curl_wait_timeout_ms=(($TimeoutSeconds+5)*1000);inventory_wait_timeout_ms=120000;inspect_only=[bool]$InspectOnly;concurrency=$Concurrency;url=$Url;statuses=@($results | Group-Object status | ForEach-Object {[ordered]@{status=$_.Name;count=$_.Count}});groups=@($results | Group-Object { $_.feature_family+'|'+$_.protocol+'|'+$_.transport+'|'+$_.security+'|'+$_.cipher+'|'+$_.fingerprint+'|'+$_.mode+'|'+$_.finalmask } | ForEach-Object {[ordered]@{group=$_.Name;statuses=@($_.Group | Group-Object status | ForEach-Object {[ordered]@{status=$_.Name;count=$_.Count}})}})}
     [IO.File]::WriteAllText((Join-Path $OutputDirectory 'summary.json'),($summary | ConvertTo-Json -Depth 12),$encoding)
     Remove-Item -LiteralPath $scratch -Recurse -Force -ErrorAction SilentlyContinue
     Write-Host ('Reports: '+$OutputDirectory)

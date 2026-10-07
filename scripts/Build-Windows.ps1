@@ -24,10 +24,10 @@ try {
     & (Join-Path $stage 'vpn-core.exe') --check-components
     if ($LASTEXITCODE -ne 0) { throw 'Component ABI validation failed.' }
     foreach ($file in @('vpn-tls.dll','vpn-tls.h','vpn-core.exe')) { Copy-Item -LiteralPath (Join-Path $stage $file) -Destination (Join-Path $bin $file) -Force }
-    $hashes = @('vpn-core.exe','vpn-tls.dll') | ForEach-Object { [ordered]@{file=$_;sha256=(Get-FileHash -LiteralPath (Join-Path $bin $_) -Algorithm SHA256).Hash.ToLowerInvariant()} }
+    $hashes = @('vpn-core.exe','vpn-tls.dll') | ForEach-Object { [ordered]@{file=$_;bytes=(Get-Item -LiteralPath (Join-Path $bin $_)).Length;sha256=(Get-FileHash -LiteralPath (Join-Path $bin $_) -Algorithm SHA256).Hash.ToLowerInvariant()} }
     $hashes | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $bin 'build-hashes.json') -Encoding UTF8
     Remove-Item -LiteralPath $stage -Recurse -Force
-    Write-Host 'Built and checked: bin/vpn-core.exe + bin/vpn-tls.dll (0.4.2).'
+    Write-Host 'Built and checked: bin/vpn-core.exe + bin/vpn-tls.dll (0.4.3).'
 } finally {
     foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name,$previous[$name],'Process') }
 }

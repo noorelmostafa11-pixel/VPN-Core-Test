@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Vpn project owner (noorelmostafa11-pixel). See NOTICE.md.
 #include "transport.hpp"
 #include "xhttp-provider.hpp"
 #include <atomic>
@@ -98,7 +99,7 @@ void connection(Socket client,const Config& config,uint64_t id) {
         log_line(prefix+"tunnel ready; protocol="+config.protocol+" transport="+config.transport+" tls="+tls.version()+"; data transfer still unverified");
         phase="RELAY_FAILED";relay(client,server,tls,transport,protocol,config,initial,up,down);log_line(prefix+"closed; uploaded="+std::to_string(up)+" downloaded="+std::to_string(down));
     }catch(const std::exception& e){if(request_ok&&!tunnel_ready)try{socks_reply(client,1,Clock::now()+std::chrono::milliseconds(500));}catch(...){}std::string error=e.what();if(error.find("DNS")!=std::string::npos)phase="DNS_FAILED";else if(error.find("timeout")!=std::string::npos)phase="TIMEOUT";else{auto colon=error.find(':');if(colon!=std::string::npos){auto p=error.substr(0,colon);const std::set<std::string> known{"TRANSPORT_FAILED","PROTOCOL_FAILED","TLS_FAILED","CONNECT_FAILED","RELAY_FAILED","FEATURE_UNIMPLEMENTED","PARSE_INVALID"};if(known.count(p))phase=p;}}
-        Json detail=Json::obj();diagnostic_identity(detail,id);detail["event"]=Json("failure");detail["phase"]=Json(phase);auto f=dynamic_cast<const Failure*>(&e);detail["reason_code"]=Json(f?f->code:phase);detail["native_status"]=Json::integer(f?f->native_status:0);std::ostringstream hex;hex<<"0x"<<std::hex<<std::uppercase<<std::setfill('0')<<std::setw(8)<<(f?f->native_status:0);detail["native_status_hex"]=Json(hex.str());detail["http_status"]=Json::integer(f?f->http_status:0);detail["http_header_name"]=Json(f?f->http_header_name:"");detail["tls_version"]=Json(tls_version);detail["alpn"]=Json(alpn);log_line(prefix+"diagnostic="+json_dump(detail));
+        Json detail=Json::obj();diagnostic_identity(detail,id);detail["event"]=Json("failure");detail["tunnel_ready"]=Json::boolean(tunnel_ready);detail["phase"]=Json(phase);auto f=dynamic_cast<const Failure*>(&e);detail["reason_code"]=Json(f?f->code:phase);detail["native_status"]=Json::integer(f?f->native_status:0);std::ostringstream hex;hex<<"0x"<<std::hex<<std::uppercase<<std::setfill('0')<<std::setw(8)<<(f?f->native_status:0);detail["native_status_hex"]=Json(hex.str());detail["http_status"]=Json::integer(f?f->http_status:0);detail["http_header_name"]=Json(f?f->http_header_name:"");detail["tls_version"]=Json(tls_version);detail["alpn"]=Json(alpn);log_line(prefix+"diagnostic="+json_dump(detail));
         log_line(prefix+"failed phase="+phase+": "+error+"; uploaded="+std::to_string(up)+" downloaded="+std::to_string(down));}
 }
 
@@ -110,7 +111,7 @@ int run(int argc,char** argv) {
         std::string config_path,list_path;bool check=false,inspect=false;
         for(int i=1;i<argc;++i) {
             std::string a=argv[i];
-            if(a=="--version"){std::cout<<"vpn-core 0.4.2-expanded; project-owned protocols; SOCKS5 CONNECT\n";return 0;}
+            if(a=="--version"){std::cout<<"vpn-core 0.4.3-expanded; project-owned protocols; SOCKS5 CONNECT\n";return 0;}
             if(a=="--check-components"){(void)TlsProviderAPI::instance();(void)VlessEncryptionAPI::instance();(void)XHttpAPI::instance();std::cout<<"PASS: pinned TLS/HTTP and crypto component interfaces loaded\n";return 0;}
             if(a=="--self-test"){protocol_self_test();std::cout<<"PASS: SHA224, URI, AEAD and Poly1305 standard vector\n";return 0;}
             if(a=="--check-config")check=true;
@@ -131,14 +132,14 @@ int run(int argc,char** argv) {
 #ifndef _WIN32
         std::signal(SIGPIPE,SIG_IGN);
 #endif
-        Tls label;log_line("vpn-core 0.4.2-expanded | "+std::string(label.backend()));
+        Tls label;log_line("vpn-core 0.4.3-expanded | "+std::string(label.backend()));
         if(!config.ready_file.empty()){if(std::filesystem::exists(std::filesystem::u8path(config.ready_file)))throw Failure("STARTUP_FAILED: ready file already exists","READY_FILE_EXISTS");sockaddr_in address{};
 #ifdef _WIN32
             int size=sizeof(address);
 #else
             socklen_t size=sizeof(address);
 #endif
-            if(getsockname(listener.get(),reinterpret_cast<sockaddr*>(&address),&size))throw Failure("STARTUP_FAILED: listener address","LISTENER_ADDRESS",uint32_t(socket_error()));config.listen_port=ntohs(address.sin_port);Json ready=Json::obj();ready["port"]=Json::integer(config.listen_port);ready["version"]=Json("0.4.2-expanded");
+            if(getsockname(listener.get(),reinterpret_cast<sockaddr*>(&address),&size))throw Failure("STARTUP_FAILED: listener address","LISTENER_ADDRESS",uint32_t(socket_error()));config.listen_port=ntohs(address.sin_port);Json ready=Json::obj();ready["port"]=Json::integer(config.listen_port);ready["version"]=Json("0.4.3-expanded");
 #ifdef _WIN32
             ready["pid"]=Json::integer(GetCurrentProcessId());
 #else

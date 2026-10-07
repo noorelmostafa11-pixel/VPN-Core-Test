@@ -23,6 +23,18 @@ CHILD = r'''
 param([string]$Mode)
 if ($Mode -eq 'nonzero') { exit 23 }
 if ($Mode -eq 'timeout') { [Threading.Thread]::Sleep(30000); exit 0 }
+if ($Mode -eq 'delayed-write') { [Threading.Thread]::Sleep(4200); [Console]::Write('late'); exit 0 }
+if ($Mode -eq 'slow-drain') {
+    $info = New-Object Diagnostics.ProcessStartInfo
+    $info.FileName = if (Test-Path (Join-Path $PSHOME 'pwsh.exe')) { Join-Path $PSHOME 'pwsh.exe' } elseif (Test-Path (Join-Path $PSHOME 'powershell.exe')) { Join-Path $PSHOME 'powershell.exe' } else { Join-Path $PSHOME 'pwsh' }
+    $info.Arguments = '-NoProfile -File "' + $PSCommandPath + '" -Mode delayed-write'
+    $info.UseShellExecute = $false
+    $descendant = New-Object Diagnostics.Process
+    $descendant.StartInfo = $info
+    [void]$descendant.Start()
+    $descendant.Dispose()
+    exit 0
+}
 if ($Mode -eq 'flood') {
     $stdout = [Console]::OpenStandardOutput()
     $stderr = [Console]::OpenStandardError()
@@ -65,7 +77,7 @@ try {
     $exited = $child.Process.HasExited
     $captured = if ($Mode -eq 'flood') { (Read-BatchOutput $stdout).Length } else { 0 }
     Stop-BatchChild $child $owned
-    @{exit_code=$result.ExitCode;reason=$result.Reason;finished=$result.Finished;output_complete=$result.OutputComplete;exited=$exited;owned=$owned.Count;captured_chars=$captured} | ConvertTo-Json -Compress
+    @{exit_code=$result.ExitCode;reason=$result.Reason;finished=$result.Finished;output_complete=$result.OutputComplete;exited=$exited;owned=$owned.Count;captured_chars=$captured;drain_ms=$result.DrainMilliseconds;stdout_bytes=$result.StdoutBytes;stderr_bytes=$result.StderrBytes;stdout_state=$result.StdoutState;stderr_state=$result.StderrState} | ConvertTo-Json -Compress
 } finally { Stop-BatchChild $child $owned }
 '''
 
@@ -104,7 +116,7 @@ class BatchExitCodeTests(unittest.TestCase):
             self.assertTrue(summary['completed'])
             self.assertEqual(summary['inventory'], 1)
             self.assertIsNone(summary['inventory_error'])
-            self.assertEqual(summary['script_revision'], '0.4.2')
+            self.assertEqual(summary['script_revision'], '0.4.3')
             self.assertEqual(summary['process_mode'], 'direct-dotnet')
     def test_structured_diagnostics_whitelist(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -151,6 +163,47 @@ class BatchExitCodeTests(unittest.TestCase):
                 actual = (pathlib.Path(temp)/name).read_bytes()
                 self.assertEqual(len(actual), len(expected))
                 self.assertEqual(hashlib.sha256(actual).digest(), hashlib.sha256(expected).digest())
+
+    def test_sixteen_concurrent_children_capture_exact_bytes(self):
+        with tempfile.TemporaryDirectory() as td:
+            td = pathlib.Path(td)
+            child = td/'flood.ps1'; child.write_text(CHILD, encoding='utf-8-sig')
+            harness = td/'stress.ps1'
+            harness.write_text(r'''param([string]$Helper,[string]$Executable,[string]$ChildScript,[string]$Temp)
+$ErrorActionPreference='Stop'
+. $Helper
+$owned=New-Object 'Collections.Concurrent.ConcurrentDictionary[int,System.Diagnostics.Process]'
+$children=@()
+try {
+    for ($i=0;$i -lt 16;$i++) {
+        $children+=Start-BatchChild $Executable ('-NoProfile -File "'+$ChildScript+'" -Mode flood') (Join-Path $Temp ($i.ToString()+'.out')) (Join-Path $Temp ($i.ToString()+'.err')) $owned
+    }
+    foreach ($child in $children) {
+        $r=Wait-BatchChild $child 30000
+        if ($r.ExitCode -ne 0 -or $r.Reason -or -not $r.OutputComplete) { throw 'Concurrent output capture failed.' }
+        Stop-BatchChild $child $owned
+    }
+    if ($owned.Count -ne 0) { throw 'Concurrent child leaked.' }
+} finally { foreach ($child in $children) { Stop-BatchChild $child $owned } }
+''', encoding='utf-8-sig')
+            run=subprocess.run([PW,'-NoProfile','-File',str(harness),'-Helper',str(ROOT/'scripts/Batch-Process.ps1'),'-Executable',PW,'-ChildScript',str(child),'-Temp',str(td)],capture_output=True,text=True,timeout=120)
+            self.assertEqual(run.returncode,0,run.stdout+run.stderr)
+            for suffix,chunk in [('out','عقدة ✓ output line\n'.encode()),('err',b'synthetic stderr line\n')]:
+                expected=chunk*(4096*48)
+                for i in range(16):
+                    data=(td/(str(i)+'.'+suffix)).read_bytes()
+                    self.assertEqual(len(data),len(expected))
+                    self.assertEqual(hashlib.sha256(data).digest(),hashlib.sha256(expected).digest())
+
+    def test_delayed_inherited_pipe_is_fully_drained(self):
+        with tempfile.TemporaryDirectory() as temp:
+            result = self.invoke_helper(temp, 'slow-drain')
+            self.assertEqual(result['exit_code'], 0)
+            self.assertEqual(result['reason'], '')
+            self.assertTrue(result['output_complete'])
+            self.assertGreater(result['drain_ms'], 3000)
+            self.assertEqual(result['stdout_bytes'], 4)
+            self.assertEqual((pathlib.Path(temp)/'stdout.bin').read_bytes(), b'late')
 
     def test_timeout_kills_owned_child(self):
         with tempfile.TemporaryDirectory() as temp:

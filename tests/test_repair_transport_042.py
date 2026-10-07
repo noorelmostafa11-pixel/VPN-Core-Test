@@ -10,7 +10,7 @@ class CookieSocket:
     def __getattr__(self,key):return getattr(self.sock,key)
     def sendall(self,data):
         if data.startswith(b'HTTP/1.1 101 '):
-            data=data.replace(b'Connection: upgrade\r\n',b'Connection: keep-alive\r\nConnection: Upgrade\r\nSet-Cookie: a=one\r\nSet-Cookie: b=two\r\n')
+            data=data.replace(b'Connection: upgrade\r\n',b'Connection: keep-alive\r\nConnection: Upgrade\r\nSet-Cookie: a=one\r\nSet-Cookie: b=two\r\nX-Trace: one\r\nX-Trace: two\r\n')
         return self.sock.sendall(data)
 class CookiePeer(ws.Peer):
     def handle(self,raw):
