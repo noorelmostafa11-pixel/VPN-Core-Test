@@ -12,11 +12,13 @@
 #define SCHANNEL_USE_BLACKLISTS
 #include <security.h>
 #include <schannel.h>
+#elif defined(VPN_CORE_PORTABLE)
+// Verified TLS is supplied by the existing pinned provider.
 #elif defined(VPN_CORE_TEST_BACKEND)
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #else
-#error Production target is Windows. The Linux OpenSSL adapter is for tests only.
+#error Select Windows, VPN_CORE_PORTABLE, or the independent test backend.
 #endif
 
 namespace vpn {
@@ -172,7 +174,7 @@ public:
         return out.token();
     }
 };
-#else
+#elif !defined(VPN_CORE_PORTABLE)
 // Test-only transport adapter. This file's Windows branch never includes or
 // links OpenSSL. Protocol, parser, SOCKS and relay code are shared unchanged.
 class NativeTls {
@@ -233,11 +235,14 @@ public:
 
 #include "tls-provider.hpp"
 namespace vpn {
+#ifdef VPN_CORE_PORTABLE
+using NativeTls = ProviderTls;
+#endif
 class Tls {
     NativeTls native_;std::unique_ptr<ProviderTls> provider_;
 public:
     const char* backend()const{return "native TLS + pinned uTLS provider; project-owned proxy protocols";}
-    void handshake(Socket& socket,const Config& config,Clock::time_point deadline){bool use=config.security=="xtls"||config.flow=="xtls-rprx-vision"||config.flow=="xtls-rprx-vision-udp443"||config.security=="reality"||!config.ech.empty()||(!config.fingerprint.empty()&&config.fingerprint!="unsafe")||!certificate_pins(config).empty()||!certificate_names(config).empty();if(use){provider_=std::make_unique<ProviderTls>();provider_->handshake(socket,config,deadline);}else native_.handshake(socket,config,deadline);}
+    void handshake(Socket& socket,const Config& config,Clock::time_point deadline){bool use=!config.tls_ca_file.empty()||config.security=="xtls"||config.flow=="xtls-rprx-vision"||config.flow=="xtls-rprx-vision-udp443"||config.security=="reality"||!config.ech.empty()||(!config.fingerprint.empty()&&config.fingerprint!="unsafe")||!certificate_pins(config).empty()||!certificate_names(config).empty();if(use){provider_=std::make_unique<ProviderTls>();provider_->handshake(socket,config,deadline);}else native_.handshake(socket,config,deadline);}
     Bytes encrypt(const Bytes& b){return provider_?provider_->encrypt(b):native_.encrypt(b);}
     Bytes feed(const uint8_t* b,size_t n){return provider_?provider_->feed(b,n):native_.feed(b,n);}
     Bytes release_input(){if(!provider_)throw Failure("PROTOCOL_FAILED: Vision provider unavailable","VISION_TLS_PROVIDER");return provider_->release_input();}

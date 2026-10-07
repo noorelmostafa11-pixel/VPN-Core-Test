@@ -4,23 +4,23 @@ p=argparse.ArgumentParser();p.add_argument('--output',default='dist');a=p.parse_
 root=pathlib.Path(__file__).resolve().parents[1];version=(root/'VERSION').read_text().strip();files={}
 reported=subprocess.run([str(root/'bin/vpn-core.exe'),'--version'],capture_output=True,text=True,check=True,timeout=20).stdout.strip()
 if not reported.startswith('vpn-core '+version+'-expanded;'):raise SystemExit('Release binary version does not match VERSION')
-for folder in ['src','scripts','tests','tls-provider','third_party','nodes/pre/protocols']:
+for folder in ['src','scripts','tests','tls-provider','third_party','nodes/pre/protocols','.github']:
     for file in (root/folder).rglob('*'):
         if file.is_file() and '__pycache__' not in file.parts and file.suffix not in {'.pyc','.log'}:
             files[file.relative_to(root).as_posix()]=file.read_bytes()
-for name in ['BASELINE-0.4.2.json','BASELINE-NETWORK.json','COMPONENTS.md','PROTOCOL-SOURCES.md','REPAIRS-0.4.2.md','SUPPORT-0.4.0.md','REPAIRS-0.4.3.md','RELEASE-NOTES.md','pre-source-manifest.json']:
+for name in ['BASELINE-0.4.2.json','BASELINE-NETWORK.json','COMPONENTS.md','PROTOCOL-SOURCES.md','REPAIRS-0.4.2.md','SUPPORT-0.4.0.md','REPAIRS-0.4.3.md','RELEASE-NOTES.md','BUILDING.md','RUN-37600257138.md','pre-source-manifest.json']:
     files['docs/'+name]=(root/'docs'/name).read_bytes()
-for name in ['README.md','OWNERSHIP.md','NOTICE.md','VERSION','.gitignore','.gitattributes']:
+for name in ['README.md','OWNERSHIP.md','NOTICE.md','VERSION','.gitignore','.gitattributes','build.ps1','build.sh']:
     files[name]=(root/name).read_bytes()
 hashes=json.loads((root/'bin/build-hashes.json').read_text(encoding='utf-8-sig'))
-for name in ['vpn-core.exe','vpn-tls.dll','vpn-tls.h','build-hashes.json']:
+for name in ['vpn-core.exe','vpn-core.dll','vpn-tls.dll','vpn-tls.h','core-api.h','build-hashes.json','build-provenance.json']:
     data=(root/'bin'/name).read_bytes();files['bin/'+name]=data
-    if name in {'vpn-core.exe','vpn-tls.dll'}:
+    if name in {'vpn-core.exe','vpn-core.dll','vpn-tls.dll'}:
         entries=[e for e in hashes if e['file']==name]
         if len(entries)!=1 or entries[0]['sha256']!=hashlib.sha256(data).hexdigest() or entries[0]['bytes']!=len(data):raise SystemExit('Build manifest mismatch: '+name)
 for name in ['vpn-core.exe','vpn-tls.dll']:
     if not files['bin/'+name]:raise SystemExit('Empty release binary')
-provenance={'schema':'vpn-core-build-provenance-v1','version':version,'source_commit':os.environ.get('GITHUB_SHA','NOT_VERIFIED'),'workflow_run':os.environ.get('GITHUB_RUN_ID','NOT_VERIFIED'),'platform':'windows-amd64','android':'NOT_BUILT','go':'1.27.1','files':hashes}
+provenance={'schema':'vpn-core-build-provenance-v1','version':version,'source_commit':os.environ.get('GITHUB_SHA','NOT_VERIFIED'),'workflow_run':os.environ.get('GITHUB_RUN_ID','NOT_VERIFIED'),'platform':'windows-amd64','android':'SEE_TARGET_WORKFLOW','go':'1.27.1','files':hashes}
 files['build-provenance.json']=(json.dumps(provenance,indent=2)+'\n').encode()
 manifest={'schema':'vpn-core-package-v3','version':version,'source_commit':provenance['source_commit'],'files':[{'path':n,'bytes':len(d),'sha256':hashlib.sha256(d).hexdigest()} for n,d in sorted(files.items())],'manifest_exclusions':['package-manifest.json']}
 files['package-manifest.json']=(json.dumps(manifest,indent=2)+'\n').encode()

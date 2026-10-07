@@ -14,3 +14,6 @@ local.ini
 *.pfx
 *.p12
 /.venv/
+/build/
+/VPN-Core-Test-Public-Bundle.zip
+/VPN-Core-Test-Public-Bundle.zip.download

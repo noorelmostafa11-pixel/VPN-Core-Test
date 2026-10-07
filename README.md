@@ -1,12 +1,16 @@
-# vpn-core 0.4.3
+# vpn-core 0.4.4
 
-المستودع هو المصدر الأساسي لتطوير الكور واختباره. تنفيذ البروتوكولات VLESS وTrojan وVMess وShadowsocks خاص بالمشروع؛ المكونات الخارجية وتراخيصها محفوظة كما هي. Windows هو هدف البناء الحالي. Android/TUN/JNI لم يُبنَ أو يُختبر في هذا الإصدار.
+المستودع هو المصدر الأساسي لتطوير الكور واختباره. تنفيذ البروتوكولات VLESS وTrojan وVMess وShadowsocks خاص بالمشروع؛ المكونات الخارجية وتراخيصها محفوظة كما هي. السورس يدعم مسارات بناء Windows وLinux وAndroid من اللاب ومن GitHub. Android يخرج مكتبات الكور وواجهة C؛ ربط JNI/TUN/VPNService بالتطبيق له عمل منفصل.
+
+## البناء من الريبو على اللاب
+
+اسحب الريبو وحدد هدف البناء: `windows` أو `linux` أو `android`، أو `auto` للنظام المحلي. مثال PowerShell: `.\build.ps1 -Target windows`. مثال Linux: `bash build.sh --target linux`. للبناء لأندرويد مرر `-Target android -Abi arm64-v8a -Ndk <مسار NDK>`. الهدف مستقل عن نظام اللاب؛ الأدوات وإصداراتها والأوامر الكاملة وحدود دمج Android في [docs/BUILDING.md](docs/BUILDING.md).
 
 ## التطوير والاختبار على GitHub
 
-عدّل السورس على فرع، ثم راجع **Actions → Core Source Validation**. كل تعديل للسورس على `main` يُبنى من المصدر، يمر باختبارات البروتوكولات على Linux وباختبارات Windows الفعلي وPowerShell 5.1 و7، ثم يبدأ اختبار جميع **72,767** عقدة من اللقطة المثبتة في 15 shard، بتوازي 8 ومهلة اتصال 10 ثوانٍ لكل shard. لا حاجة لاختبارات اللاب.
+عدّل السورس على فرع، ثم راجع **Actions → Core Source Validation**. كل تعديل للسورس على `main` يُبنى من المصدر، يمر باختبارات البروتوكولات على Linux وباختبارات Windows الفعلي وPowerShell 5.1 و7، ويتحقق workflow **Build Selected Core Target** من أوامر البناء المحلية ومكتبات الكور، ثم يبدأ اختبار جميع **72,767** عقدة من اللقطة المثبتة في 15 shard، بتوازي 8 ومهلة اتصال 10 ثوانٍ لكل shard. لا حاجة لاختبارات اللاب.
 
-يمكن إعادة الاختبار من **Actions → Windows Pre Node Test → Run workflow**. هذا التشغيل يبني الكور من commit المختار، ولا يستخدم EXE قديمًا من ZIP كمرشح جديد. ملف `VPN-Core-Test-Public-Bundle.zip` مرجع 0.4.2 ولقطة عقد ثابتة فقط؛ hashes وnode IDs لا تتغير.
+يمكن إعادة الاختبار من **Actions → Windows Pre Node Test → Run workflow**. هذا التشغيل يبني الكور من commit المختار، ولا يستخدم EXE قديمًا من ZIP كمرشح جديد. مدخلات المقارنة تُسترجع من ملف `VPN-Core-Test-Public-Bundle.zip` في commit الأصلي المثبت لـ0.4.2 عند الحاجة، مع التحقق من الحجم وSHA256؛ الملف لا يلزم بقاؤه في `main`، وhashes وnode IDs لا تتغير.
 
 تحتفظ Actions لمدة 90 يومًا بتقارير Linux وWindows والحصر وتقارير الشبكة لكل shard، مع SHA الكوميت في الاسم وSHA256 الكور في `summary.json`. لا يعد تشغيل ناجح دليلًا على نجاح كل العقد: يجب مراجعة عدد PASS وأسباب FAIL، و`completed` و`finished` و`runner_failures`.
 

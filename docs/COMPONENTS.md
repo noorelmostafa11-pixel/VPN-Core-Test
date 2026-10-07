@@ -17,7 +17,7 @@
 | blake3 | 1.4.1 | KDF في تشفير VLESS ومراجع Go |
 | klauspost/cpuid/v2 | 2.0.9 | تبعية BLAKE3 |
 
-الإصدارات وchecksums الكاملة في `tls-provider/go.mod` و`go.sum`، والسورس المثبت والتراخيص في `tls-provider/vendor`. ترخيص MinGW/GCC runtime في `third_party`. OpenSSL يستخدم في محول Linux للاختبار؛ ملفات Windows لا تستورد OpenSSL.
+الإصدارات وchecksums الكاملة في `tls-provider/go.mod` و`go.sum`، والسورس المثبت والتراخيص في `tls-provider/vendor`. ترخيص Go وMinGW/GCC runtime في `third_party`. نسخة Android تحفظ NOTICE الخاص بالـNDK مع الملفات المبنية وتراخيص vendor. OpenSSL يستخدم في محول Linux للاختبار؛ ملفات Windows لا تستورد OpenSSL. أهداف Linux/Android للإنتاج تستخدم المزوّد المثبت وواجهات primitives من مكتبات Go القياسية. معمارية NDK وإصدارها في `scripts/toolchains.json`.
 
 توجد تسعة ملفات معدّلة في المكونات، مع SHA-256 للأصل والبديل في `tls-provider/component-patches/manifest.json`. ملفات replacement هي المصدر المعتمد لإعادة تطبيق التعديلات. سكربتا Apply-Component-Patches يرفضان محتوى لا يطابق الأصل أو البديل المثبت.
 

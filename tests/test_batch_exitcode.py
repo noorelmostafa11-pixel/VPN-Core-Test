@@ -116,7 +116,7 @@ class BatchExitCodeTests(unittest.TestCase):
             self.assertTrue(summary['completed'])
             self.assertEqual(summary['inventory'], 1)
             self.assertIsNone(summary['inventory_error'])
-            self.assertEqual(summary['script_revision'], '0.4.3')
+            self.assertEqual(summary['script_revision'], (ROOT/'VERSION').read_text().strip())
             self.assertEqual(summary['process_mode'], 'direct-dotnet')
     def test_structured_diagnostics_whitelist(self):
         with tempfile.TemporaryDirectory() as temp:

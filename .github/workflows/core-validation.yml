@@ -104,7 +104,7 @@ jobs:
           $env:VPN_CORE_TEST_BINARY=(Resolve-Path bin/vpn-core.exe).Path
           $env:VPN_CORE_REPAIR_PROBE=(Resolve-Path bin/repair-probe.exe).Path
           $env:PYTHONPATH=(Resolve-Path tests).Path
-          & cmd.exe /d /c 'python -m unittest -v test_batch_exitcode.BatchExitCodeTests test_repairs_042.RepairTests test_repairs_043.RepositoryRepairTests > validation-windows-51.log 2>&1'
+          & cmd.exe /d /c 'python -m unittest -v test_batch_exitcode.BatchExitCodeTests test_repairs_042.RepairTests test_repairs_043.RepositoryRepairTests test_ready_044.ReadyReadTests > validation-windows-51.log 2>&1'
           $testExit=$LASTEXITCODE
           Get-Content validation-windows-51.log
           $global:LASTEXITCODE=$testExit
@@ -117,7 +117,7 @@ jobs:
           $env:VPN_CORE_TEST_BINARY=(Resolve-Path bin/vpn-core.exe).Path
           $env:VPN_CORE_REPAIR_PROBE=(Resolve-Path bin/repair-probe.exe).Path
           $env:PYTHONPATH=(Resolve-Path tests).Path
-          & python -m unittest -v test_batch_exitcode.BatchExitCodeTests test_windows_043.WindowsRepairTransportTests 2>&1 | Tee-Object validation-windows-7.log
+          & python -m unittest -v test_batch_exitcode.BatchExitCodeTests test_windows_043.WindowsRepairTransportTests test_ready_044.ReadyReadTests 2>&1 | Tee-Object validation-windows-7.log
           if ($LASTEXITCODE -ne 0) { throw 'Windows production regression failed' }
       - name: Compare every original inspection record to the tested 0.4.2 binary
         shell: pwsh
@@ -158,6 +158,9 @@ jobs:
           path: |
             bin/vpn-core.exe
             bin/vpn-tls.dll
+            bin/vpn-core.dll
+            bin/vpn-tls.h
+            bin/core-api.h
             bin/build-hashes.json
           if-no-files-found: error
           retention-days: 90

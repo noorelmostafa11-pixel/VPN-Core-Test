@@ -42,6 +42,19 @@ function Read-BatchOutput {
     }
 }
 
+function Read-BatchReadyState {
+    param([string]$Path,$Process,[Diagnostics.Stopwatch]$Startup,[int]$TimeoutMilliseconds=10000)
+    # File existence does not guarantee an immediate readable handle on Windows.
+    # Retry only transient IO errors, within the original startup deadline.
+    while ($true) {
+        try { return ([IO.File]::ReadAllText($Path) | ConvertFrom-Json) }
+        catch [IO.IOException] {
+            if ($Startup.ElapsedMilliseconds -ge $TimeoutMilliseconds -or $Process.HasExited) { throw }
+            Start-Sleep -Milliseconds 30
+        }
+    }
+}
+
 function Start-BatchChild {
     param([string]$FilePath,[string]$Arguments,[string]$Stdout,[string]$Stderr,$Owned)
     $process = New-Object Diagnostics.Process

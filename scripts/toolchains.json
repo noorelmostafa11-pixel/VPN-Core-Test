@@ -1,0 +1,7 @@
+{
+  "go": "1.27.1",
+  "android_ndk": "30.0.16248370",
+  "android_api": 23,
+  "windows_gcc": "16.2.0",
+  "linux_gcc": "13.3.0"
+}

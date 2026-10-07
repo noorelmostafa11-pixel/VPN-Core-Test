@@ -13,6 +13,8 @@
 #endif
 #include <windows.h>
 #include <bcrypt.h>
+#elif defined(VPN_CORE_PORTABLE)
+#include "portable-crypto.hpp"
 #else
 #include <openssl/evp.h>
 #include <openssl/rand.h>
@@ -22,6 +24,8 @@ namespace vpn {
 inline Bytes random_bytes(size_t n){Bytes b(n);
 #if defined(_WIN32) || defined(VPN_CORE_CNG_TEST)
     if(BCryptGenRandom(nullptr,b.data(),ULONG(n),BCRYPT_USE_SYSTEM_PREFERRED_RNG)<0)throw std::runtime_error("CRYPTO_FAILED: operating-system RNG");
+#elif defined(VPN_CORE_PORTABLE)
+    if(PortableCrypto::instance().random(PortableCrypto::data(b),PortableCrypto::size(n))!=0)throw Failure("CRYPTO_FAILED: random generator","CRYPTO_RANDOM");
 #else
     if(RAND_bytes(b.data(),int(n))!=1)throw std::runtime_error("CRYPTO_FAILED: test RNG");
 #endif
@@ -35,6 +39,8 @@ inline Bytes digest(const std::string& algorithm,const Bytes& data){
     // Let CNG own its object storage until BCryptDestroyHash. A caller buffer
     // declared after Guard would be freed before Guard destroyed the handle.
     Bytes out(hash_size);if(BCryptCreateHash(alg,&hash,nullptr,0,nullptr,0,0)<0||BCryptHashData(hash,const_cast<PUCHAR>(data.data()),ULONG(data.size()),0)<0||BCryptFinishHash(hash,out.data(),hash_size,0)<0)throw std::runtime_error("CRYPTO_FAILED: digest");return out;
+#elif defined(VPN_CORE_PORTABLE)
+    const std::map<std::string,int> kinds{{"md5",1},{"sha1",2},{"sha256",3},{"sha384",4},{"sha512",5}};auto k=kinds.find(algorithm);if(k==kinds.end())throw Failure("CRYPTO_FAILED: unknown digest","CRYPTO_DIGEST");Bytes out(64);int n=PortableCrypto::instance().hash(k->second,PortableCrypto::data(data),PortableCrypto::size(data.size()),PortableCrypto::data(out),int(out.size()));if(n<=0||n>int(out.size()))throw Failure("CRYPTO_FAILED: digest","CRYPTO_DIGEST");out.resize(size_t(n));return out;
 #else
     auto md=EVP_get_digestbyname(algorithm.c_str());if(!md)throw std::runtime_error("CRYPTO_FAILED: digest unavailable");Bytes out(size_t(EVP_MD_size(md)));unsigned n=0;if(EVP_Digest(data.data(),data.size(),out.data(),&n,md,nullptr)!=1)throw std::runtime_error("CRYPTO_FAILED: digest");out.resize(n);return out;
 #endif
@@ -75,6 +81,8 @@ inline Bytes aes(const Bytes& key,const Bytes& nonce,const Bytes& input,const By
     if(!ecb){if(nonce.size()!=12)throw std::runtime_error("CRYPTO_FAILED: AES nonce");if(decrypt){if(data.size()<16)throw Failure("PROTOCOL_FAILED: truncated AEAD tag","AEAD_TAG_TRUNCATED");std::copy(data.end()-16,data.end(),tag.begin());data.resize(data.size()-16);}info.pbNonce=const_cast<PUCHAR>(nonce.data());info.cbNonce=ULONG(nonce.size());info.pbAuthData=const_cast<PUCHAR>(aad.data());info.cbAuthData=ULONG(aad.size());info.pbTag=tag.data();info.cbTag=ULONG(tag.size());padding=&info;}
     Bytes out(data.size()+16);ULONG produced=0;auto status=decrypt?BCryptDecrypt(handle,data.data(),ULONG(data.size()),padding,nullptr,0,out.data(),ULONG(out.size()),&produced,0):BCryptEncrypt(handle,data.data(),ULONG(data.size()),padding,nullptr,0,out.data(),ULONG(out.size()),&produced,0);
     if(status<0){if(decrypt)throw Failure("PROTOCOL_FAILED: AEAD authentication failed","AEAD_AUTHENTICATION",uint32_t(status));throw Failure("CRYPTO_FAILED: AES encryption","AES_ENCRYPTION",uint32_t(status));}out.resize(produced);if(!ecb&&!decrypt)out.insert(out.end(),tag.begin(),tag.end());return out;
+#elif defined(VPN_CORE_PORTABLE)
+    Bytes out(input.size()+32);int n=PortableCrypto::instance().cipher(PortableCrypto::data(key),PortableCrypto::size(key.size()),PortableCrypto::data(nonce),PortableCrypto::size(nonce.size()),PortableCrypto::data(input),PortableCrypto::size(input.size()),PortableCrypto::data(aad),PortableCrypto::size(aad.size()),int(decrypt),int(ecb),PortableCrypto::data(out),PortableCrypto::size(out.size()));if(n<0)throw Failure("PROTOCOL_FAILED: AEAD verification or parameters failed",decrypt?"AEAD_AUTHENTICATION":"AES_ENCRYPTION");if(size_t(n)>out.size())throw Failure("CRYPTO_FAILED: result limit","CRYPTO_OUTPUT_LIMIT");out.resize(size_t(n));return out;
 #else
     auto cipher=ecb?(key.size()==16?EVP_aes_128_ecb():key.size()==24?EVP_aes_192_ecb():EVP_aes_256_ecb()):(key.size()==16?EVP_aes_128_gcm():key.size()==24?EVP_aes_192_gcm():EVP_aes_256_gcm());EVP_CIPHER_CTX* context=EVP_CIPHER_CTX_new();if(!context)throw std::runtime_error("CRYPTO_FAILED: test AES allocation");struct Guard{EVP_CIPHER_CTX* c;~Guard(){EVP_CIPHER_CTX_free(c);}}guard{context};Bytes data=input,tag(16),out(data.size()+32);int produced=0,tail=0;
     if(decrypt&&!ecb){if(data.size()<16)throw Failure("PROTOCOL_FAILED: truncated AEAD tag","AEAD_TAG_TRUNCATED");std::copy(data.end()-16,data.end(),tag.begin());data.resize(data.size()-16);}
