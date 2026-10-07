@@ -1,0 +1,82 @@
+name: Windows Pre Node Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Pre shard ${{ matrix.shard }}
+    runs-on: windows-2022
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      max-parallel: 15
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract and verify test binaries
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bundle = '.\VPN-Core-Test-Public-Bundle.zip'
+          if (-not (Test-Path -LiteralPath $bundle)) { throw 'Test bundle is missing: upload VPN-Core-Test-Public-Bundle.zip to the repository root.' }
+          Expand-Archive -LiteralPath $bundle -DestinationPath '.\suite' -Force
+          $manifest = @(Get-Content '.\suite\bin\build-hashes.json' -Raw | ConvertFrom-Json)
+          foreach ($filename in @('vpn-core.exe', 'vpn-tls.dll')) {
+            $entry = @($manifest | Where-Object { $_.file -eq $filename })
+            if ($entry.Count -ne 1) { throw "Missing manifest entry: $filename" }
+            $file = Join-Path '.\suite\bin' $filename
+            if (-not (Test-Path -LiteralPath $file)) { throw "Missing binary: $filename" }
+            $actual = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $entry[0].sha256) { throw "Binary checksum mismatch: $filename" }
+          }
+          & '.\suite\bin\vpn-core.exe' --version
+          if ($LASTEXITCODE -ne 0) { throw 'EXE version command failed' }
+          & '.\suite\bin\vpn-core.exe' --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'EXE self-test failed' }
+
+      - name: Partition the pinned Pre snapshot
+        shell: powershell
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $target = '.\suite\nodes\shard'
+          [void][IO.Directory]::CreateDirectory($target)
+          $index = 0
+          $total = 0
+          foreach ($proto in @('vless','trojan','vmess','shadowsocks')) {
+            $src = Join-Path '.\suite\nodes\pre\protocols' ($proto + '.txt')
+            $dst = Join-Path $target ($proto + '.txt')
+            $writer = [IO.StreamWriter]::new($dst, $false, [Text.UTF8Encoding]::new($false))
+            try {
+              foreach ($line in [IO.File]::ReadLines((Resolve-Path $src).Path)) {
+                if ([string]::IsNullOrWhiteSpace($line)) { continue }
+                if (($index % 15) -eq [int]$env:SHARD) { $writer.WriteLine($line); $total++ }
+                $index++
+              }
+            } finally { $writer.Dispose() }
+          }
+          Write-Host "shard=$env:SHARD total=$total global=$index"
+          if ($index -ne 72767) { throw "Unexpected Pre snapshot inventory: $index" }
+          if ($total -lt 1) { throw 'Empty shard' }
+
+      - name: Test nodes using the supplied Windows EXE
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & '.\suite\scripts\Test-Batch.ps1' -Nodes '.\suite\nodes\shard' -Core '.\suite\bin\vpn-core.exe' -Concurrency 8 -TimeoutSeconds 10 -Url 'https://example.com/' -OutputDirectory '.\batch-results'
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vpn-shard-${{ matrix.shard }}
+          path: batch-results/
+          if-no-files-found: warn
