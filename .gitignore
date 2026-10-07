@@ -4,6 +4,11 @@
 /nodes/
 /batch-results*/
 /smoke-results/
+/pre-current-support/
+/docs/cancellation-test.json
+/docs/*-batch-output.txt
+/docs/*-batch-results.ndjson
+/docs/*-batch-summary.json
 *.log
 __pycache__/
 *.pyc

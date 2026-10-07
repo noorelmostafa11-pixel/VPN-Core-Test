@@ -8,7 +8,7 @@ for folder in ['src','scripts','tests','tls-provider','third_party','nodes/pre/p
     for file in (root/folder).rglob('*'):
         if file.is_file() and '__pycache__' not in file.parts and file.suffix not in {'.pyc','.log'}:
             files[file.relative_to(root).as_posix()]=file.read_bytes()
-for name in ['BASELINE-0.4.2.json','BASELINE-NETWORK.json','COMPONENTS.md','PROTOCOL-SOURCES.md','REPAIRS-0.4.2.md','SUPPORT-0.4.0.md','REPAIRS-0.4.3.md','RELEASE-NOTES.md','BUILDING.md','RUN-37600257138.md','pre-source-manifest.json']:
+for name in ['BASELINE-0.4.2.json','BASELINE-NETWORK.json','COMPONENTS.md','PROTOCOL-SOURCES.md','REPAIRS-0.4.2.md','SUPPORT-0.4.0.md','REPAIRS-0.4.3.md','RELEASE-NOTES.md','BUILDING.md','RUN-37600257138.md','pre-source-manifest.json','pre-current-source-manifest.json','PRE-COVERAGE-0.4.5.md']:
     files['docs/'+name]=(root/'docs'/name).read_bytes()
 for name in ['README.md','OWNERSHIP.md','NOTICE.md','VERSION','.gitignore','.gitattributes','build.ps1','build.sh']:
     files[name]=(root/name).read_bytes()

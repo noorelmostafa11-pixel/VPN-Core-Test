@@ -1,4 +1,12 @@
-# vpn-core 0.4.4
+# vpn-core 0.4.5
+
+Adds the `randomizednoalpn` TLS fingerprint found in the 2026-10-07 Pre snapshot, including verified byte transfer on TLS 1.2/1.3 and WebSocket, concurrent sessions and certificate-name rejection. A misfiled XHTTP options object in `fm` now reports `FINALMASK_STRUCTURE_INVALID`; an unimplemented TCP mask inside a valid mask list still reports `FINALMASK`.
+
+Both randomized presets keep TLS 1.3 available instead of occasionally generating TLS-1.2-only templates. Independent OpenSSL tests verify 1,024 reproducible handshakes and matching echoes across TLS-1.2-only and TLS-1.3-only servers, including absent ALPN on the NoALPN preset.
+
+Current Pre support is pinned separately from the unchanged 0.4.2 baseline: 71,755 rows, 70,787 supported, 968 invalid, zero missing features in valid configurations. CI verifies file integrity, every row/node ID and expected support counts on Linux and Windows. These are inspection results, not successful public-node connections. See `PRE-COVERAGE-0.4.5.md`.
+
+## Previous 0.4.4 build and API changes
 
 Unified laptop/GitHub source builds for Windows amd64, Linux amd64 and four Android ABIs, with isolated output folders, pinned tools, hashes and provenance. Windows keeps Schannel/CNG; production POSIX uses the existing verified TLS provider and Go standard cryptographic primitives. Protocol and node values remain unchanged.
 

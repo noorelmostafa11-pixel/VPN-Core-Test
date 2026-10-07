@@ -2,6 +2,7 @@
 import contextlib,ctypes,json,os,pathlib,ssl,subprocess,tempfile,threading,time,unittest
 from test_core import BIN,ROOT
 import test_expanded as old
+from test_tls_profiles import CapturePeer
 from test_repair_transport_042 import RepairTransportTests,CookiePeer
 
 class PortableTransportTests(RepairTransportTests):
@@ -48,6 +49,21 @@ class PortableTransportTests(RepairTransportTests):
                             s.sendall(b'portable core');self.assertEqual(old.original.exact(s,13),b'portable core')
                     self.assertEqual(peer.errors,[])
                 finally:peer.close()
+
+    def test_randomized_noalpn_websocket_in_production_core(self):
+        peer=CapturePeer('vless',transport='websocket',tls_context=self.context)
+        try:
+            uri=old.ExpandedTests.uri(self,peer)+'&fp=randomizednoalpn&alpn=h3,h2,http%2F1.1'
+            with self.core(uri) as (port,log):
+                with self.socks(port) as s:
+                    self.assertEqual(old.original.exact(s,len(old.HELLO)),old.HELLO)
+                    payload=bytes(range(256))*513
+                    s.sendall(payload);self.assertEqual(old.original.exact(s,len(payload)),payload)
+                self.assertNotIn('failed phase=',log.read_text())
+            self.assertEqual(peer.errors,[])
+            self.assertEqual(len(peer.hellos),1)
+            self.assertNotIn(16,[kind for kind,_ in peer.hellos[0][1]])
+        finally:peer.close()
 
 class SharedCoreTests(unittest.TestCase):
     def test_run_stop_restart_and_module_relative_provider(self):

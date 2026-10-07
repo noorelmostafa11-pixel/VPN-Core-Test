@@ -194,8 +194,18 @@ func profile(name string) (utls.ClientHelloID, error) {
 		return utls.HelloQQ_Auto, nil
 	case "unsafe", "native":
 		return utls.HelloGolang, nil
-	case "randomized":
-		return utls.HelloRandomizedALPN, nil
+	case "randomized", "randomizednoalpn":
+		id := utls.HelloRandomizedALPN
+		if strings.EqualFold(strings.TrimSpace(name), "randomizednoalpn") {
+			id = utls.HelloRandomizedNoALPN
+		}
+		// These presets must remain usable with TLS 1.3-only endpoints,
+		// including REALITY, while still offering permitted TLS 1.2.
+		weights := utls.DefaultWeights
+		weights.TLSVersMax_Set_VersionTLS13 = 1
+		weights.FirstKeyShare_Set_CurveP256 = 0
+		id.Weights = &weights
+		return id, nil
 	case "random":
 		ids := []utls.ClientHelloID{utls.HelloChrome_Auto, utls.HelloFirefox_Auto, utls.HelloSafari_Auto, utls.HelloIOS_Auto, utls.HelloEdge_Auto, utls.HelloQQ_Auto}
 		var b [1]byte

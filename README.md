@@ -1,4 +1,4 @@
-# vpn-core 0.4.4
+# vpn-core 0.4.5
 
 المستودع هو المصدر الأساسي لتطوير الكور واختباره. تنفيذ البروتوكولات VLESS وTrojan وVMess وShadowsocks خاص بالمشروع؛ المكونات الخارجية وتراخيصها محفوظة كما هي. السورس يدعم مسارات بناء Windows وLinux وAndroid من اللاب ومن GitHub. Android يخرج مكتبات الكور وواجهة C؛ ربط JNI/TUN/VPNService بالتطبيق له عمل منفصل.
 
@@ -7,6 +7,10 @@
 اسحب الريبو وحدد هدف البناء: `windows` أو `linux` أو `android`، أو `auto` للنظام المحلي. مثال PowerShell: `.\build.ps1 -Target windows`. مثال Linux: `bash build.sh --target linux`. للبناء لأندرويد مرر `-Target android -Abi arm64-v8a -Ndk <مسار NDK>`. الهدف مستقل عن نظام اللاب؛ الأدوات وإصداراتها والأوامر الكاملة وحدود دمج Android في [docs/BUILDING.md](docs/BUILDING.md).
 
 ## التطوير والاختبار على GitHub
+
+دعم لقطة Pre بتاريخ 7 أكتوبر 2026 مثبت على `ab54b99dbca41be020facfcb35569ebfdf730f59`: **70,787 إعدادًا مدعومًا** من **71,755 رابطًا**، و**968 إعدادًا غير صالح**. أُضيفت بصمة `randomizednoalpn` مع اختبارات نقل بيانات ورفض الشهادة الخاطئة. أُضيف لفحوص CI على Linux وWindows فحص كل سطر من هذه اللقطة مع التحقق من SHA256 وهوية العقدة، ويفشل فحص التغطية إذا تراجع عدد الدعم المتوقع. هذا حصر دعم؛ نجاح عقد الإنترنت له اختبار منفصل. التفاصيل في [docs/PRE-COVERAGE-0.4.5.md](docs/PRE-COVERAGE-0.4.5.md).
+
+لتحميل هذه اللقطة من PowerShell: `.\scripts\Get-Pre-Inventory.ps1 -Snapshot current`؛ يحفظها في `nodes/pre-current/protocols`. اللقطة القديمة المستخدمة لمقارنة 0.4.2 تبقى في `nodes/pre/protocols`.
 
 عدّل السورس على فرع، ثم راجع **Actions → Core Source Validation**. كل تعديل للسورس على `main` يُبنى من المصدر، يمر باختبارات البروتوكولات على Linux وباختبارات Windows الفعلي وPowerShell 5.1 و7، ويتحقق workflow **Build Selected Core Target** من أوامر البناء المحلية ومكتبات الكور، ثم يبدأ اختبار جميع **72,767** عقدة من اللقطة المثبتة في 15 shard، بتوازي 8 ومهلة اتصال 10 ثوانٍ لكل shard. لا حاجة لاختبارات اللاب.
 

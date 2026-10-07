@@ -22,7 +22,7 @@ git clone https://github.com/noorelmostafa11-pixel/VPN-Core-Test.git
 cd VPN-Core-Test
 ```
 
-لبناء إصدار محدد، استخدم `git checkout v0.4.4` بعد نشر هذا الـtag، أو SHA الكوميت المطلوب. `main` هو التطوير الحالي. تغيير الهدف لا يحتاج Fork.
+لبناء إصدار محدد، استخدم `git checkout v0.4.5` بعد نشر هذا الـtag، أو SHA الكوميت المطلوب. `main` هو التطوير الحالي. تغيير الهدف لا يحتاج Fork.
 
 ## Windows، من PowerShell
 

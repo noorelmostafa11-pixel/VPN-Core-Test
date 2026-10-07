@@ -1,5 +1,6 @@
 """Observed header rejection and native TLS diagnostic regressions."""
 import json,subprocess,unittest
+from urllib.parse import quote
 from test_repairs_042 import PROBE
 
 class RepositoryRepairTests(unittest.TestCase):
@@ -25,5 +26,15 @@ class RepositoryRepairTests(unittest.TestCase):
                 r=self.probe(op='native-reason',status=status)
                 self.assertEqual(r['reason_code'],reason)
                 self.assertEqual(r['native_status'],status)
+
+    def test_xhttp_options_in_finalmask_are_invalid_configuration(self):
+        uri='vless://12345678-1234-4567-9234-567812345678@localhost:443?security=tls&type=ws&fp=chrome&fm='+quote(json.dumps({'scMaxEachPostBytes':'1200000-1800000','xPaddingBytes':'100-400','xmux':{'maxConcurrency':'8-16'}}),safe='')
+        r=self.probe(op='config',uri=uri)
+        self.assertEqual(r['reason_code'],'FINALMASK_STRUCTURE_INVALID')
+
+    def test_registered_unimplemented_mask_is_still_reported(self):
+        uri='vless://12345678-1234-4567-9234-567812345678@localhost:443?security=tls&type=ws&fm='+quote(json.dumps({'tcp':[{'type':'unimplemented-test-mask','settings':{}}]}),safe='')
+        r=self.probe(op='config',uri=uri)
+        self.assertEqual(r['missing_features'],['FINALMASK'])
 
 if __name__=='__main__':unittest.main(verbosity=2)

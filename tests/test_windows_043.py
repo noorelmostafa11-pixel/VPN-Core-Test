@@ -4,9 +4,11 @@ from test_core import BIN
 import test_expanded as old
 from test_batch import PW
 from test_repair_transport_042 import RepairTransportTests,CookiePeer
+from test_portable_044 import PortableTransportTests
 
 @unittest.skipUnless(os.name=='nt' and PW,'Windows CI only')
 class WindowsRepairTransportTests(RepairTransportTests):
+    test_randomized_noalpn_websocket_in_production_core = PortableTransportTests.test_randomized_noalpn_websocket_in_production_core
     @classmethod
     def certificate_store(cls,action):
         script=cls.directory/'certificate-store.ps1'
