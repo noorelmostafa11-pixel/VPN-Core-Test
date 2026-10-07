@@ -1,0 +1,16 @@
+/bin/
+/dist/
+/suite/
+/nodes/
+/batch-results*/
+/smoke-results/
+*.log
+__pycache__/
+*.pyc
+.env
+*.key
+node.ini
+local.ini
+*.pfx
+*.p12
+/.venv/

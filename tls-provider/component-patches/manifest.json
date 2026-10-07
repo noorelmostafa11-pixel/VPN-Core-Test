@@ -1,0 +1,56 @@
+[
+  {
+    "path": "vendor/github.com/quic-go/quic-go/internal/handshake/crypto_setup.go",
+    "replacement": "crypto_setup.go.replacement",
+    "original_sha256": "8e4b7a53c347f10d7812ae1c31935894b600f77782bead8d9e4bcc2bb85974da",
+    "patched_sha256": "c105c451cacd228d35158a9fdd98142b1636e25657a6a4f77d3a49b4e2477783"
+  },
+  {
+    "path": "vendor/github.com/refraction-networking/utls/u_quic.go",
+    "replacement": "u_quic.go.replacement",
+    "original_sha256": "8a8dbd4285d88418b999f39bfc90ba09fcaa462fee7e98a80dfeaf07471b902f",
+    "patched_sha256": "a5531f853938e3403c2379f62286bb7739ac258f58a9b5c0022d45c487969958"
+  },
+  {
+    "path": "vendor/github.com/refraction-networking/utls/project_records.go",
+    "replacement": "project_records.go.replacement",
+    "original_sha256": null,
+    "patched_sha256": "25d998c24a241276a204b747745bef2bb10b8cdf59f49934a041e8e14d2a4589"
+  },
+  {
+    "path": "vendor/github.com/refraction-networking/utls/u_conn.go",
+    "replacement": "u_conn.go.replacement",
+    "original_sha256": "d83957a114ee2ae9ffcb87717cb41c3074f8045f990b6fe9c07cc0371694658b",
+    "patched_sha256": "080ea02c2bcda3ae1c12a5ecfb6a787d7e1563e1054179cff4543f8b2b0a9d72"
+  },
+  {
+    "path": "vendor/github.com/refraction-networking/utls/handshake_client_tls13.go",
+    "replacement": "handshake_client_tls13.go.replacement",
+    "original_sha256": "5872beb43bdc5b54a2b85977f5b6ac368dc734a256887f110d5479b206a7a127",
+    "patched_sha256": "db012009006d49d6b6a4376b0b846b302e75dab888918a383a792a19f6799e74"
+  },
+  {
+    "path": "vendor/github.com/refraction-networking/utls/u_handshake_client.go",
+    "replacement": "u_handshake_client.go.replacement",
+    "original_sha256": "33aba1b4b0de1ce6d06ae6fb2d9cb5d415781e647aa74e5ab48b45e9462c0183",
+    "patched_sha256": "33c03ce8bd7b9995c4aeb2a39c665b5dfee50e8e378501ba1bb4d116c600272b"
+  },
+  {
+    "path": "vendor/github.com/refraction-networking/utls/key_schedule.go",
+    "replacement": "key_schedule.go.replacement",
+    "original_sha256": "148e48ef3503c4ffc4e4c2f3acf717f4c98bb4e344e5df01ed4b9e78a7f83d4a",
+    "patched_sha256": "010a299001dddf239ff9af26b35b9a50f12db6b92d16f2aba33d8bb6fb000016"
+  },
+  {
+    "path": "vendor/github.com/refraction-networking/utls/u_public.go",
+    "replacement": "u_public.go.replacement",
+    "original_sha256": "5c55536d0cd5e2bac53140e5182212f3f6bfc4926c60b79b4bee13a522881f1b",
+    "patched_sha256": "fcd7c0eeab59848a8c3922c72d50575f184ad55e26efd54574e344dcfbe60675"
+  },
+  {
+    "path": "vendor/github.com/refraction-networking/utls/u_parrots.go",
+    "replacement": "u_parrots.go.replacement",
+    "original_sha256": "122612d4248fe283a8f411eb98ff8efc1bcd68558ba430696740cf2a26c5f108",
+    "patched_sha256": "d707369c909078a7522fb7c8a93afb21a79686c2a911110083d7197de3435e1e"
+  }
+]

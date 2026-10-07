@@ -1,0 +1,295 @@
+name: Core Source Validation
+
+on:
+  push:
+    branches: [main, 'repair/**']
+    paths: ['src/**', 'scripts/**', 'tests/**', 'tls-provider/**', 'VERSION', '.github/workflows/**', 'NOTICE.md', '.gitattributes']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      full_network:
+        description: Test all 72767 pinned public nodes after source validation
+        type: boolean
+        default: true
+  workflow_call:
+    inputs:
+      full_network:
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: core-validation-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  linux:
+    name: Linux protocol and component regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+          cache-dependency-path: tls-provider/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ libssl-dev openssl
+          # The independent HTTP/3 peer requires the documented 7 MiB UDP limit.
+          sudo sysctl -w net.core.rmem_max=7340032 net.core.wmem_max=7340032
+          python -m pip install -r tests/requirements.txt
+      - name: Build and run independent local protocol peers
+        env:
+          VPN_CORE_POWERSHELL: /usr/bin/pwsh
+        run: bash scripts/build-linux-tests.sh 2>&1 | tee validation-linux.log
+      - name: Preserve validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-validation-${{ github.sha }}
+          path: validation-linux.log
+          retention-days: 90
+
+  windows:
+    name: Windows production build and PowerShell 5.1 + 7
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+          cache-dependency-path: tls-provider/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: msys2/setup-msys2@v2
+        id: msys
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc
+          path-type: inherit
+      - name: Build core and diagnostic probe from repository source
+        shell: pwsh
+        env:
+          MSYS_LOCATION: ${{ steps.msys.outputs.msys2-location }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:PATH=(Join-Path $env:MSYS_LOCATION 'mingw64\bin')+';'+$env:PATH
+          & .\scripts\Build-Windows.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Windows build failed' }
+          & g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -Wno-misleading-indentation -D_WIN32_WINNT=0x0A00 -static -static-libgcc -static-libstdc++ tests/repair_probe.cpp -o bin/repair-probe.exe -lws2_32 -lsecur32 -lcrypt32 -lbcrypt -pthread
+          if ($LASTEXITCODE -ne 0) { throw 'Diagnostic probe build failed' }
+          & python -m pip install -r tests/requirements.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Test dependency setup failed' }
+          & python scripts/Prepare-Pinned-Nodes.py
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned snapshot failed' }
+      - name: PowerShell 5.1 process regression including 16 concurrent children
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:VPN_CORE_POWERSHELL=(Get-Command powershell.exe).Source
+          $env:VPN_CORE_TEST_BINARY=(Resolve-Path bin/vpn-core.exe).Path
+          $env:VPN_CORE_REPAIR_PROBE=(Resolve-Path bin/repair-probe.exe).Path
+          $env:PYTHONPATH=(Resolve-Path tests).Path
+          & cmd.exe /d /c 'python -m unittest -v test_batch_exitcode.BatchExitCodeTests test_repairs_042.RepairTests test_repairs_043.RepositoryRepairTests > validation-windows-51.log 2>&1'
+          $testExit=$LASTEXITCODE
+          Get-Content validation-windows-51.log
+          $global:LASTEXITCODE=$testExit
+          if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell 5.1 regression failed' }
+      - name: PowerShell 7 and verified production Schannel/provider WebSocket connections
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:VPN_CORE_POWERSHELL=(Get-Command pwsh.exe).Source
+          $env:VPN_CORE_TEST_BINARY=(Resolve-Path bin/vpn-core.exe).Path
+          $env:VPN_CORE_REPAIR_PROBE=(Resolve-Path bin/repair-probe.exe).Path
+          $env:PYTHONPATH=(Resolve-Path tests).Path
+          & python -m unittest -v test_batch_exitcode.BatchExitCodeTests test_windows_043.WindowsRepairTransportTests 2>&1 | Tee-Object validation-windows-7.log
+          if ($LASTEXITCODE -ne 0) { throw 'Windows production regression failed' }
+      - name: Compare every original inspection record to the tested 0.4.2 binary
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Expand-Archive VPN-Core-Test-Public-Bundle.zip suite
+          & python scripts/Compare-Inventory.py --baseline suite/bin/vpn-core.exe --candidate bin/vpn-core.exe --output inventory-comparison.json
+          if ($LASTEXITCODE -ne 0) { throw 'Original inspection changed' }
+          & .\scripts\Test-Batch.ps1 -Nodes nodes/pre/protocols -InspectOnly -OutputDirectory inspection-results
+          $report=Get-Content inspection-results/summary.json -Raw | ConvertFrom-Json
+          if (-not $report.completed -or $report.inventory -ne 72767 -or $report.inventory_error -or $report.batch_error) { throw 'Full inventory did not complete' }
+      - name: Assemble the complete release from this commit
+        shell: pwsh
+        run: |
+          & python scripts/Package-Release.py
+          if ($LASTEXITCODE -ne 0) { throw 'Release packaging failed' }
+      - name: Preserve Windows evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-validation-${{ github.sha }}
+          path: |
+            validation-windows-*.log
+            inventory-comparison.json
+            inspection-results/summary.json
+          retention-days: 90
+      - name: Upload complete Windows distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 90
+      - name: Upload tested runtime for network shards
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-runtime-${{ github.sha }}
+          path: |
+            bin/vpn-core.exe
+            bin/vpn-tls.dll
+            bin/build-hashes.json
+          if-no-files-found: error
+          retention-days: 90
+
+  network:
+    name: Windows Pre shard ${{ matrix.shard }}
+    needs: [linux, windows]
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || ((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && inputs.full_network)
+    runs-on: windows-2022
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      max-parallel: 15
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-runtime-${{ github.sha }}
+          path: runtime
+      - name: Verify tested binary and restore unchanged nodes
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          & python scripts/Prepare-Pinned-Nodes.py
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned snapshot failed' }
+          $manifest=Get-Content runtime/build-hashes.json -Raw | ConvertFrom-Json
+          foreach ($entry in $manifest) {
+            $file=Join-Path runtime $entry.file
+            if ((Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant() -cne $entry.sha256 -or (Get-Item $file).Length -ne $entry.bytes) { throw 'Tested binary integrity failed' }
+          }
+      - name: Partition the pinned Pre snapshot
+        shell: powershell
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $target='nodes/shard';[void][IO.Directory]::CreateDirectory($target)
+          $index=0;$total=0
+          foreach ($proto in @('vless','trojan','vmess','shadowsocks')) {
+            $writer=New-Object IO.StreamWriter((Join-Path $target ($proto+'.txt')),$false,(New-Object Text.UTF8Encoding($false)))
+            try {
+              foreach ($line in [IO.File]::ReadLines((Resolve-Path ('nodes/pre/protocols/'+$proto+'.txt')).Path)) {
+                if ([string]::IsNullOrWhiteSpace($line)) { continue }
+                if (($index % 15) -eq [int]$env:SHARD) { $writer.WriteLine($line);$total++ }
+                $index++
+              }
+            } finally { $writer.Dispose() }
+          }
+          $expected=if ([int]$env:SHARD -lt 2) { 4852 } else { 4851 }
+          if ($index -ne 72767 -or $total -ne $expected) { throw 'Shard partition mismatch' }
+      - name: Test this source-built version
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          & .\scripts\Test-Batch.ps1 -Nodes nodes/shard -Core runtime/vpn-core.exe -Concurrency 8 -TimeoutSeconds 10 -OutputDrainSeconds 10 -Url 'https://example.com/' -OutputDirectory batch-results
+      - name: Reject incomplete or cancelled reports
+        shell: powershell
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $report=Get-Content batch-results/summary.json -Raw | ConvertFrom-Json
+          $expected=if ([int]$env:SHARD -lt 2) { 4852 } else { 4851 }
+          if (-not $report.completed -or $report.inventory -ne $expected -or $report.inventory_error -or $report.batch_error -or $report.selected -ne $report.finished -or $report.cancelled -ne 0) { throw 'Incomplete or mismatched shard' }
+      - name: Preserve network reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vpn-${{ github.sha }}-shard-${{ matrix.shard }}
+          path: batch-results/
+          if-no-files-found: warn
+          retention-days: 90
+
+  aggregate:
+    name: Compare all node outcomes with baseline 0.4.2
+    needs: network
+    if: always() && needs.network.result != 'skipped'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: vpn-${{ github.sha }}-shard-*
+          path: network-reports
+      - name: Check coverage and compare unchanged node IDs
+        run: python3 scripts/Summarize-Network.py --reports network-reports --output network-comparison
+      - name: Show comparison in the run summary
+        if: always()
+        run: |
+          if [ -f network-comparison/network-summary.md ]; then
+            cat network-comparison/network-summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Preserve combined comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: network-comparison-${{ github.sha }}
+          path: network-comparison/
+          retention-days: 90
+
+  release:
+    name: Publish validated complete Windows build
+    needs: [linux, windows]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-release-${{ github.sha }}
+          path: dist
+      - name: Release exactly this tested commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(cat VERSION)
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo 'Version already released. Increment VERSION for the next source change.' >&2
+            exit 1
+          fi
+          gh release create "v$version" dist/* --target "$GITHUB_SHA" --title "vpn-core $version Windows amd64" --notes-file docs/RELEASE-NOTES.md

@@ -1,0 +1,13 @@
+{
+  "run_id": 37582872374,
+  "core_version": "0.4.2",
+  "input_rows": 72767,
+  "network_tested": 71748,
+  "PASS": 1837,
+  "FAIL": 69911,
+  "PARSE_INVALID": 1019,
+  "sanitized_fixture": "tests/fixtures/baseline-37582872374.csv.gz",
+  "fixture_sha256": "e87014cc3f73f6618d28078ddb259987d832eb73354dec49b8fdf19913796e0a",
+  "audit_archive_sha256": "ba8f191e5d394975999ec96c8666d0a21a0bffc78417105b77a6337c7e6659d5",
+  "comparison_limit": "Public network/server behavior varies with time; transitions do not prove a code repair caused recovery."
+}
