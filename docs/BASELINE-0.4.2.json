@@ -1,0 +1,9 @@
+{
+  "archive": "vpn-core-fix-0.4.2.zip",
+  "sha256": "26af66ddb9f69cecb608db181c70f7de77a435d100cb11f7ba1c89dd5e928f61",
+  "installed_archive_sha256": "a0b382f9689d44801afa8ba86fac19b470ce270857bfd3fa2d62f2a1ac2ceef9",
+  "core_sha256": "ca4f44785fa88d8896e384629873a11032d1d8c5fbdb21a8e6cb76770b1e8ea0",
+  "provider_sha256": "e3d4dcc01c9b685c1989886bdec479622bb59e412a2ab628de6456a28a63a547",
+  "allowed_installed_delta": "TimeoutSeconds default 10 instead of 20",
+  "source_match_except_runner_default": true
+}
