@@ -7,8 +7,98 @@ permissions:
   contents: read
 
 jobs:
+  preflight:
+    name: Validate package and smoke-test inspector
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check ZIP, hashes and EXE
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = '.\VPN-Core-Test-Public-Bundle.zip'
+          $zipExpected = 'ba3c587921d8b9a8ad6487137eccb71a736f5137039a80d90ebe1535e9f05cfd'
+          if (-not (Test-Path -LiteralPath $zip -PathType Leaf)) { throw 'ZIP missing' }
+          $zipActual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          Write-Host "ZIP expected=$zipExpected actual=$zipActual"
+          if ($zipActual -cne $zipExpected) { throw 'ZIP checksum mismatch' }
+          Expand-Archive -LiteralPath $zip -DestinationPath '.\suite' -Force
+          $manifest = ConvertFrom-Json -InputObject ([IO.File]::ReadAllText((Resolve-Path '.\suite\bin\build-hashes.json').Path))
+          $pinned = @{
+            'vpn-core.exe' = @{ sha='ca4f44785fa88d8896e384629873a11032d1d8c5fbdb21a8e6cb76770b1e8ea0'; size=3475986 }
+            'vpn-tls.dll' = @{ sha='e3d4dcc01c9b685c1989886bdec479622bb59e412a2ab628de6456a28a63a547'; size=10649088 }
+          }
+          foreach ($name in @('vpn-core.exe','vpn-tls.dll')) {
+            $matched = 0
+            $itemFound = $null
+            foreach ($item in $manifest) {
+              if ([string]$item.file -ceq $name) { $matched++; $itemFound = $item }
+            }
+            if ($matched -ne 1) { throw "Manifest entry count is $matched for $name" }
+            $file = Join-Path '.\suite\bin' $name
+            $actual = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+            $manifestHash = ([string]$itemFound.sha256).Trim().ToLowerInvariant()
+            $expected = $pinned[$name]
+            $size = (Get-Item -LiteralPath $file).Length
+            Write-Host "$name actual=$actual expected=$($expected.sha) manifest=$manifestHash bytes=$size"
+            if ($actual -cne $expected.sha -or $manifestHash -cne $expected.sha) { throw "Binary checksum mismatch: $name" }
+            if ($size -ne $expected.size -or [int64]$itemFound.bytes -ne $expected.size) { throw "Binary size mismatch: $name" }
+          }
+          & '.\suite\bin\vpn-core.exe' --version
+          if ($LASTEXITCODE -ne 0) { throw 'Core --version failed' }
+          & '.\suite\bin\vpn-core.exe' --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Core --self-test failed' }
+          Get-Command curl.exe -CommandType Application -ErrorAction Stop | Out-Null
+
+      - name: Check Pre list counts and smoke inspect
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $target = '.\smoke-nodes'
+          [void][IO.Directory]::CreateDirectory($target)
+          $sourceManifest = ConvertFrom-Json -InputObject ([IO.File]::ReadAllText((Resolve-Path '.\suite\docs\pre-source-manifest.json').Path))
+          $countTotal = 0
+          foreach ($protocol in @('vless','trojan','vmess','shadowsocks')) {
+            $filename = $protocol + '.txt'
+            $file = Join-Path '.\suite\nodes\pre\protocols' $filename
+            $found = 0
+            $entryFound = $null
+            foreach ($entry in $sourceManifest.files) {
+              if ([string]$entry.name -ceq $filename) { $found++; $entryFound = $entry }
+            }
+            if ($found -ne 1) { throw "Pre manifest invalid for $filename" }
+            $digest = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($digest -cne ([string]$entryFound.sha256).ToLowerInvariant()) { throw "Pre SHA256 mismatch: $filename" }
+            $first = $null
+            $count = 0
+            foreach ($line in [IO.File]::ReadLines((Resolve-Path $file).Path)) {
+              if ([string]::IsNullOrWhiteSpace($line)) { continue }
+              if ($null -eq $first) { $first = $line }
+              $count++
+            }
+            if ($count -ne [int]$entryFound.nodes -or $null -eq $first) { throw "Pre count mismatch: $filename" }
+            $countTotal += $count
+            [IO.File]::WriteAllText((Join-Path $target $filename), $first + "`n", [Text.UTF8Encoding]::new($false))
+          }
+          if ($countTotal -ne 72767) { throw "Pre total count mismatch: $countTotal" }
+          & '.\suite\scripts\Test-Batch.ps1' -Nodes $target -Core '.\suite\bin\vpn-core.exe' -Concurrency 1 -InspectOnly -OutputDirectory '.\smoke-results'
+          $report = ConvertFrom-Json -InputObject ([IO.File]::ReadAllText((Resolve-Path '.\smoke-results\summary.json').Path))
+          if (-not $report.completed -or $null -ne $report.inventory_error -or $report.inventory -ne 4) { throw 'Inspection did not complete correctly' }
+          Write-Host 'Preflight complete: test shards are now permitted.'
+
+      - name: Upload preflight diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vpn-preflight
+          path: smoke-results/
+          if-no-files-found: ignore
+
   test:
     name: Pre shard ${{ matrix.shard }}
+    needs: preflight
     runs-on: windows-2022
     timeout-minutes: 300
     strategy:
@@ -20,26 +110,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Extract and verify test binaries
+      - name: Extract verified test ZIP
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $bundle = '.\VPN-Core-Test-Public-Bundle.zip'
-          if (-not (Test-Path -LiteralPath $bundle)) { throw 'Test bundle is missing: upload VPN-Core-Test-Public-Bundle.zip to the repository root.' }
-          Expand-Archive -LiteralPath $bundle -DestinationPath '.\suite' -Force
-          $manifest = @(Get-Content '.\suite\bin\build-hashes.json' -Raw | ConvertFrom-Json)
-          foreach ($filename in @('vpn-core.exe', 'vpn-tls.dll')) {
-            $entry = @($manifest | Where-Object { $_.file -eq $filename })
-            if ($entry.Count -ne 1) { throw "Missing manifest entry: $filename" }
-            $file = Join-Path '.\suite\bin' $filename
-            if (-not (Test-Path -LiteralPath $file)) { throw "Missing binary: $filename" }
-            $actual = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
-            if ($actual -ne $entry[0].sha256) { throw "Binary checksum mismatch: $filename" }
-          }
-          & '.\suite\bin\vpn-core.exe' --version
-          if ($LASTEXITCODE -ne 0) { throw 'EXE version command failed' }
-          & '.\suite\bin\vpn-core.exe' --self-test
-          if ($LASTEXITCODE -ne 0) { throw 'EXE self-test failed' }
+          $zip = '.\VPN-Core-Test-Public-Bundle.zip'
+          $expected = 'ba3c587921d8b9a8ad6487137eccb71a736f5137039a80d90ebe1535e9f05cfd'
+          $actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -cne $expected) { throw "ZIP checksum mismatch on shard: $actual" }
+          Expand-Archive -LiteralPath $zip -DestinationPath '.\suite' -Force
 
       - name: Partition the pinned Pre snapshot
         shell: powershell
@@ -63,15 +142,27 @@ jobs:
               }
             } finally { $writer.Dispose() }
           }
-          Write-Host "shard=$env:SHARD total=$total global=$index"
-          if ($index -ne 72767) { throw "Unexpected Pre snapshot inventory: $index" }
-          if ($total -lt 1) { throw 'Empty shard' }
+          $expected = if ([int]$env:SHARD -lt 2) { 4852 } else { 4851 }
+          Write-Host "shard=$env:SHARD selected=$total expected=$expected global=$index"
+          if ($index -ne 72767 -or $total -ne $expected) { throw 'Shard partition mismatch' }
 
       - name: Test nodes using the supplied Windows EXE
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           & '.\suite\scripts\Test-Batch.ps1' -Nodes '.\suite\nodes\shard' -Core '.\suite\bin\vpn-core.exe' -Concurrency 8 -TimeoutSeconds 10 -Url 'https://example.com/' -OutputDirectory '.\batch-results'
+
+      - name: Check completed shard results
+        shell: powershell
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $file = '.\batch-results\summary.json'
+          if (-not (Test-Path -LiteralPath $file)) { throw 'Summary file missing' }
+          $report = ConvertFrom-Json -InputObject ([IO.File]::ReadAllText((Resolve-Path $file).Path))
+          $expected = if ([int]$env:SHARD -lt 2) { 4852 } else { 4851 }
+          if (-not $report.completed -or $null -ne $report.inventory_error -or $report.inventory -ne $expected) { throw 'Incomplete or mismatched shard result' }
 
       - name: Upload results
         if: always()
