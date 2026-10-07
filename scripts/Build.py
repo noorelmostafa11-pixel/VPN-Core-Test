@@ -29,7 +29,9 @@ def executable(value):
     found = shutil.which(value)
     if not found:
         raise RuntimeError('Required build tool is missing: ' + value)
-    return pathlib.Path(found).resolve().as_posix()
+    # Preserve clang++'s driver name: resolving its symlink to clang changes
+    # C++ runtime linking on the Android NDK toolchain.
+    return pathlib.Path(found).absolute().as_posix()
 
 def build(a):
     host = {'Windows': 'windows', 'Linux': 'linux'}.get(platform.system())
@@ -112,6 +114,10 @@ def build(a):
             call([cxx, *target_flags, '-std=c++17', '-O2', '-pie', '-static-libstdc++',
                   ROOT / 'tests/core_api_smoke.cpp', '-o', stage / 'core-api-smoke', '-ldl'])
         shutil.copy2(ROOT / 'src/core-api.h', stage / 'core-api.h')
+        if target == 'android':
+            notice = ndk / 'NOTICE'
+            if not notice.is_file(): raise RuntimeError('Pinned NDK distribution is missing its NOTICE file.')
+            shutil.copy2(notice, stage / 'NDK-NOTICE.txt')
         native = target == host and platform.machine().lower() in {'x86_64', 'amd64'}
         checks = 'CROSS_COMPILED_NOT_RUN'
         if native:
@@ -122,12 +128,16 @@ def build(a):
                  for f in sorted(stage.iterdir()) if f.is_file()]
         (stage / 'build-hashes.json').write_text(json.dumps(files, indent=2) + '\n')
         commit = os.environ.get('GITHUB_SHA')
+        dirty = None
         if not commit:
             try: commit = output(['git', '-C', ROOT, 'rev-parse', 'HEAD'])
             except (OSError, subprocess.CalledProcessError): commit = 'NOT_VERIFIED'
+        if commit != 'NOT_VERIFIED':
+            try: dirty = bool(output(['git', '-C', ROOT, 'status', '--porcelain=v1', '--untracked-files=normal']))
+            except (OSError, subprocess.CalledProcessError): pass
         compiler = output([cxx, '--version']).splitlines()[0]
         provenance = {'schema': 'vpn-core-target-build-v1', 'version': version, 'source_commit': commit,
-                      'workflow_run': os.environ.get('GITHUB_RUN_ID'), 'target': label, 'host': host,
+                      'workflow_run': os.environ.get('GITHUB_RUN_ID'), 'source_tree_dirty': dirty, 'target': label, 'host': host,
                       'go': go_version, 'compiler': compiler, 'android_ndk': ndk_version,
                       'android_api': a.android_api if target == 'android' else None,
                       'runtime_checks': checks, 'files': files,

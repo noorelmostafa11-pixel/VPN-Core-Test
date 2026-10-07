@@ -13,12 +13,18 @@ for e in manifest:
     files[path.name]=data
 for name in ['build-hashes.json','build-provenance.json']:files[name]=(build/name).read_bytes()
 for name in ['NOTICE.md','OWNERSHIP.md','docs/BUILDING.md','docs/COMPONENTS.md']:files[name]=(root/name).read_bytes()
+for f in (root/'tls-provider/vendor').rglob('*'):
+    if f.is_file() and f.name.lower().startswith(('license','copying','notice')):
+        files[f.relative_to(root).as_posix()]=f.read_bytes()
 for f in (root/'third_party').rglob('*'):
     if f.is_file():files[f.relative_to(root).as_posix()]=f.read_bytes()
 out=pathlib.Path(a.output);out.mkdir(parents=True,exist_ok=True)
 archive=out/('vpn-core-'+provenance['version']+'-'+provenance['target']+'.zip')
 with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:
-    for name,data in sorted(files.items()):z.writestr(name,data)
+    for name,data in sorted(files.items()):
+        info=zipfile.ZipInfo(name);info.compress_type=zipfile.ZIP_DEFLATED
+        if (build/name).is_file():info.external_attr=((build/name).stat().st_mode & 0xFFFF)<<16
+        z.writestr(info,data)
 with zipfile.ZipFile(archive) as z:
     if z.testzip():raise SystemExit('Package CRC mismatch')
 (out/(archive.name+'.sha256')).write_text(hashlib.sha256(archive.read_bytes()).hexdigest()+'  '+archive.name+'\n')
