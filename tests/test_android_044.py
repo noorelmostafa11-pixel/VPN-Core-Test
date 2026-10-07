@@ -1,5 +1,6 @@
 """Same independent TLS/protocol peers through the source-built Android core."""
 import contextlib,json,os,pathlib,subprocess,tempfile,time,unittest
+from urllib.parse import urlsplit
 from test_portable_044 import PortableTransportTests
 
 def adb(*args, **kwargs):
@@ -22,10 +23,16 @@ class AndroidTransportTests(PortableTransportTests):
 
     @contextlib.contextmanager
     def core(self,uri):
-        with tempfile.TemporaryDirectory(dir=self.directory) as td:
+        with tempfile.TemporaryDirectory(dir=self.directory) as td, contextlib.ExitStack() as cleanup:
             td=pathlib.Path(td);config=td/'node.ini';log_path=td/'core.log'
             device_ready=self.device+'/ready.json'
-            uri=uri.replace('@127.0.0.1:', '@10.0.2.2:')
+            # Bridge only the synthetic peer endpoint; avoid emulator NAT readiness.
+            peer_port=urlsplit(uri).port
+            if urlsplit(uri).hostname!='127.0.0.1' or peer_port is None:
+                raise ValueError('Android fixture requires a local synthetic peer')
+            reverse=int(subprocess.check_output(['adb','reverse','tcp:0','tcp:'+str(peer_port)],text=True).strip())
+            cleanup.callback(adb,'reverse','--remove','tcp:'+str(reverse))
+            uri=uri.replace('@127.0.0.1:'+str(peer_port)+'?', '@127.0.0.1:'+str(reverse)+'?',1)
             config.write_text(f'node_uri={uri}\nlisten_port=0\nready_file={device_ready}\nconnect_timeout_ms=5000\nidle_timeout_ms=15000\ntls_ca_file={self.device}/ca.pem\n')
             adb('shell','rm','-f',device_ready)
             adb('push',config,self.device+'/node.ini',stdout=subprocess.DEVNULL)
