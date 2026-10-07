@@ -126,7 +126,7 @@ $worker = {
         $preFailures=@($beforeCleanup | Where-Object { $_.event -eq 'failure' })
         if ($p) {
             try {
-                if ($p.Process.HasExited) { $coreResult=Wait-BatchChild $p 1000; $r.core_exit_code=$coreResult.ExitCode; $r.core_output_complete=$coreResult.OutputComplete }
+                if ($p.Process.HasExited) { $coreResult=Wait-BatchChild $p 1000 ($outputDrainValue*1000); $r.core_exit_code=$coreResult.ExitCode; $r.core_output_complete=$coreResult.OutputComplete }
                 else { $r.core_stopped_by_runner=$true }
             } catch { $r.core_output_complete=$false }
         }

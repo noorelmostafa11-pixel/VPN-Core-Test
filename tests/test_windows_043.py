@@ -13,13 +13,13 @@ class WindowsRepairTransportTests(RepairTransportTests):
         script.write_text(r'''param([string]$File,[string]$Action)
 $ErrorActionPreference='Stop'
 $certificate=New-Object Security.Cryptography.X509Certificates.X509Certificate2($File)
-$store=New-Object Security.Cryptography.X509Certificates.X509Store('Root','CurrentUser')
+$store=New-Object Security.Cryptography.X509Certificates.X509Store('Root','LocalMachine')
 try {
     $store.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
     if ($Action -eq 'add') { $store.Add($certificate) } else { $store.Remove($certificate) }
 } finally { $store.Close(); $certificate.Dispose() }
 ''',encoding='utf-8-sig')
-        subprocess.run([PW,'-NoProfile','-File',str(script),'-File',str(cls.directory/'ca.der'),'-Action',action],capture_output=True,text=True,check=True,timeout=30)
+        subprocess.run([PW,'-NoProfile','-File',str(script),'-File',str(cls.directory/'ca.der'),'-Action',action],capture_output=True,text=True,check=True,timeout=60)
 
     @classmethod
     def setUpClass(cls):

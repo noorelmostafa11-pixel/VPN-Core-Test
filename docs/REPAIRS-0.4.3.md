@@ -35,7 +35,7 @@ Go shared component and independent synthetic peers; Go race tests run too.
 Windows builds production Schannel EXE and DLL from the same source, exercises
 process handling on PowerShell 5.1 and 7, and tests verified TLS/WebSocket
 connections with an ephemeral CA installed in the isolated runner's normal
-CurrentUser trust store and removed afterward. Certificate-name rejection is
+LocalMachine trust store and removed afterward. Certificate-name rejection is
 tested. No test-only config or insecure TLS mode is added to the released binary.
 
 Helper regressions cover zero/nonzero exits, masked PowerShell properties,
