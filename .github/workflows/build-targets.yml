@@ -1,0 +1,166 @@
+name: Build Selected Core Target
+on:
+  push:
+    branches: [main, 'repair/**']
+    paths: ['src/**', 'tls-provider/**', 'scripts/**', 'tests/**', 'build.*', 'VERSION', '.github/workflows/**']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Core target to build from this source revision
+        type: choice
+        options: [all, windows, linux, android]
+        default: all
+      android_runtime:
+        description: Run independent Android protocol peers on the GitHub emulator
+        type: boolean
+        default: true
+permissions:
+  contents: read
+concurrency:
+  group: core-targets-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+jobs:
+  linux:
+    if: github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'linux'
+    name: Linux amd64 production core
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.27.1', cache-dependency-path: tls-provider/go.sum}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: |
+          python -m pip install -r tests/requirements.txt
+          python scripts/Build.py --target linux --build-tests
+          python -m unittest -v test_portable_044.PortableTransportTests test_portable_044.SharedCoreTests
+          python scripts/Package-Target.py --build build/linux-amd64
+        env:
+          PYTHONPATH: tests
+          VPN_CORE_TEST_BINARY: ${{ github.workspace }}/build/linux-amd64/vpn-core
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core-linux-amd64-${{ github.sha }}
+          path: |
+            build/linux-amd64/
+            dist/
+          if-no-files-found: error
+  windows:
+    if: github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'windows'
+    name: Windows amd64 shared core API
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.27.1', cache-dependency-path: tls-provider/go.sum}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: msys2/setup-msys2@v2
+        id: msys
+        with: {msystem: MINGW64, update: true, install: mingw-w64-x86_64-gcc, path-type: inherit}
+      - shell: pwsh
+        env:
+          MSYS_LOCATION: ${{ steps.msys.outputs.msys2-location }}
+          PYTHONPATH: tests
+          VPN_CORE_TEST_BINARY: ${{ github.workspace }}/build/windows-amd64/vpn-core.exe
+        run: |
+          $env:PATH=(Join-Path $env:MSYS_LOCATION 'mingw64\bin')+';'+$env:PATH
+          python scripts/Build.py --target windows
+          if ($LASTEXITCODE) { throw 'Windows build failed' }
+          python -m pip install -r tests/requirements.txt
+          python -m unittest -v test_portable_044.SharedCoreTests
+          if ($LASTEXITCODE) { throw 'Shared core regression failed' }
+          python scripts/Package-Target.py --build build/windows-amd64
+          if ($LASTEXITCODE) { throw 'Target package failed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core-windows-amd64-${{ github.sha }}
+          path: |
+            build/windows-amd64/
+            dist/
+          if-no-files-found: error
+  android:
+    if: github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'android'
+    name: Android ${{ matrix.abi }} libraries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        abi: [arm64-v8a, armeabi-v7a, x86_64, x86]
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.27.1', cache-dependency-path: tls-provider/go.sum}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Install pinned NDK
+        run: sdkmanager 'ndk;30.0.16248370'
+      - name: Build the selected ABI from source
+        run: |
+          python scripts/Build.py --target android --abi '${{ matrix.abi }}' --ndk "$ANDROID_HOME/ndk/30.0.16248370" --build-tests
+          python scripts/Package-Target.py --build 'build/android-${{ matrix.abi }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core-android-${{ matrix.abi }}-${{ github.sha }}
+          path: |
+            build/android-${{ matrix.abi }}/
+            dist/
+          if-no-files-found: error
+  android_windows:
+    if: github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'android'
+    name: Android arm64 built on a Windows laptop environment
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.27.1', cache-dependency-path: tls-provider/go.sum}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - shell: pwsh
+        run: |
+          sdkmanager 'ndk;30.0.16248370'
+          if ($LASTEXITCODE) { throw 'NDK setup failed' }
+          python scripts/Build.py --target android --abi arm64-v8a --ndk "$env:ANDROID_HOME/ndk/30.0.16248370"
+          if ($LASTEXITCODE) { throw 'Android build on Windows failed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core-android-from-windows-${{ github.sha }}
+          path: build/android-arm64-v8a/
+          if-no-files-found: error
+  android_runtime:
+    needs: android
+    if: github.event_name != 'workflow_dispatch' || inputs.android_runtime
+    name: Android x86_64 verified TLS and protocol peers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: core-android-x86_64-${{ github.sha }}
+          path: android-artifact
+      - run: |
+          python -m pip install -r tests/requirements.txt
+          sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        env:
+          PYTHONPATH: tests
+          VPN_CORE_ANDROID_BUILD: ${{ github.workspace }}/android-artifact/build/android-x86_64
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: python -m unittest -v test_android_044.AndroidTransportTests

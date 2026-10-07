@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Vpn project owner (noorelmostafa11-pixel). See NOTICE.md.
 #include "transport.hpp"
 #include "xhttp-provider.hpp"
+#include "version.hpp"
+#include "core-api.h"
 #include <atomic>
 #include <csignal>
 #include <future>
@@ -106,12 +108,16 @@ void connection(Socket client,const Config& config,uint64_t id) {
 }
 int run(int argc,char** argv) {
     using namespace vpn;
+    static std::mutex run_mutex;
+    std::unique_lock<std::mutex> active(run_mutex,std::try_to_lock);
+    if(!active.owns_lock())return 2;
+    stopping.store(false,std::memory_order_relaxed);
     try {
         validate_xhttp_build=validate_xhttp_configuration;
         std::string config_path,list_path;bool check=false,inspect=false;
         for(int i=1;i<argc;++i) {
             std::string a=argv[i];
-            if(a=="--version"){std::cout<<"vpn-core 0.4.3-expanded; project-owned protocols; SOCKS5 CONNECT\n";return 0;}
+            if(a=="--version"){std::cout<<"vpn-core " VPN_CORE_VERSION "-expanded; project-owned protocols; SOCKS5 CONNECT\n";return 0;}
             if(a=="--check-components"){(void)TlsProviderAPI::instance();(void)VlessEncryptionAPI::instance();(void)XHttpAPI::instance();std::cout<<"PASS: pinned TLS/HTTP and crypto component interfaces loaded\n";return 0;}
             if(a=="--self-test"){protocol_self_test();std::cout<<"PASS: SHA224, URI, AEAD and Poly1305 standard vector\n";return 0;}
             if(a=="--check-config")check=true;
@@ -128,18 +134,20 @@ int run(int argc,char** argv) {
         require_supported(config);
         if(check){std::cout<<"Config supported by this build; no network test performed\n";return 0;}
         [[maybe_unused]] NetworkRuntime runtime;Socket listener=listen_local(config.listen_port);
+#ifndef VPN_CORE_SHARED
         std::signal(SIGINT,stop_handler);std::signal(SIGTERM,stop_handler);
 #ifndef _WIN32
         std::signal(SIGPIPE,SIG_IGN);
 #endif
-        Tls label;log_line("vpn-core 0.4.3-expanded | "+std::string(label.backend()));
+#endif
+        Tls label;log_line("vpn-core " VPN_CORE_VERSION "-expanded | "+std::string(label.backend()));
         if(!config.ready_file.empty()){if(std::filesystem::exists(std::filesystem::u8path(config.ready_file)))throw Failure("STARTUP_FAILED: ready file already exists","READY_FILE_EXISTS");sockaddr_in address{};
 #ifdef _WIN32
             int size=sizeof(address);
 #else
             socklen_t size=sizeof(address);
 #endif
-            if(getsockname(listener.get(),reinterpret_cast<sockaddr*>(&address),&size))throw Failure("STARTUP_FAILED: listener address","LISTENER_ADDRESS",uint32_t(socket_error()));config.listen_port=ntohs(address.sin_port);Json ready=Json::obj();ready["port"]=Json::integer(config.listen_port);ready["version"]=Json("0.4.3-expanded");
+            if(getsockname(listener.get(),reinterpret_cast<sockaddr*>(&address),&size))throw Failure("STARTUP_FAILED: listener address","LISTENER_ADDRESS",uint32_t(socket_error()));config.listen_port=ntohs(address.sin_port);Json ready=Json::obj();ready["port"]=Json::integer(config.listen_port);ready["version"]=Json(VPN_CORE_VERSION "-expanded");
 #ifdef _WIN32
             ready["pid"]=Json::integer(GetCurrentProcessId());
 #else
@@ -162,7 +170,11 @@ std::ofstream f(std::filesystem::u8path(config.ready_file+".tmp"),std::ios::bina
         return 0;
     } catch(const std::exception& e){auto f=dynamic_cast<const Failure*>(&e);Json j=Json::obj();diagnostic_identity(j,0);j["event"]=Json("failure");j["phase"]=Json("STARTUP_FAILED");j["reason_code"]=Json(f?f->code:"STARTUP_FAILED");j["native_status"]=Json::integer(f?f->native_status:0);j["http_status"]=Json::integer(0);j["tls_version"]=Json("");j["alpn"]=Json("");std::cerr<<"[connection 0] diagnostic="<<json_dump(j)<<"\n";std::cerr<<"vpn-core: "<<e.what()<<"\n";return 1;}
 }
-#ifdef _WIN32
+#ifdef VPN_CORE_SHARED
+extern "C" VPN_CORE_API const char* vpn_core_version(){return VPN_CORE_VERSION;}
+extern "C" VPN_CORE_API int vpn_core_run(int argc,char** argv){if(argc<1||argc>64||!argv)return 1;for(int i=0;i<argc;++i)if(!argv[i])return 1;return run(argc,argv);}
+extern "C" VPN_CORE_API void vpn_core_stop(){vpn::stopping.store(true,std::memory_order_relaxed);}
+#elif defined(_WIN32)
 int wmain(int argc,wchar_t** argv) {
     std::vector<std::string> text;
     text.reserve(size_t(argc));

@@ -12,11 +12,13 @@
 #define SCHANNEL_USE_BLACKLISTS
 #include <security.h>
 #include <schannel.h>
+#elif defined(VPN_CORE_PORTABLE)
+// Verified TLS is supplied by the existing pinned provider.
 #elif defined(VPN_CORE_TEST_BACKEND)
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #else
-#error Production target is Windows. The Linux OpenSSL adapter is for tests only.
+#error Select Windows, VPN_CORE_PORTABLE, or the independent test backend.
 #endif
 
 namespace vpn {
@@ -172,7 +174,7 @@ public:
         return out.token();
     }
 };
-#else
+#elif !defined(VPN_CORE_PORTABLE)
 // Test-only transport adapter. This file's Windows branch never includes or
 // links OpenSSL. Protocol, parser, SOCKS and relay code are shared unchanged.
 class NativeTls {
@@ -233,6 +235,9 @@ public:
 
 #include "tls-provider.hpp"
 namespace vpn {
+#ifdef VPN_CORE_PORTABLE
+using NativeTls = ProviderTls;
+#endif
 class Tls {
     NativeTls native_;std::unique_ptr<ProviderTls> provider_;
 public:

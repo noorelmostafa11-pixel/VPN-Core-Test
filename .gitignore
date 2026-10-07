@@ -14,3 +14,4 @@ local.ini
 *.pfx
 *.p12
 /.venv/
+/build/
