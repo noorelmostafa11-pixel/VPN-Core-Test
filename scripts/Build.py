@@ -86,6 +86,14 @@ def build(a):
     version = (ROOT / 'VERSION').read_text().strip()
     if '#define VPN_CORE_VERSION "' + version + '"' not in (ROOT / 'src/version.hpp').read_text():
         raise RuntimeError('VERSION does not match src/version.hpp.')
+    commit = os.environ.get('GITHUB_SHA')
+    dirty = None
+    if not commit:
+        try: commit = output(['git', '-C', ROOT, 'rev-parse', 'HEAD'])
+        except (OSError, subprocess.CalledProcessError): commit = 'NOT_VERIFIED'
+    if commit != 'NOT_VERIFIED':
+        try: dirty = bool(output(['git', '-C', ROOT, 'status', '--porcelain=v1', '--untracked-files=normal']))
+        except (OSError, subprocess.CalledProcessError): pass
     with tempfile.TemporaryDirectory(prefix='.vpn-build-', dir=destination.parent) as td:
         stage = pathlib.Path(td)
         provider = 'vpn-tls.dll' if target == 'windows' else 'libvpn-tls.so'
@@ -127,14 +135,6 @@ def build(a):
         files = [{'file': f.name, 'bytes': f.stat().st_size, 'sha256': hashlib.sha256(f.read_bytes()).hexdigest()}
                  for f in sorted(stage.iterdir()) if f.is_file()]
         (stage / 'build-hashes.json').write_text(json.dumps(files, indent=2) + '\n')
-        commit = os.environ.get('GITHUB_SHA')
-        dirty = None
-        if not commit:
-            try: commit = output(['git', '-C', ROOT, 'rev-parse', 'HEAD'])
-            except (OSError, subprocess.CalledProcessError): commit = 'NOT_VERIFIED'
-        if commit != 'NOT_VERIFIED':
-            try: dirty = bool(output(['git', '-C', ROOT, 'status', '--porcelain=v1', '--untracked-files=normal']))
-            except (OSError, subprocess.CalledProcessError): pass
         compiler = output([cxx, '--version']).splitlines()[0]
         provenance = {'schema': 'vpn-core-target-build-v1', 'version': version, 'source_commit': commit,
                       'workflow_run': os.environ.get('GITHUB_RUN_ID'), 'source_tree_dirty': dirty, 'target': label, 'host': host,

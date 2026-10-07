@@ -17,7 +17,9 @@ struct TlsProviderAPI {
 };
 inline Json provider_settings(const Config& c){Json settings=Json::obj();settings["security"]=Json(c.security=="xtls"?"tls":c.security);settings["legacy_xtls"]=Json(c.security=="xtls"?c.flow.substr(0,c.flow.find("-udp443")):"");settings["fingerprint"]=Json(c.fingerprint.empty()&&c.security=="tls"?"native":c.fingerprint);settings["server_name"]=Json(c.tls_name);settings["public_key"]=Json(c.public_key);settings["short_id"]=Json(c.short_id);settings["pq_verify"]=Json(option(c.original_options,{"pqv","mldsa65verify","mldsa65-verify"}));settings["vision"]=Json::boolean(c.flow=="xtls-rprx-vision"||c.flow=="xtls-rprx-vision-udp443");settings["ech"]=Json(c.ech);settings["timeout_ms"]=Json::integer(c.connect_ms);settings["alpn"]=Json::arr();for(const auto& p:tls_protocols(c))settings["alpn"].array.emplace_back(p);settings["pins"]=Json::arr();for(const auto& p:certificate_pins(c))settings["pins"].array.emplace_back(p);settings["names"]=Json::arr();for(const auto& p:certificate_names(c))settings["names"].array.emplace_back(p);
 #ifdef VPN_CORE_TEST_BACKEND
-settings["ca_file"]=Json(c.test_ca_file);
+settings["ca_file"]=Json(c.tls_ca_file.empty()?c.test_ca_file:c.tls_ca_file);
+#else
+settings["ca_file"]=Json(c.tls_ca_file);
 #endif
 return settings;}
 inline std::string tls_provider_reason(int code){switch(code){

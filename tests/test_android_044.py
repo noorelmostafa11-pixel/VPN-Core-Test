@@ -26,12 +26,12 @@ class AndroidTransportTests(PortableTransportTests):
             td=pathlib.Path(td);config=td/'node.ini';log_path=td/'core.log'
             device_ready=self.device+'/ready.json'
             uri=uri.replace('@127.0.0.1:', '@10.0.2.2:')
-            config.write_text(f'node_uri={uri}\nlisten_port=0\nready_file={device_ready}\nconnect_timeout_ms=5000\nidle_timeout_ms=15000\n')
+            config.write_text(f'node_uri={uri}\nlisten_port=0\nready_file={device_ready}\nconnect_timeout_ms=5000\nidle_timeout_ms=15000\ntls_ca_file={self.device}/ca.pem\n')
             adb('shell','rm','-f',device_ready)
             adb('push',config,self.device+'/node.ini',stdout=subprocess.DEVNULL)
             forward=None;pid=None
             with log_path.open('w') as log:
-                process=subprocess.Popen(['adb','shell','SSL_CERT_FILE='+self.device+'/ca.pem',self.device+'/vpn-core','--config',self.device+'/node.ini'],stdout=log,stderr=subprocess.STDOUT)
+                process=subprocess.Popen(['adb','shell',self.device+'/vpn-core','--config',self.device+'/node.ini'],stdout=log,stderr=subprocess.STDOUT)
                 try:
                     end=time.monotonic()+15
                     while True:
