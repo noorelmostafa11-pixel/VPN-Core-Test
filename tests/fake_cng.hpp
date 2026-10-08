@@ -17,7 +17,8 @@ using BCRYPT_ALG_HANDLE=FakeAlg*;using BCRYPT_HASH_HANDLE=FakeHash*;using BCRYPT
 struct BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO {PUCHAR pbNonce=nullptr;ULONG cbNonce=0;PUCHAR pbAuthData=nullptr;ULONG cbAuthData=0;PUCHAR pbTag=nullptr;ULONG cbTag=0;};
 #define BCRYPT_INIT_AUTH_MODE_INFO(info) (info=BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO{})
 inline int fake_cng_fail=0,fake_cng_live_hashes=0,fake_cng_live_keys=0,fake_cng_live_algorithms=0;
-inline NTSTATUS BCryptGenRandom(void*,PUCHAR output,ULONG size,ULONG){return RAND_bytes(output,int(size))==1?0:-1;}
+inline unsigned fake_cng_rng_calls=0;
+inline NTSTATUS BCryptGenRandom(void*,PUCHAR output,ULONG size,ULONG){++fake_cng_rng_calls;if(!output||!size||fake_cng_fail==5)return -1;return RAND_bytes(output,int(size))==1?0:-1;}
 inline NTSTATUS BCryptOpenAlgorithmProvider(BCRYPT_ALG_HANDLE* result,const wchar_t* name,void*,ULONG){auto a=new FakeAlg;std::string text;while(*name)text+=char(*name++);if(text!="AES"){a->md=EVP_get_digestbyname(text.c_str());if(!a->md){delete a;return -1;}}*result=a;++fake_cng_live_algorithms;return 0;}
 inline NTSTATUS BCryptGetProperty(BCRYPT_ALG_HANDLE a,const wchar_t* property,PUCHAR output,ULONG size,ULONG* used,ULONG){if(size!=sizeof(ULONG))return -1;ULONG value=std::wcscmp(property,BCRYPT_HASH_LENGTH)==0?ULONG(EVP_MD_size(a->md)):64;std::memcpy(output,&value,sizeof(value));*used=sizeof(value);return 0;}
 inline NTSTATUS BCryptSetProperty(BCRYPT_ALG_HANDLE a,const wchar_t*,PUCHAR value,ULONG,ULONG){a->ecb=std::wcscmp(reinterpret_cast<wchar_t*>(value),BCRYPT_CHAIN_MODE_ECB)==0;return 0;}

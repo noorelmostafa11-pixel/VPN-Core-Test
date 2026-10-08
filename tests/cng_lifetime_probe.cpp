@@ -5,6 +5,15 @@ void check(bool v,const char* message){if(!v)throw std::runtime_error(message);}
 void no_handles(){check(fake_cng_live_hashes==0&&fake_cng_live_keys==0&&fake_cng_live_algorithms==0,"CNG handle leak");}
 int main(int argc,char** argv){try{
     using namespace vpn;std::string only=argc>1?argv[1]:"all";
+    if(only=="rng"){
+        auto calls=fake_cng_rng_calls;
+        check(random_bytes(0).empty(),"Zero-IV cipher must not request entropy");
+        check(fake_cng_rng_calls==calls,"Empty RNG request reached CNG");
+        check(random_bytes(32).size()==32&&fake_cng_rng_calls==calls+1,"Nonempty RNG request did not reach CNG");
+        fake_cng_fail=5;bool rejected=false;try{(void)random_bytes(16);}catch(const std::runtime_error&){rejected=true;}
+        check(rejected,"Operating-system RNG failure ignored");fake_cng_fail=0;
+        no_handles();std::cout<<"PASS: empty IV bypasses CNG; nonempty entropy and RNG failure preserved\n";return 0;
+    }
     if(only!="aes"){
         for(unsigned i=0;i<72767;++i)check(hex_bytes(digest("sha256",to_bytes("abc")))=="ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad","SHA256 vector");
         for(int failure:{1,2}){fake_cng_fail=failure;bool failed=false;try{(void)digest("sha256",to_bytes("abc"));}catch(const std::runtime_error&){failed=true;}check(failed,"Hash injected failure ignored");fake_cng_fail=0;no_handles();}

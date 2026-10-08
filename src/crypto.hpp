@@ -22,6 +22,8 @@
 
 namespace vpn {
 inline Bytes random_bytes(size_t n){Bytes b(n);
+    // table/rc4 have no IV. Do not pass a null, zero-length buffer to CNG.
+    if(!n)return b;
 #if defined(_WIN32) || defined(VPN_CORE_CNG_TEST)
     if(BCryptGenRandom(nullptr,b.data(),ULONG(n),BCRYPT_USE_SYSTEM_PREFERRED_RNG)<0)throw std::runtime_error("CRYPTO_FAILED: operating-system RNG");
 #elif defined(VPN_CORE_PORTABLE)

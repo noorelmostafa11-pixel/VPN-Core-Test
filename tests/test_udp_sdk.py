@@ -124,6 +124,8 @@ class UdpSdkTests(unittest.TestCase):
                         if p.poll() is not None or time.monotonic()>deadline:raise AssertionError(log.read_text())
                         time.sleep(.01)
                     yield json.loads(ready.read_text())['port'],log
+                except BaseException as error:
+                    error.add_note(log.read_text());raise
                 finally:
                     p.terminate()
                     try:p.wait(5)

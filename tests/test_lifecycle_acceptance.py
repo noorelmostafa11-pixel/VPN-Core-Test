@@ -6,6 +6,29 @@ import test_udp_sdk as udp
 
 PROTECT=ctypes.CFUNCTYPE(ctypes.c_int,ctypes.c_int64,ctypes.c_void_p)
 RESOLVE=ctypes.CFUNCTYPE(ctypes.c_int,ctypes.c_char_p,ctypes.c_void_p,ctypes.c_int,ctypes.c_void_p)
+
+class DrainedPeer(peerlib.Peer):
+    """Count resources only after the independent peer's handlers have exited."""
+    def __init__(self,*args,**kwargs):
+        self.handlers=[]
+        super().__init__(*args,**kwargs)
+    def accept(self):
+        while not self.stop.is_set():
+            try:sock,_=self.listener.accept()
+            except socket.timeout:continue
+            except OSError:return
+            worker=threading.Thread(target=self.handle,args=(sock,),daemon=True)
+            self.handlers.append(worker);worker.start()
+    def drain(self):
+        # The tests close their client before draining. Do not force-close a
+        # handler that could still be using the socket or protocol state.
+        for worker in self.handlers:
+            worker.join(3)
+            if worker.is_alive():raise AssertionError('Independent peer handler did not retire')
+        self.handlers.clear()
+    def close(self):
+        super().close();self.drain()
+
 class LifecycleAcceptanceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -13,6 +36,7 @@ class LifecycleAcceptanceTests(unittest.TestCase):
         cls.lib=ctypes.CDLL(str(core.BIN.parent/('vpn-core.dll' if os.name=='nt' else 'libvpn-core.so')))
         cls.lib.vpn_core_run_config.argtypes=[ctypes.c_char_p,PROTECT,RESOLVE,ctypes.c_void_p]
         cls.lib.vpn_core_read_event.argtypes=[ctypes.c_void_p,ctypes.c_uint32]
+        if os.name=='nt':cls.kernel=ctypes.WinDLL('kernel32',use_last_error=True)
     @classmethod
     def tearDownClass(cls):core.CoreTests.tearDownClass()
     def wait(self,condition,seconds=3):
@@ -46,17 +70,68 @@ class LifecycleAcceptanceTests(unittest.TestCase):
         text=b'127.0.0.1\n';ctypes.memmove(out,text,len(text));return len(text)
     def resource_handles(self):
         if os.name!='nt':return len(list(pathlib.Path('/proc/self/fd').iterdir()))
-        kernel=ctypes.WinDLL('kernel32',use_last_error=True);kernel.GetCurrentProcess.restype=ctypes.c_void_p
+        kernel=self.kernel;kernel.GetCurrentProcess.restype=ctypes.c_void_p
         kernel.GetProcessHandleCount.argtypes=[ctypes.c_void_p,ctypes.POINTER(ctypes.c_uint32)]
         count=ctypes.c_uint32()
         self.assertTrue(kernel.GetProcessHandleCount(kernel.GetCurrentProcess(),ctypes.byref(count)))
         return count.value
+    def resource_snapshot(self):
+        if os.name!='nt':
+            return {'handles':self.resource_handles(),'threads':len(list(pathlib.Path('/proc/self/task').iterdir()))}
+        # A snapshot handle is closed before counting process handles, so the
+        # measuring code does not contribute to the measured result.
+        class ThreadEntry(ctypes.Structure):
+            _fields_=[('size',ctypes.c_uint32),('usage',ctypes.c_uint32),('id',ctypes.c_uint32),
+                ('owner',ctypes.c_uint32),('priority',ctypes.c_int32),('delta',ctypes.c_int32),('flags',ctypes.c_uint32)]
+        kernel=self.kernel
+        kernel.CreateToolhelp32Snapshot.argtypes=[ctypes.c_uint32,ctypes.c_uint32]
+        kernel.CreateToolhelp32Snapshot.restype=ctypes.c_void_p
+        kernel.Thread32First.argtypes=kernel.Thread32Next.argtypes=[ctypes.c_void_p,ctypes.POINTER(ThreadEntry)]
+        kernel.CloseHandle.argtypes=[ctypes.c_void_p]
+        handle=kernel.CreateToolhelp32Snapshot(4,0)
+        self.assertNotEqual(handle,ctypes.c_void_p(-1).value,'Thread snapshot failed')
+        count=0;entry=ThreadEntry();entry.size=ctypes.sizeof(entry)
+        try:
+            self.assertTrue(kernel.Thread32First(handle,ctypes.byref(entry)))
+            while True:
+                if entry.owner==os.getpid():count+=1
+                entry.size=ctypes.sizeof(entry)
+                if not kernel.Thread32Next(handle,ctypes.byref(entry)):
+                    self.assertEqual(ctypes.get_last_error(),18,'Thread enumeration failed');break
+        finally:self.assertTrue(kernel.CloseHandle(handle))
+        return {'handles':self.resource_handles(),'threads':count}
+    def check_resource_cycles(self,action):
+        """Bounded warmup, then a fixed baseline that never advances on growth.
+
+        Go's Windows extra-M pool retains events/timers for reuse (runtime
+        os_windows.go semacreate/minit/dropm). A cold process's aggregate handle
+        count is not a per-session ownership counter. Require a demonstrated
+        plateau, then reject growth in both handles and threads over 12 cycles.
+        """
+        evidence={'warmup':[],'measured':[]};baseline=None
+        try:
+            for _ in range(8):
+                action();time.sleep(.05);sample=self.resource_snapshot();evidence['warmup'].append(sample)
+                recent=evidence['warmup'][-3:]
+                if len(recent)==3 and all(item==sample for item in recent):baseline=sample;break
+            self.assertIsNotNone(baseline,'Resources did not stabilize during bounded warmup: '+json.dumps(evidence))
+            evidence['baseline']=baseline
+            for _ in range(12):
+                action();end=time.monotonic()+3;stable=0
+                while stable<3:
+                    sample=self.resource_snapshot()
+                    stable=stable+1 if all(sample[key]<=baseline[key] for key in baseline) else 0
+                    if time.monotonic()>=end:
+                        evidence['measured'].append(sample)
+                        self.fail('Resource growth after warmup: '+json.dumps(evidence))
+                    time.sleep(.02)
+                evidence['measured'].append(sample)
+        finally:print('resource acceptance '+json.dumps(evidence,sort_keys=True),flush=True)
     def test_blocked_first_bootstrap_does_not_block_second_or_stop(self):
         for transport in ('raw',):
             with self.subTest(transport=transport):
-                before_fds=None
-                for cycle in range(3):
-                    peer=peerlib.Peer('vless',transport=transport);entered=threading.Event();release=threading.Event();counter=[];lock=threading.Lock()
+                def cycle():
+                    peer=DrainedPeer('vless',transport=transport);entered=threading.Event();release=threading.Event();counter=[];lock=threading.Lock()
                     @RESOLVE
                     def resolve(host,out,cap,user):
                         with lock:counter.append(host);first=len(counter)==1
@@ -84,9 +159,7 @@ class LifecycleAcceptanceTests(unittest.TestCase):
                             finally:release.set();first.close()
                         self.assertEqual(peer.errors,[])
                     finally:release.set();peer.close()
-                    if before_fds is None:before_fds=self.resource_handles()
-                    else:self.wait(lambda:self.resource_handles()<=before_fds)
-                self.wait(lambda:self.resource_handles()<=before_fds)
+                self.check_resource_cycles(cycle)
     def test_provider_bootstrap_callback_independence(self):
         import test_xhttp_modes as http
         entered=threading.Event();release=threading.Event();counter=[];lock=threading.Lock()
@@ -113,19 +186,29 @@ class LifecycleAcceptanceTests(unittest.TestCase):
     def test_plain_vless_half_close_retires_connections(self):
         @RESOLVE
         def resolve(host,out,cap,user):return self.answer(out,cap)
-        peer=peerlib.Peer('vless');baseline=None
+        peer=DrainedPeer('vless')
         try:
             with self.engine(f'vless://{peerlib.ID}@bootstrap.invalid:{peer.port}?security=none&type=raw',resolve) as (port,worker,result):
-                for _ in range(8):
+                def cycle():
                     with self.request(port) as client:
                         self.assertEqual(core.exact(client,10)[1],0);self.assertEqual(core.exact(client,len(peerlib.HELLO)),peerlib.HELLO)
                         client.sendall(b'last payload');self.assertEqual(core.exact(client,12),b'last payload')
                         client.shutdown(socket.SHUT_WR);self.assertEqual(client.recv(1),b'')
-                    if baseline is None:time.sleep(.1);baseline=self.resource_handles()
-                    else:self.wait(lambda:self.resource_handles()<=baseline)
+                    peer.drain()
+                self.check_resource_cycles(cycle)
                 self.assertEqual(self.lib.vpn_core_pending_callbacks(),0)
             self.assertEqual(peer.errors,[])
         finally:peer.close()
+    def test_resource_monitor_rejects_retained_sockets(self):
+        sockets=[]
+        try:
+            def leak():
+                sock=socket.socket();sock.bind(('127.0.0.1',0));sockets.append(sock)
+            with self.assertRaisesRegex(AssertionError,'Resources did not stabilize'):
+                self.check_resource_cycles(leak)
+            self.assertEqual(len(sockets),8)
+        finally:
+            for sock in sockets:sock.close()
     def test_stop_cancels_socks_and_tls_wait_before_connect_deadline(self):
         @RESOLVE
         def resolve(host,out,cap,user):return self.answer(out,cap)
