@@ -32,7 +32,7 @@ for summary in sorted(pathlib.Path(a.reports).rglob('summary.json')):
         if key not in expected:errors.append('Unknown stable source/ID in reports')
         rows[key]=r
     statuses=collections.Counter(r['status'] for r in source_rows)
-    valid=bool(s['completed'] and not s.get('inventory_error') and not s.get('batch_error') and s['inventory']==len(source_rows) and s['selected']==s['finished'] and not statuses['CANCELLED'])
+    valid=bool(s['completed'] and not s.get('inventory_error') and not s.get('batch_error') and s['inventory']==len(source_rows) and s['selected']==s['finished'] and not statuses['CANCELLED'] and not s.get('runner_failures'))
     if not valid:errors.append('Incomplete shard '+summary.parent.name)
     core_hashes.add(s['core_sha256']);commits.add(s.get('source_commit',''))
     shards.append({'artifact':summary.parent.name,'inventory':s['inventory'],'finished':s['finished'],'selected':s['selected'],'runner_failures':s.get('runner_failures'),'valid':valid})

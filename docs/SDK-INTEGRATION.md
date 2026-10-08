@@ -1,3 +1,57 @@
+# Embedding SDK: lifecycle and diagnostics in 0.4.11
+
+Existing ABI 1/2 exports and URI/protocol behavior remain available. This release
+adds `vpn_core_read_event` and `vpn_core_pending_callbacks` without removing
+existing calls. Use the header shipped with the matching native build.
+
+Plain TCP half-close is delivered before waiting for the server's reply/EOF.
+This fixes an empty-finish path that retained a VLESS worker and both sockets
+until the server timeout; protocol framing and trailing responses remain intact.
+
+## Stop, deadlines and host resource lifetime
+
+`Stop` requests shutdown and returns without joining callback threads. Listener
+acceptance stops and cancellable socket/TLS/provider waits progress on the run
+worker. Polling uses short intervals; scheduling and host callback execution
+prevent a universal wall-clock guarantee. A connect deadline bounds the core's
+wait for bootstrap DNS, not arbitrary application code.
+
+Resolver and protection callbacks execute outside shared registry locks, with
+leases pinning their function pointers, user context and output buffers. At most
+16 C++ DNS jobs may be outstanding, including timed-out jobs and system lookups.
+Further DNS jobs report `DNS_CALLBACK_BUSY`. A resolver that ignores cancellation
+can remain active after timeout or Stop; a synchronous protection callback can
+also remain active. Neither is killed by force. Other requests can progress while
+the callback remains alive. A host callback must be safe for concurrent calls.
+
+`run_config` stays in STOPPING and does not return until all callback leases have
+drained. Keep callback objects, user resources, core/provider modules and JNI/.NET
+references alive until that return. An indefinitely blocked host callback means
+an indefinitely draining run. The application must arrange its eventual return;
+starting another run before then returns 2. Callbacks must not synchronously wait
+for the run to finish or reconfigure/reenter run. SDK references remain pinned
+through the blocking call. `vpn_core_pending_callbacks` exposes outstanding
+leases; zero alone does not replace joining the run worker.
+
+## Connection errors and UDP silence
+
+`vpn_core_read_event(buffer, capacity)` returns UTF-8 JSON byte count excluding
+NUL, zero when empty, or negative required capacity including NUL without
+consuming the event. One consumer drains the queue. Events include connection ID,
+timestamp, phase, reason code, native/HTTP status where known and negotiated TLS
+metadata. Raw URI, credential, destination, error message and payload are omitted.
+The queue holds 256 events; oldest events may be dropped, recorded in
+`dropped_before`. Events reset at the next accepted run. Java `readEvent()` and
+.NET `ReadEvent()` expose the same diagnostics.
+
+DNS errors distinguish `BOOTSTRAP_DNS_FAILED`, `BOOTSTRAP_DNS_TIMEOUT`,
+`DNS_CALLBACK_BUSY` and cancellation. Socket rejection reports
+`SOCKET_PROTECTION_FAILED`. Optional INI `udp_response_timeout_ms` (0 by default,
+maximum 600000) reports `UDP_NO_RESPONSE` for a sent destination without a reply.
+It never declares the node UNSUPPORTED and never substitutes direct traffic. UDP
+has no acknowledgement: silence can reflect application behavior or network
+loss. Existing send/receive errors retain their diagnostic codes.
+
 # Embedding SDK — Windows and Android
 
 The engine retains the ABI 1 version/run/stop functions and adds ABI 2

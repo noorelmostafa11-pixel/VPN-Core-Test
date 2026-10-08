@@ -28,8 +28,11 @@ public class SdkSmoke {
                     if(exact(socket.getInputStream(),10)[1]!=1)throw new Exception("protection bypass");
                 }
                 if(protects.get()!=1||resolves.get()!=1)throw new Exception("callbacks");
+                String event=null;long deadline=System.nanoTime()+1_000_000_000L;
+                while(event==null&&System.nanoTime()<deadline){event=NativeCore.readEvent();if(event==null)Thread.sleep(5);}
+                if(event==null||!event.contains("SOCKET_PROTECTION_FAILED")||event.contains("bootstrap.invalid"))throw new Exception("error API");
             } finally {NativeCore.stop();worker.join(5000);}
-            if(worker.isAlive()||result.get()!=0||NativeCore.state()!=NativeCore.STOPPED||NativeCore.listenPort()!=0)throw new Exception("shutdown");
+            if(worker.isAlive()||result.get()!=0||NativeCore.state()!=NativeCore.STOPPED||NativeCore.listenPort()!=0||NativeCore.pendingCallbacks()!=0)throw new Exception("shutdown");
         }
         System.out.println("PASS: Java/JNI lifecycle, UTF-8 configuration path, exception rejection, callbacks and restart");
     }

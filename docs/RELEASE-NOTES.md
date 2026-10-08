@@ -1,6 +1,21 @@
-# vpn-core 0.4.10
+# vpn-core 0.4.11
 
-## Current 0.4.10 embedding SDK and UDP
+## Current 0.4.11 lifecycle, diagnostics and build retention
+
+DNS waits now honor deadlines and Stop without holding callback registry locks.
+Callback leases and bounded outstanding DNS jobs protect application resources;
+run_config drains them before returning. Hanging host code is not forcibly killed.
+Adds per-connection C/Java/.NET event reading and optional UDP_NO_RESPONSE,
+without changing URI settings or retiring any existing protocol.
+
+AAR packaging includes NDK-NOTICE and exact source provenance before hashing.
+All workflows are manual, target builds are selective, node tests default to
+Linux and build one selected revision, and artifacts have short retention.
+Historical Releases including the working Windows reference remain intact.
+See [ACCEPTANCE-0.4.11.md](ACCEPTANCE-0.4.11.md) for actual local evidence and
+unverified platform/integration/CI gates. Build success does not establish them.
+
+## Previous 0.4.10 embedding SDK and UDP
 
 Adds SOCKS5 UDP ASSOCIATE, project-owned VLESS/Trojan/VMess packet paths and native
 Shadowsocks UDP, including existing stream/AEAD/SS2022 methods and identity headers.

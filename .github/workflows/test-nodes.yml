@@ -1,12 +1,132 @@
-name: Windows Pre Node Test
+name: Test Selected Core Against Latest Pre
 on:
   workflow_dispatch:
+    inputs:
+      core_ref:
+        description: Core tag, commit or branch to build once
+        default: main
+        required: true
+      platform:
+        description: Runtime platform (Linux is the node-test default)
+        type: choice
+        options: [linux, windows]
+        default: linux
+      concurrency:
+        description: Connections per shard
+        type: number
+        default: 8
 permissions:
   contents: read
+concurrency:
+  group: selected-core-node-test
+  cancel-in-progress: false
 jobs:
-  source_build_and_test:
-    permissions:
-      contents: write
-    uses: ./.github/workflows/core-validation.yml
-    with:
-      full_network: true
+  prepare:
+    runs-on: ${{ inputs.platform == 'windows' && 'windows-2022' || 'ubuntu-24.04' }}
+    outputs:
+      core_sha: ${{ steps.identity.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {path: control, persist-credentials: false}
+      - uses: actions/checkout@v4
+        with:
+          repository: noorelmostafa11-pixel/VPN-Core-Test
+          ref: ${{ inputs.core_ref }}
+          path: core-source
+          persist-credentials: false
+      - id: identity
+        shell: bash
+        run: echo "sha=$(git -C core-source rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.27.1', cache-dependency-path: core-source/tls-provider/go.sum}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - if: inputs.platform == 'windows'
+        uses: msys2/setup-msys2@v2
+        id: msys
+        with: {msystem: MINGW64, update: true, install: mingw-w64-x86_64-gcc, path-type: inherit}
+      - name: Build exactly the selected source and prepare a minimal runtime
+        env:
+          TARGET: ${{ inputs.platform }}
+          MSYS_LOCATION: ${{ steps.msys.outputs.msys2-location }}
+        shell: python
+        run: |
+          import os,pathlib,subprocess,shutil,json
+          source=pathlib.Path('core-source').resolve();target=os.environ['TARGET']
+          env=os.environ.copy();env['GITHUB_SHA']=subprocess.check_output(['git','-C',str(source),'rev-parse','HEAD'],text=True).strip()
+          if target=='windows':env['PATH']=str(pathlib.Path(env['MSYS_LOCATION'])/'mingw64/bin')+os.pathsep+env['PATH']
+          subprocess.run(['python',str(source/'scripts/Build.py'),'--target',target],env=env,check=True)
+          build=source/'build'/f'{target}-amd64';meta=json.loads((build/'build-provenance.json').read_text())
+          if meta['source_commit']!=env['GITHUB_SHA'] or meta['source_tree_dirty'] is not False:raise SystemExit('Selected source provenance is not clean')
+          out=pathlib.Path('runtime');out.mkdir()
+          for name in (['vpn-core.exe','vpn-tls.dll'] if target=='windows' else ['vpn-core','libvpn-tls.so']):shutil.copy2(build/name,out/name)
+          for name in ['build-provenance.json','build-hashes.json']:shutil.copy2(build/name,out/name)
+          shutil.copy2(source/'NOTICE.md',out/'NOTICE.md')
+          for parent in ['tls-provider/vendor','tls-provider/thirdparty','third_party']:
+              for file in (source/parent).rglob('*'):
+                  if file.is_file() and (parent=='third_party' or file.name.lower().startswith(('license','notice','copying')) or file.name=='sources.json'):
+                      dest=out/'licenses'/file.relative_to(source);dest.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(file,dest)
+      - name: Freeze latest Pre once for all shards
+        run: python control/scripts/Prepare-Pre-Snapshot.py --latest --destination pre-run/protocols --manifest-out pre-run/manifest.json
+      - uses: actions/upload-artifact@v4
+        with: {name: node-runtime, path: runtime/, retention-days: 1}
+      - uses: actions/upload-artifact@v4
+        with: {name: pre-input, path: pre-run/, retention-days: 1}
+  network:
+    needs: prepare
+    runs-on: ${{ inputs.platform == 'windows' && 'windows-2022' || 'ubuntu-24.04' }}
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      max-parallel: 15
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+    steps:
+      - uses: actions/checkout@v4
+        with: {path: control, persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/download-artifact@v4
+        with: {name: node-runtime, path: runtime}
+      - uses: actions/download-artifact@v4
+        with: {name: pre-input, path: pre-run}
+      - if: inputs.platform == 'linux'
+        run: chmod +x runtime/vpn-core
+      - name: Verify runtime bytes before testing all assigned original URIs
+        shell: python
+        env:
+          TARGET: ${{ inputs.platform }}
+          CORE_SHA: ${{ needs.prepare.outputs.core_sha }}
+          SHARD: ${{ matrix.shard }}
+          CONNECTIONS: ${{ inputs.concurrency }}
+        run: |
+          import hashlib,json,pathlib,subprocess,os
+          root=pathlib.Path('runtime');meta=json.loads((root/'build-provenance.json').read_text())
+          if meta['source_commit']!=os.environ['CORE_SHA']:raise SystemExit('Mixed core source')
+          names=['vpn-core.exe','vpn-tls.dll'] if os.environ['TARGET']=='windows' else ['vpn-core','libvpn-tls.so']
+          for name in names:
+              item=next(v for v in meta['files'] if v['file']==name)
+              if hashlib.sha256((root/name).read_bytes()).hexdigest()!=item['sha256']:raise SystemExit('Runtime hash mismatch')
+          subprocess.run(['python','control/scripts/Test-Nodes.py','--core',str(root/names[0]),'--nodes','pre-run/protocols','--pre-manifest','pre-run/manifest.json','--source-commit',os.environ['CORE_SHA'],'--shard',os.environ['SHARD'],'--concurrency',os.environ['CONNECTIONS'],'--output','node-results'],check=True)
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: node-results-shard-${{ matrix.shard }}
+          path: node-results/
+          retention-days: 14
+          if-no-files-found: error
+  summarize:
+    needs: [prepare, network]
+    if: always() && needs.prepare.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/download-artifact@v4
+        with: {pattern: node-results-shard-*, path: reports}
+      - uses: actions/download-artifact@v4
+        with: {name: pre-input, path: pre-run}
+      - run: python scripts/Summarize-Network.py --reports reports --output network-comparison --pre-snapshot pre-run
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: network-comparison, path: network-comparison/, retention-days: 30}

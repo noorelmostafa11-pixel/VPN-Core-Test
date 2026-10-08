@@ -1,7 +1,8 @@
 """Package exactly one source-built runtime target, with hashes and licenses."""
-import argparse, hashlib, json, pathlib, zipfile
+import argparse, hashlib, json, pathlib, zipfile, subprocess, sys
 p=argparse.ArgumentParser();p.add_argument('--build',required=True);p.add_argument('--output',default='dist');a=p.parse_args()
 root=pathlib.Path(__file__).resolve().parents[1];build=pathlib.Path(a.build)
+subprocess.run([sys.executable,str(root/'scripts/Verify-Target.py'),str(build)],check=True)
 provenance=json.loads((build/'build-provenance.json').read_text())
 manifest=json.loads((build/'build-hashes.json').read_text())
 files={}

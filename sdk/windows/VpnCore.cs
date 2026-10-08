@@ -21,6 +21,7 @@ public static class VpnCore
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int StateFunction();
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate ushort PortFunction();
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate void StopFunction();
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int EventFunction([Out] byte[] output,uint capacity);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate int RunFunction([MarshalAs(UnmanagedType.LPUTF8Str)] string config,
         ProtectCallback? protect, ResolveCallback? resolve, IntPtr user);
@@ -30,6 +31,10 @@ public static class VpnCore
     private static readonly PortFunction vpn_core_get_listen_port=Export<PortFunction>("vpn_core_get_listen_port");
     private static readonly StopFunction vpn_core_stop=Export<StopFunction>("vpn_core_stop");
     private static readonly RunFunction vpn_core_run_config=Export<RunFunction>("vpn_core_run_config");
+    private static readonly EventFunction vpn_core_read_event=Export<EventFunction>("vpn_core_read_event");
+    private static readonly AbiFunction vpn_core_pending_callbacks=Export<AbiFunction>("vpn_core_pending_callbacks");
+    public static uint PendingCallbacks => vpn_core_pending_callbacks();
+    public static string? ReadEvent() { var output=new byte[4096];int n=vpn_core_read_event(output,(uint)output.Length);return n>0?Encoding.UTF8.GetString(output,0,n):null; }
     public static string Version => Marshal.PtrToStringUTF8(vpn_core_version())!;
     public static uint AbiVersion => vpn_core_abi_version();
     public static int State => vpn_core_get_state();

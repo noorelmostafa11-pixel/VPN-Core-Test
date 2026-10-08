@@ -24,8 +24,11 @@ class Program {
                 using var client=new TcpClient("127.0.0.1",VpnCore.ListenPort);var stream=client.GetStream();stream.ReadTimeout=3000;
                 stream.Write(new byte[]{5,1,0});Exact(stream,2);stream.Write(new byte[]{5,1,0,1,127,0,0,1,0,80});
                 if(Exact(stream,10)[1]!=1||protects!=1||resolves!=1)throw new Exception("callbacks");
+                string? error=null;var deadline=DateTime.UtcNow.AddSeconds(1);
+                while(error==null&&DateTime.UtcNow<deadline){error=VpnCore.ReadEvent();if(error==null)await Task.Delay(5);}
+                if(error==null||!error.Contains("SOCKET_PROTECTION_FAILED")||error.Contains("bootstrap.invalid"))throw new Exception("error API");
             } finally {VpnCore.Stop();}
-            if(await worker.WaitAsync(TimeSpan.FromSeconds(5))!=0||VpnCore.State!=0||VpnCore.ListenPort!=0)throw new Exception("shutdown");
+            if(await worker.WaitAsync(TimeSpan.FromSeconds(5))!=0||VpnCore.State!=0||VpnCore.ListenPort!=0||VpnCore.PendingCallbacks!=0)throw new Exception("shutdown");
         }
         Console.WriteLine("PASS: .NET API lifecycle, exception rejection, UTF-8 path, callback lifetime and restart");
     }

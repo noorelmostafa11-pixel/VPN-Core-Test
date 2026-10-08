@@ -1,0 +1,33 @@
+name: Review or Clean Old Build Artifacts
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Delete the expired artifacts (false previews only)
+        type: boolean
+        default: false
+      protected_core_sha:
+        description: Additional tested reference commit to preserve
+        default: ''
+permissions:
+  contents: read
+  actions: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - name: Preserve active runs, source history and release reference binaries
+        shell: python
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          APPLY: ${{ inputs.apply }}
+          PROTECTED: ${{ inputs.protected_core_sha }}
+        run: |
+          import os,subprocess
+          args=['python','scripts/Cleanup-Artifacts.py','--repository',os.environ['REPO']]
+          if os.environ['APPLY']=='true':args+=['--apply']
+          if os.environ['PROTECTED']:args+=['--protect-core-sha',os.environ['PROTECTED']]
+          subprocess.run(args,check=True)

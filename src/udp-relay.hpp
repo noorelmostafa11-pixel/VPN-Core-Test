@@ -10,13 +10,13 @@ using SockLen=int;
 using SockLen=socklen_t;
 #endif
 inline Socket connect_udp_server(const Config& c){
-    auto names=bootstrap_addresses(c.server);auto port=std::to_string(c.port);
+    auto names=node_addresses(c.server,Clock::now()+std::chrono::milliseconds(c.connect_ms));auto port=std::to_string(c.port);
     for(const auto& name:names){addrinfo hints{};hints.ai_socktype=SOCK_DGRAM;hints.ai_family=AF_UNSPEC;
-        {std::lock_guard<std::mutex> lock(network_hooks_mutex);if(network_hooks.resolve)hints.ai_flags=AI_NUMERICHOST;}
+        hints.ai_flags=AI_NUMERICHOST;
         addrinfo* list=nullptr;if(getaddrinfo(name.c_str(),port.c_str(),&hints,&list))continue;
         struct Cleanup{addrinfo* p;~Cleanup(){freeaddrinfo(p);}} cleanup{list};
         for(auto p=list;p;p=p->ai_next){Socket socket(::socket(p->ai_family,SOCK_DGRAM,IPPROTO_UDP));if(socket.get()==invalid_socket)continue;
-            if(!protect_socket_callback(int64_t(socket.get()),nullptr))throw Failure("CONNECT_FAILED: UDP socket protection rejected","SOCKET_PROTECTION_FAILED");
+            auto allowed=protect_socket_callback(int64_t(socket.get()),nullptr);check_cancelled();if(!allowed)throw Failure("CONNECT_FAILED: UDP socket protection rejected","SOCKET_PROTECTION_FAILED");
             if(::connect(socket.get(),p->ai_addr,SockLen(p->ai_addrlen)))continue;nonblocking(socket.get());return socket;}
     }throw Failure("CONNECT_FAILED: UDP node socket failed","UDP_CONNECT_FAILED");
 }
@@ -65,10 +65,12 @@ inline void udp_associate(Socket& control,const Config& config,const Bytes& requ
     Bytes reply{5,0,0,1,127,0,0,1};be16(reply,ntohs(bound.sin_port));send_all(control,reply.data(),reply.size(),Clock::now()+std::chrono::milliseconds(config.connect_ms));
     ready=true;
     std::map<std::string,std::unique_ptr<UdpTunnel>> tunnels;std::unique_ptr<ShadowsocksUdp> ss;Socket ss_socket;
+    std::map<std::string,Clock::time_point> awaiting;
+    auto expect=[&](const Bytes& address){if(config.udp_response_ms){auto key=hex_bytes(address);if(awaiting.size()<64||awaiting.count(key))awaiting.emplace(key,Clock::now()+std::chrono::milliseconds(config.udp_response_ms));}};
     auto report=[&](const std::exception& error){auto f=dynamic_cast<const Failure*>(&error);note(f?f->code:"UDP_RELAY_FAILED");};
-    auto return_packet=[&](const Datagram& packet){Bytes wire{0,0,0};append(wire,packet.address);append(wire,packet.payload);if(wire.size()>65507)return;
+    auto return_packet=[&](const Datagram& packet){awaiting.erase(hex_bytes(packet.address));Bytes wire{0,0,0};append(wire,packet.address);append(wire,packet.payload);if(wire.size()>65507)return;
         int n=::sendto(local.get(),reinterpret_cast<const char*>(wire.data()),int(wire.size()),0,reinterpret_cast<sockaddr*>(&peer),sizeof(peer));if(n==int(wire.size()))downloaded+=packet.payload.size();};
-    while(!stopping){fd_set reads;FD_ZERO(&reads);FD_SET(control.get(),&reads);FD_SET(local.get(),&reads);timeval timeout{0,10000};
+    while(!stopping){for(auto it=awaiting.begin();it!=awaiting.end();)if(Clock::now()>=it->second){note("UDP_NO_RESPONSE");it=awaiting.erase(it);}else ++it;fd_set reads;FD_ZERO(&reads);FD_SET(control.get(),&reads);FD_SET(local.get(),&reads);timeval timeout{0,10000};
         auto highest=std::max(control.get(),local.get());int result=select(int(highest+1),&reads,nullptr,nullptr,&timeout);
         if(result<0){
 #ifndef _WIN32
@@ -86,10 +88,10 @@ inline void udp_associate(Socket& control,const Config& config,const Bytes& requ
                 if(!pinned){peer.sin_port=source.sin_port;pinned=true;}
                 if(config.protocol=="ss"){
                     if(!ss){ss_socket=connect_udp_server(config);ss=std::make_unique<ShadowsocksUdp>(config);}
-                    auto wire=ss->encode(packet);int sent=::send(ss_socket.get(),reinterpret_cast<const char*>(wire.data()),int(wire.size()),0);if(sent==int(wire.size()))uploaded+=packet.payload.size();
+                    auto wire=ss->encode(packet);int sent=::send(ss_socket.get(),reinterpret_cast<const char*>(wire.data()),int(wire.size()),0);if(sent==int(wire.size())){uploaded+=packet.payload.size();expect(packet.address);}else if(sent<0&&!would_block(socket_error()))throw Failure("RELAY_FAILED: UDP socket send","UDP_SEND_FAILED",uint32_t(socket_error()));
                 }else{auto key=hex_bytes(packet.address);auto it=tunnels.find(key);
                     if(it==tunnels.end()){if(tunnels.size()>=std::min(size_t(config.max_connections),size_t(64)))throw Failure("RELAY_FAILED: UDP destination limit","UDP_DESTINATION_LIMIT");it=tunnels.emplace(key,std::make_unique<UdpTunnel>(config,packet.address)).first;}
-                    try{it->second->send(packet.payload);}catch(...){tunnels.erase(it);throw;}uploaded+=packet.payload.size();}
+                    try{it->second->send(packet.payload);}catch(...){tunnels.erase(it);throw;}uploaded+=packet.payload.size();expect(packet.address);}
             }catch(const std::exception& error){report(error);}
         }
         for(auto it=tunnels.begin();it!=tunnels.end();)try{for(const auto& packet:it->second->poll())return_packet(packet);++it;}catch(const std::exception& error){report(error);it=tunnels.erase(it);}

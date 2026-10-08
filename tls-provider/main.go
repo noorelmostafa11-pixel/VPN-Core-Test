@@ -547,7 +547,7 @@ func configuredTLS(ctx context.Context, conn net.Conn, c settings) (*utls.UConn,
 }
 
 func (s *session) run(c settings) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(c.TimeoutMS)*time.Millisecond)
+	ctx, cancel := context.WithTimeout(providerContext(), time.Duration(c.TimeoutMS)*time.Millisecond)
 	s.mu.Lock()
 	s.cancel = cancel
 	s.mu.Unlock()

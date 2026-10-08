@@ -92,14 +92,14 @@ def build(a):
                 source_hash.update(hashlib.sha256(path.read_bytes()).digest())
     if '#define VPN_CORE_VERSION "' + version + '"' not in (ROOT / 'src/version.hpp').read_text():
         raise RuntimeError('VERSION does not match src/version.hpp.')
-    commit = os.environ.get('GITHUB_SHA')
     dirty = None
-    if not commit:
-        try: commit = output(['git', '-C', ROOT, 'rev-parse', 'HEAD'])
-        except (OSError, subprocess.CalledProcessError): commit = 'NOT_VERIFIED'
+    try: commit = output(['git', '-C', ROOT, 'rev-parse', 'HEAD'])
+    except (OSError, subprocess.CalledProcessError): commit = 'NOT_VERIFIED'
     if commit != 'NOT_VERIFIED':
         try: dirty = bool(output(['git', '-C', ROOT, 'status', '--porcelain=v1', '--untracked-files=normal']))
         except (OSError, subprocess.CalledProcessError): pass
+    if a.require_clean and (commit == 'NOT_VERIFIED' or dirty is not False):
+        raise RuntimeError('Release builds require a verified clean Git checkout.')
     with tempfile.TemporaryDirectory(prefix='.vpn-build-', dir=destination.parent) as td:
         stage = pathlib.Path(td)
         provider = 'vpn-tls.dll' if target == 'windows' else 'libvpn-tls.so'
@@ -125,20 +125,19 @@ def build(a):
         call([cxx, *flags, *entry_flags, ROOT / 'src/main.cpp', '-o', stage / binary, *libraries])
         call([cxx, *flags, '-DVPN_CORE_SHARED', '-shared', ROOT / 'src/main.cpp', '-o', stage / shared, *libraries])
         if target == 'android':
+            notice = ndk / 'NOTICE'
+            if not notice.is_file(): raise RuntimeError('Pinned NDK is missing its NOTICE file.')
+            shutil.copy2(notice, stage / 'NDK-NOTICE.txt')
             call([cxx, *flags, '-shared', ROOT / 'sdk/android/jni.cpp', '-o', stage / 'libvpn-jni.so',
                   '-L' + str(stage), '-l:libvpn-core.so', *libraries])
             javac = a.javac or (str(pathlib.Path(os.environ['JAVA_HOME']) / 'bin/javac') if os.environ.get('JAVA_HOME') else 'javac')
             call([sys.executable, ROOT / 'scripts/Package-Android.py', '--build', stage,
                   '--abi', a.abi, '--version', version, '--min-sdk', str(a.android_api),
-                  '--javac', executable(javac), '--output', stage / ('vpn-core-' + version + '-' + a.abi + '.aar')])
+                  '--javac', executable(javac), '--source-commit', commit, '--source-fingerprint', source_hash.hexdigest(), '--source-dirty', str(dirty).lower(), '--output', stage / ('vpn-core-' + version + '-' + a.abi + '.aar')])
         if a.build_tests and target != 'windows':
             call([cxx, *target_flags, '-std=c++17', '-O2', '-pie', '-static-libstdc++',
                   ROOT / 'tests/core_api_smoke.cpp', '-o', stage / 'core-api-smoke', '-ldl'])
         shutil.copy2(ROOT / 'src/core-api.h', stage / 'core-api.h')
-        if target == 'android':
-            notice = ndk / 'NOTICE'
-            if not notice.is_file(): raise RuntimeError('Pinned NDK distribution is missing its NOTICE file.')
-            shutil.copy2(notice, stage / 'NDK-NOTICE.txt')
         native = target == host and platform.machine().lower() in {'x86_64', 'amd64'}
         checks = 'CROSS_COMPILED_NOT_RUN'
         if native:
@@ -150,7 +149,7 @@ def build(a):
         (stage / 'build-hashes.json').write_text(json.dumps(files, indent=2) + '\n')
         compiler = output([cxx, '--version']).splitlines()[0]
         provenance = {'schema': 'vpn-core-target-build-v1', 'version': version, 'source_commit': commit,
-                      'workflow_run': os.environ.get('GITHUB_RUN_ID'), 'source_tree_dirty': dirty, 'target': label, 'host': host,
+                      'workflow_run': os.environ.get('GITHUB_RUN_ID'), 'workflow_commit': os.environ.get('GITHUB_SHA'), 'source_tree_dirty': dirty, 'target': label, 'host': host,
                       'go': go_version, 'compiler': compiler, 'android_ndk': ndk_version,
                       'android_api': a.android_api if target == 'android' else None,
                       'runtime_checks': checks, 'files': files,
@@ -171,6 +170,7 @@ def main():
     p.add_argument('--ndk', default=os.environ.get('ANDROID_NDK_HOME') or os.environ.get('ANDROID_NDK_ROOT'))
     p.add_argument('--go', default=os.environ.get('VPN_CORE_GO', 'go'))
     p.add_argument('--cc'); p.add_argument('--cxx'); p.add_argument('--output'); p.add_argument('--javac')
+    p.add_argument('--require-clean', action='store_true', help='Reject dirty or unverified release source.')
     p.add_argument('--build-tests', action='store_true', help='Also build the target shared-library smoke executable.')
     a = p.parse_args()
     try: build(a)

@@ -25,32 +25,87 @@ import (
 	"unsafe"
 )
 
+type hookSnapshot struct{ protect, resolve, user uintptr }
+
 var socketHooks struct {
-	sync.RWMutex
-	protect, resolve, user uintptr
+	sync.Mutex
+	hooks    hookSnapshot
+	active   int
+	changing bool
+	idle     *sync.Cond
+	ctx      context.Context
+	cancel   context.CancelFunc
+}
+
+func init() {
+	socketHooks.idle = sync.NewCond(&socketHooks.Mutex)
+	socketHooks.ctx, socketHooks.cancel = context.WithCancel(context.Background())
+}
+func providerContext() context.Context {
+	socketHooks.Lock()
+	defer socketHooks.Unlock()
+	return socketHooks.ctx
+}
+
+//export vpn_socket_start
+func vpn_socket_start() {
+	socketHooks.Lock()
+	defer socketHooks.Unlock()
+	socketHooks.cancel()
+	socketHooks.ctx, socketHooks.cancel = context.WithCancel(context.Background())
+}
+
+//export vpn_socket_cancel
+func vpn_socket_cancel() {
+	socketHooks.Lock()
+	cancel := socketHooks.cancel
+	socketHooks.Unlock()
+	cancel()
+}
+func acquireHooks() (hookSnapshot, func(), bool) {
+	socketHooks.Lock()
+	defer socketHooks.Unlock()
+	if socketHooks.changing || socketHooks.ctx.Err() != nil {
+		return hookSnapshot{}, func() {}, false
+	}
+	h := socketHooks.hooks
+	socketHooks.active++
+	return h, func() { socketHooks.Lock(); socketHooks.active--; socketHooks.idle.Broadcast(); socketHooks.Unlock() }, true
 }
 
 //export vpn_socket_set_hooks
 func vpn_socket_set_hooks(protect, resolve, user C.uintptr_t) {
 	socketHooks.Lock()
 	defer socketHooks.Unlock()
-	socketHooks.protect, socketHooks.resolve, socketHooks.user = uintptr(protect), uintptr(resolve), uintptr(user)
+	socketHooks.changing = true
+	for socketHooks.active != 0 {
+		socketHooks.idle.Wait()
+	}
+	socketHooks.hooks = hookSnapshot{uintptr(protect), uintptr(resolve), uintptr(user)}
+	socketHooks.changing = false
 }
 
 func socketControl(ctx context.Context, _, _ string, raw syscall.RawConn) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	var denied bool
+	var denied, cancelled bool
 	err := raw.Control(func(fd uintptr) {
-		socketHooks.RLock()
-		defer socketHooks.RUnlock()
-		if socketHooks.protect != 0 {
-			denied = C.invoke_protect(C.uintptr_t(socketHooks.protect), C.int64_t(fd), C.uintptr_t(socketHooks.user)) != 1
+		hooks, done, ok := acquireHooks()
+		defer done()
+		if !ok {
+			cancelled = true
+			return
+		}
+		if hooks.protect != 0 {
+			denied = C.invoke_protect(C.uintptr_t(hooks.protect), C.int64_t(fd), C.uintptr_t(hooks.user)) != 1
 		}
 	})
 	if err != nil {
 		return err
+	}
+	if cancelled {
+		return context.Canceled
 	}
 	if denied {
 		return providerError(453)
@@ -59,18 +114,33 @@ func socketControl(ctx context.Context, _, _ string, raw syscall.RawConn) error 
 }
 
 func bootstrapIPs(ctx context.Context, hostname string) ([]net.IPAddr, error) {
-	if ip := net.ParseIP(hostname); ip != nil {
-		return []net.IPAddr{{IP: ip}}, nil
-	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	socketHooks.RLock()
-	if socketHooks.resolve != 0 {
+	if ip := net.ParseIP(hostname); ip != nil {
+		return []net.IPAddr{{IP: ip}}, nil
+	}
+	hooks, done, ok := acquireHooks()
+	if !ok {
+		return nil, context.Canceled
+	}
+	defer done()
+	if hooks.resolve != 0 {
 		host := append([]byte(hostname), 0)
 		out := make([]byte, 4096)
-		n := int(C.invoke_resolve(C.uintptr_t(socketHooks.resolve), (*C.char)(unsafe.Pointer(&host[0])), (*C.char)(unsafe.Pointer(&out[0])), C.int(len(out)), C.uintptr_t(socketHooks.user)))
-		socketHooks.RUnlock()
+		n := int(C.invoke_resolve(C.uintptr_t(hooks.resolve), (*C.char)(unsafe.Pointer(&host[0])), (*C.char)(unsafe.Pointer(&out[0])), C.int(len(out)), C.uintptr_t(hooks.user)))
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if n == -2 {
+			return nil, providerError(455)
+		}
+		if n == -3 {
+			return nil, context.Canceled
+		}
+		if n == -4 {
+			return nil, providerError(456)
+		}
 		if n <= 0 || n >= len(out) {
 			return nil, providerError(454)
 		}
@@ -90,8 +160,7 @@ func bootstrapIPs(ctx context.Context, hostname string) ([]net.IPAddr, error) {
 		}
 		return ips, nil
 	}
-	protected := socketHooks.protect != 0
-	socketHooks.RUnlock()
+	protected := hooks.protect != 0
 	resolver := net.DefaultResolver
 	if protected {
 		// Protect Go's resolver sockets too. Android embedding provides the
@@ -106,13 +175,15 @@ func bootstrapIPs(ctx context.Context, hostname string) ([]net.IPAddr, error) {
 func outboundDial(ctx context.Context, network, address string, timeout time.Duration) (net.Conn, error) {
 	deadline, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	unwatch := context.AfterFunc(providerContext(), cancel)
+	defer unwatch()
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
 		return nil, err
 	}
-	socketHooks.RLock()
-	custom := socketHooks.protect != 0 || socketHooks.resolve != 0
-	socketHooks.RUnlock()
+	socketHooks.Lock()
+	custom := socketHooks.hooks.protect != 0 || socketHooks.hooks.resolve != 0
+	socketHooks.Unlock()
 	d := net.Dialer{Timeout: timeout, KeepAlive: 30 * time.Second, ControlContext: socketControl}
 	if !custom {
 		return d.DialContext(deadline, network, address)
@@ -139,12 +210,6 @@ func outboundPacket(ctx context.Context, network, address string) (net.PacketCon
 }
 
 func outboundUDPAddress(ctx context.Context, address string) (*net.UDPAddr, error) {
-	socketHooks.RLock()
-	custom := socketHooks.protect != 0 || socketHooks.resolve != 0
-	socketHooks.RUnlock()
-	if !custom {
-		return net.ResolveUDPAddr("udp", address)
-	}
 	host, text, err := net.SplitHostPort(address)
 	if err != nil {
 		return nil, err

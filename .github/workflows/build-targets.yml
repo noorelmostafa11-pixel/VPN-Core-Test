@@ -1,16 +1,21 @@
 name: Build Selected Core Target
 on:
-  push:
-    branches: [main, 'repair/**']
-    paths: ['src/**', 'tls-provider/**', 'sdk/**', 'scripts/**', 'tests/**', 'build.*', 'VERSION', '.github/workflows/**']
-  pull_request:
   workflow_dispatch:
     inputs:
       target:
         description: Core target to build from this source revision
         type: choice
         options: [all, windows, linux, android]
-        default: all
+        default: linux
+      abi:
+        description: Android ABI (all only when you need the combined AAR)
+        type: choice
+        options: [arm64-v8a, armeabi-v7a, x86_64, x86, all]
+        default: arm64-v8a
+      verify_android_windows:
+        description: Also verify Android compilation on a Windows host
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -18,7 +23,7 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 jobs:
   linux:
-    if: github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'linux'
+    if: inputs.target == 'all' || inputs.target == 'linux'
     name: Linux amd64 production core
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -32,10 +37,12 @@ jobs:
       - uses: actions/setup-java@v4
         with: {distribution: temurin, java-version: '17'}
       - run: |
+          mkdir -p bin
+          (cd tls-provider && go build -mod=vendor -o ../bin/xhttp-peer ../tests/xhttp_peer.go)
           python -m pip install -r tests/requirements.txt
-          python scripts/Build.py --target linux --build-tests
+          python scripts/Build.py --target linux --build-tests --require-clean
           python -m unittest -v test_portable_044.PortableTransportTests test_portable_044.SharedCoreTests
-          python -m unittest -v test_udp_sdk.UdpSdkTests test_udp_sdk.NetworkHookTests
+          python -m unittest -v test_udp_sdk.UdpSdkTests test_udp_sdk.NetworkHookTests test_lifecycle_acceptance.LifecycleAcceptanceTests test_dns_acceptance.DnsAcceptanceTests
           python scripts/Test-Sdk-Bindings.py --build build/linux-amd64 --java-only
           python scripts/Package-Target.py --build build/linux-amd64
         env:
@@ -44,12 +51,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: core-linux-amd64-${{ github.sha }}
-          path: |
-            build/linux-amd64/
-            dist/
+          path: dist/
+          retention-days: 1
           if-no-files-found: error
   windows:
-    if: github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'windows'
+    if: inputs.target == 'all' || inputs.target == 'windows'
     name: Windows amd64 shared core API
     runs-on: windows-2022
     timeout-minutes: 30
@@ -72,10 +78,15 @@ jobs:
           VPN_CORE_TEST_BINARY: ${{ github.workspace }}/build/windows-amd64/vpn-core.exe
         run: |
           $env:PATH=(Join-Path $env:MSYS_LOCATION 'mingw64\bin')+';'+$env:PATH
-          python scripts/Build.py --target windows
+          New-Item -ItemType Directory -Force bin | Out-Null
+          Push-Location tls-provider
+          go build -mod=vendor -o ../bin/xhttp-peer.exe ../tests/xhttp_peer.go
+          Pop-Location
+          if ($LASTEXITCODE) { throw 'Independent peer build failed' }
+          python scripts/Build.py --target windows --require-clean
           if ($LASTEXITCODE) { throw 'Windows build failed' }
           python -m pip install -r tests/requirements.txt
-          python -m unittest -v test_portable_044.SharedCoreTests
+          python -m unittest -v test_portable_044.SharedCoreTests test_udp_sdk.UdpSdkTests test_lifecycle_acceptance.LifecycleAcceptanceTests test_dns_acceptance.DnsAcceptanceTests
           if ($LASTEXITCODE) { throw 'Shared core regression failed' }
           python scripts/Test-Sdk-Bindings.py --build build/windows-amd64 --dotnet-only
           if ($LASTEXITCODE) { throw 'Windows .NET SDK smoke failed' }
@@ -84,19 +95,18 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: core-windows-amd64-${{ github.sha }}
-          path: |
-            build/windows-amd64/
-            dist/
+          path: dist/
+          retention-days: 1
           if-no-files-found: error
   android:
-    if: github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'android'
+    if: inputs.target == 'all' || inputs.target == 'android'
     name: Android ${{ matrix.abi }} libraries
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        abi: [arm64-v8a, armeabi-v7a, x86_64, x86]
+        abi: ${{ fromJSON(inputs.abi == 'all' && '["arm64-v8a","armeabi-v7a","x86_64","x86"]' || format('["{0}"]', inputs.abi)) }}
     steps:
       - uses: actions/checkout@v4
         with: {persist-credentials: false}
@@ -110,7 +120,7 @@ jobs:
         with: {distribution: temurin, java-version: '17'}
       - name: Build the selected ABI from source
         run: |
-          python scripts/Build.py --target android --abi '${{ matrix.abi }}' --ndk "$ANDROID_HOME/ndk/30.0.16248370" --build-tests
+          python scripts/Build.py --target android --abi '${{ matrix.abi }}' --ndk "$ANDROID_HOME/ndk/30.0.16248370" --build-tests --require-clean
           python scripts/Package-Target.py --build 'build/android-${{ matrix.abi }}'
       - uses: actions/upload-artifact@v4
         with:
@@ -118,9 +128,10 @@ jobs:
           path: |
             build/android-${{ matrix.abi }}/
             dist/
+          retention-days: 1
           if-no-files-found: error
   android_windows:
-    if: github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'android'
+    if: inputs.verify_android_windows && (inputs.target == 'all' || inputs.target == 'android')
     name: Android arm64 built on a Windows laptop environment
     runs-on: windows-2022
     timeout-minutes: 40
@@ -143,10 +154,11 @@ jobs:
         with:
           name: core-android-from-windows-${{ github.sha }}
           path: build/android-arm64-v8a/
+          retention-days: 1
           if-no-files-found: error
   android_package:
     needs: android
-    if: github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'android'
+    if: inputs.target == 'all' || inputs.target == 'android'
     name: Android SDK AAR with all four ABIs
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -163,10 +175,17 @@ jobs:
           path: android-inputs
       - name: Package verified native ABIs into one SDK
         run: |
-          python scripts/Package-Android.py --build android-inputs/core-android-arm64-v8a-${{ github.sha }}/build/android-arm64-v8a --build android-inputs/core-android-armeabi-v7a-${{ github.sha }}/build/android-armeabi-v7a --build android-inputs/core-android-x86_64-${{ github.sha }}/build/android-x86_64 --build android-inputs/core-android-x86-${{ github.sha }}/build/android-x86 --output dist/vpn-core-android.aar
+          python - <<'PYCODE'
+          import pathlib,subprocess
+          roots=sorted(pathlib.Path('android-inputs').glob('core-android-*/build/android-*'))
+          roots=[p for p in roots if 'from-windows' not in str(p)]
+          if not roots:raise SystemExit('No Android inputs')
+          subprocess.run(['python','scripts/Package-Android.py',*[item for p in roots for item in ['--build',str(p)]],'--output','dist/vpn-core-android.aar'],check=True)
+          PYCODE
           sha256sum dist/vpn-core-android.aar > dist/vpn-core-android.aar.sha256
       - uses: actions/upload-artifact@v4
         with:
           name: core-android-sdk-${{ github.sha }}
           path: dist/vpn-core-android.aar*
+          retention-days: 1
           if-no-files-found: error

@@ -64,10 +64,13 @@ bash build.sh --target android --abi arm64-v8a --ndk "$ANDROID_HOME/ndk/30.0.162
 
 ## GitHub للاختبارات
 
-- **Core Source Validation:** الاختبارات المشتركة وWindows/PowerShell وفحص الحصر، ثم اختبار أحدث ملفات Pre المحمّلة لهذا التشغيل على main.
-- **Build Selected Core Target:** نفس أمر البناء المحلي، مع اختيار all/windows/linux/android في Run workflow. Android يبنى لكل ABI وعلى Windows أيضًا. خطوة المحاكي أُزيلت؛ تشغيل Android على جهاز وVPNService/TUN خارج تغطية هذا workflow.
-- مدخلات مقارنة العقد يجلبها `scripts/Prepare-Pinned-Nodes.py` من commit الأصلي المثبت لـ0.4.2، ويتحقق من الحجم وSHA256 قبل فكها؛ لا حاجة لبقاء ZIP قديم في `main`.
-- Artifacts تربط الهدف بـcommit المصدر. `build-hashes.json` يتحقق من الملفات؛ `build-provenance.json` يوضح الأدوات والهدف ونوع التحقق. بناء يدوي غير مرتبط بـgit يسجل `NOT_VERIFIED` للمصدر.
+كل Workflows يبدأ يدويًا فقط؛ رفع commit لا يشغّل أي منها.
+
+- **Core Source Validation:** جولة مشتركة وWindows/PowerShell وحصر أحدث Pre، منفصلة عن اختبار الإنترنت.
+- **Build Selected Core Target:** اختر `linux` أو `windows` أو `android`؛ `all` صريح. Android ABI واحد افتراضيًا أو الأربع عند الطلب. بناء Android من Windows اختياري. لا محاكي ولا APK داخل هذا التشغيل.
+- **Test Selected Core Against Latest Pre:** اختر `core_ref` وLinux (الافتراضي) أو Windows. يبني نسخة واحدة ويجلب أحدث Pre مرة واحدة، ثم يوزع المدخلات المثبتة على 15 shard بنفس الهاش. لا يشغّل إصدارًا قديمًا بدل النسخة المختارة.
+- **Review or Clean Old Build Artifacts:** preview أو apply يدوي. المؤقت يوم، التقارير 14–30 يومًا؛ لا حذف لملفات Release المرجعية أو الرنز الجارية.
+- `build-hashes.json` يربط الملفات بـ`build-provenance.json`. المصدر هو Git HEAD الفعلي، مع `workflow_commit` مستقل عند البناء عبر Actions. استخدم `--require-clean` لمنع نشر ناتج مصدر معدل أو مجهول. AAR يحوي commit وبصمة السورس وNDK-NOTICE وتراخيص المكونات.
 
 لتجميع ZIP للهدف المبني:
 
@@ -75,6 +78,6 @@ bash build.sh --target android --abi arm64-v8a --ndk "$ANDROID_HOME/ndk/30.0.162
 python scripts/Package-Target.py --build build/linux-amd64
 ```
 
-اختبارات شبكة العقد العامة على Windows لها تقارير منفصلة عن اختبارات بناء وتشغيل Android/Linux. الرن الأخضر لا يعني أن جميع العقد ناجحة.
+اختبارات شبكة العقد العامة على Linux أو Windows لها تقارير منفصلة عن اختبارات بناء وتشغيل Android/Linux. الرن الأخضر لا يعني أن جميع العقد ناجحة.
 
 مراجع أدوات البناء: [NDK other build systems](https://developer.android.com/ndk/guides/other_build_systems)، [NDK downloads](https://developer.android.com/ndk/downloads)، [Android page sizes](https://developer.android.com/guide/practices/page-sizes)، [Go x509 roots](https://go.dev/src/crypto/x509/root_linux.go). تم الرجوع إليها في 7 أكتوبر 2026؛ ثبات الأدوات في السكربت هو المرجع لهذا الإصدار.

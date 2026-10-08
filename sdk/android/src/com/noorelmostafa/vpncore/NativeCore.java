@@ -39,4 +39,8 @@ public final class NativeCore {
     public static native int state();
     /** Actual SOCKS TCP port; UDP ASSOCIATE returns its own UDP relay port. */
     public static native int listenPort();
+    /** A JSON event, or null when the bounded queue is empty. */
+    public static native String readEvent();
+    /** Stop does not finish a non-cooperative callback; run drains its resources. */
+    public static native int pendingCallbacks();
 }

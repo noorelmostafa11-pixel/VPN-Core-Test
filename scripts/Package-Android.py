@@ -6,11 +6,16 @@ def archive(path, entries):
     with zipfile.ZipFile(path,'w') as z:
         for name,data in sorted(entries.items()):
             info=zipfile.ZipInfo(name);info.compress_type=zipfile.ZIP_DEFLATED;z.writestr(info,data)
-def package(builds, output, version, javac='javac', api=23):
+def package(builds, output, version, javac='javac', api=23, provenance=None):
     entries={};labels=[];native=[]
     for abi,folder in builds:
         if abi not in ABIS or abi in labels:raise ValueError('Invalid or duplicate Android ABI')
         labels.append(abi)
+        notice=(folder/'NDK-NOTICE.txt').read_bytes()
+        if not notice:raise ValueError('Missing NDK license notice')
+        key='META-INF/vpn-core/NDK-NOTICE.txt'
+        if key in entries and entries[key]!=notice:raise ValueError('Mixed NDK notices')
+        entries[key]=notice
         for name in ['libvpn-core.so','libvpn-tls.so','libvpn-jni.so']:
             data=(folder/name).read_bytes();entries['jni/'+abi+'/'+name]=data
             native.append({'abi':abi,'file':name,'sha256':hashlib.sha256(data).hexdigest()})
@@ -23,7 +28,7 @@ def package(builds, output, version, javac='javac', api=23):
     entries['AndroidManifest.xml']=f'<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.noorelmostafa.vpncore"><uses-sdk android:minSdkVersion="{api}"/></manifest>\n'.encode()
     entries['R.txt']=b''
     entries['proguard.txt']=b'-keep class com.noorelmostafa.vpncore.NativeCore { *; }\n-keep interface com.noorelmostafa.vpncore.NativeCore$NetworkHooks { *; }\n-keep class * implements com.noorelmostafa.vpncore.NativeCore$NetworkHooks { *; }\n'
-    entries['assets/vpn-core/sdk.json']=(json.dumps({'version':version,'core_abi':2,'abis':sorted(labels),'native_files':native},indent=2)+'\n').encode()
+    entries['assets/vpn-core/sdk.json']=(json.dumps({'version':version,'core_abi':2,'abis':sorted(labels),'native_files':native,'source':provenance or {}},indent=2)+'\n').encode()
     for name in ['NOTICE.md','docs/SDK-INTEGRATION.md']:
         entries['META-INF/vpn-core/'+pathlib.Path(name).name]=(ROOT/name).read_bytes()
     for directory in ['tls-provider/vendor','tls-provider/thirdparty','third_party']:
@@ -36,8 +41,10 @@ def package(builds, output, version, javac='javac', api=23):
     return output
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--build',action='append',required=True);p.add_argument('--output',required=True)
+    p.add_argument('--source-commit');p.add_argument('--source-fingerprint');p.add_argument('--source-dirty',choices=['true','false','none'])
     p.add_argument('--abi',choices=sorted(ABIS));p.add_argument('--version');p.add_argument('--min-sdk',type=int,default=23);p.add_argument('--javac',default='javac');a=p.parse_args()
-    builds=[];version=a.version;api=a.min_sdk;source=None
+    builds=[];version=a.version;api=a.min_sdk;source=None;provenance=None
+    if a.source_commit:provenance={'commit':a.source_commit,'source_files_sha256':a.source_fingerprint,'dirty':{'true':True,'false':False,'none':None}[a.source_dirty or 'none']}
     for text in a.build:
         folder=pathlib.Path(text)
         if a.abi:
@@ -51,5 +58,8 @@ def main():
             fingerprint=meta.get('source_files_sha256')
             if not fingerprint or source is not None and source!=fingerprint:p.error('Android AAR inputs must come from identical SDK source bytes')
             source=fingerprint
-    print('Packaged '+str(package(builds,pathlib.Path(a.output),version,a.javac,api)))
+            current={'commit':meta['source_commit'],'source_files_sha256':fingerprint,'dirty':meta['source_tree_dirty']}
+            if provenance is not None and provenance!=current:p.error('Android inputs have mixed source provenance')
+            provenance=current
+    print('Packaged '+str(package(builds,pathlib.Path(a.output),version,a.javac,api,provenance)))
 if __name__=='__main__':main()

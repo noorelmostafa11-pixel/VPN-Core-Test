@@ -73,11 +73,11 @@ public:
         if(!n)return 0;if(!mask_.active())return raw_send(p,n);
         if(pending_.empty()){pending_=mask_.write(p,n);credit_=n;chunk_=offset_=0;if(write_deadline_==Clock::time_point::max())write_deadline_=Clock::now()+std::chrono::milliseconds(write_timeout_);}
         if(n<credit_)throw std::runtime_error("TRANSPORT_FAILED: fragment input accounting");
-        while(chunk_<pending_.size()) {
+        while(chunk_<pending_.size()) {check_cancelled();
             if(Clock::now()>=write_deadline_)throw std::runtime_error("Connection/handshake timeout");
             auto& item=pending_[chunk_];if(offset_<item.bytes.size()){int r=raw_send(item.bytes.data()+offset_,item.bytes.size()-offset_);if(r==-2)return -2;offset_+=size_t(r);if(offset_<item.bytes.size())return -2;}
             auto until=Clock::now()+std::chrono::milliseconds(item.delay_after_ms);
-            while(Clock::now()<until){if(Clock::now()>=write_deadline_)throw std::runtime_error("Connection/handshake timeout");std::this_thread::sleep_for(std::min(std::chrono::milliseconds(20),std::chrono::duration_cast<std::chrono::milliseconds>(until-Clock::now())));}
+            while(Clock::now()<until){check_cancelled();if(Clock::now()>=write_deadline_)throw std::runtime_error("Connection/handshake timeout");std::this_thread::sleep_for(std::min(std::chrono::milliseconds(20),std::chrono::duration_cast<std::chrono::milliseconds>(until-Clock::now())));}
             ++chunk_;offset_=0;
         }
         auto accepted=credit_;pending_.clear();credit_=0;write_deadline_=Clock::time_point::max();return int(accepted);
@@ -85,13 +85,13 @@ public:
 };
 inline bool wait_socket(Handle h,bool writing,Clock::time_point deadline) {
     for(;;) {
-        auto ms=std::chrono::duration_cast<std::chrono::milliseconds>(deadline-Clock::now()).count();
+        check_cancelled();auto ms=std::chrono::duration_cast<std::chrono::milliseconds>(deadline-Clock::now()).count();
         if(ms<=0)throw std::runtime_error("Connection/handshake timeout");
         fd_set f,errors;FD_ZERO(&f);FD_SET(h,&f);FD_ZERO(&errors);FD_SET(h,&errors);
-        timeval tv{long(ms/1000),long(ms%1000*1000)};
+        ms=std::min(ms,decltype(ms)(20));timeval tv{long(ms/1000),long(ms%1000*1000)};
         int r=select(int(h+1),writing?nullptr:&f,writing?&f:nullptr,&errors,&tv);
         if(r>0)return true;
-        if(r==0)throw std::runtime_error("Connection/handshake timeout");
+        if(r==0)continue;
 #ifndef _WIN32
         if(errno==EINTR)continue;
 #endif
@@ -99,29 +99,48 @@ inline bool wait_socket(Handle h,bool writing,Clock::time_point deadline) {
     }
 }
 inline void send_all(Socket& s,const uint8_t* p,size_t n,Clock::time_point deadline) {
-    while(n){s.write_deadline(deadline);int r=s.send(p,n);if(r==-2){wait_socket(s.get(),true,deadline);continue;}p+=r;n-=size_t(r);}
+    while(n){check_cancelled();s.write_deadline(deadline);int r=s.send(p,n);if(r==-2){wait_socket(s.get(),true,deadline);continue;}p+=r;n-=size_t(r);}
 }
 inline Bytes receive_exact(Socket& s,size_t n,Clock::time_point deadline) {
     Bytes out(n);size_t offset=0;
-    while(offset<n){int r=s.receive(out.data()+offset,n-offset);if(r==-2){wait_socket(s.get(),false,deadline);continue;}if(!r)throw std::runtime_error("Unexpected client EOF");offset+=size_t(r);}
+    while(offset<n){check_cancelled();int r=s.receive(out.data()+offset,n-offset);if(r==-2){wait_socket(s.get(),false,deadline);continue;}if(!r)throw std::runtime_error("Unexpected client EOF");offset+=size_t(r);}
     return out;
 }
 inline Bytes receive_some(Socket& s,Clock::time_point deadline) {
     Bytes b(16384);
-    for(;;){int r=s.receive(b.data(),b.size());if(r==-2){wait_socket(s.get(),false,deadline);continue;}if(!r)throw std::runtime_error("TLS handshake ended unexpectedly");b.resize(size_t(r));return b;}
+    for(;;){check_cancelled();int r=s.receive(b.data(),b.size());if(r==-2){wait_socket(s.get(),false,deadline);continue;}if(!r)throw std::runtime_error("TLS handshake ended unexpectedly");b.resize(size_t(r));return b;}
+}
+// System DNS uses the same bounded, drainable worker lifetime as host callbacks.
+inline std::vector<std::string> node_addresses(const std::string& host,Clock::time_point deadline){
+    if(has_bootstrap_resolver())return bootstrap_addresses(host,deadline);
+    addrinfo hints{};hints.ai_socktype=SOCK_STREAM;hints.ai_family=AF_UNSPEC;hints.ai_flags=AI_NUMERICHOST;addrinfo* numeric=nullptr;
+    if(getaddrinfo(host.c_str(),nullptr,&hints,&numeric)==0){freeaddrinfo(numeric);return {host};}
+    auto lease=std::make_shared<HookLease>(true);auto result=std::make_shared<DnsResult>();
+    std::thread([lease,result,host]{
+        std::string text;try{[[maybe_unused]] NetworkRuntime runtime;addrinfo h{};h.ai_family=AF_UNSPEC;h.ai_socktype=SOCK_STREAM;addrinfo* list=nullptr;
+        if(getaddrinfo(host.c_str(),nullptr,&h,&list)==0){
+            struct Cleanup{addrinfo* p;~Cleanup(){freeaddrinfo(p);}} cleanup{list};unsigned count=0;
+            for(auto p=list;p&&count<32;p=p->ai_next){char address[1025];if(getnameinfo(p->ai_addr,int(p->ai_addrlen),address,sizeof(address),nullptr,0,NI_NUMERICHOST)==0){text+=address;text+='\n';++count;}}
+        }}catch(...){}
+        {std::lock_guard<std::mutex> lock(result->mutex);if(!text.empty()&&text.size()<sizeof(result->output)){std::memcpy(result->output,text.data(),text.size());result->size=int(text.size());}result->done=true;}result->ready.notify_all();
+    }).detach();
+    std::unique_lock<std::mutex> lock(result->mutex);
+    while(!result->done){check_cancelled();if(Clock::now()>=deadline)throw Failure("DNS_FAILED: system resolver timeout","BOOTSTRAP_DNS_TIMEOUT");result->ready.wait_until(lock,std::min(deadline,Clock::now()+std::chrono::milliseconds(20)));}
+    check_cancelled();if(result->size<=0)throw Failure("DNS_FAILED: system lookup failed","BOOTSTRAP_DNS_FAILED");
+    std::istringstream input(std::string(result->output,size_t(result->size)));std::vector<std::string> out;std::string address;while(std::getline(input,address))out.push_back(address);return out;
 }
 inline Socket connect_server(const Config& c,Clock::time_point deadline) {
     addrinfo hint{};hint.ai_socktype=SOCK_STREAM;hint.ai_family=AF_UNSPEC;
-    auto names=bootstrap_addresses(c.server);auto port=std::to_string(c.port);
+    auto names=node_addresses(c.server,deadline);auto port=std::to_string(c.port);
     for(const auto& name:names){
     addrinfo* list=nullptr;
-    {std::lock_guard<std::mutex> lock(network_hooks_mutex);if(network_hooks.resolve)hint.ai_flags=AI_NUMERICHOST;}
+    hint.ai_flags=AI_NUMERICHOST;
     if(getaddrinfo(name.c_str(),port.c_str(),&hint,&list))continue;
     struct Cleanup{addrinfo* p;~Cleanup(){freeaddrinfo(p);}}cleanup{list};
     for(auto p=list;p;p=p->ai_next) {
         Socket s(::socket(p->ai_family,p->ai_socktype,p->ai_protocol));
         if(s.get()==invalid_socket)continue;
-        if(!protect_socket_callback(int64_t(s.get()),nullptr))throw Failure("CONNECT_FAILED: outbound socket protection rejected","SOCKET_PROTECTION_FAILED");
+        auto allowed=protect_socket_callback(int64_t(s.get()),nullptr);check_cancelled();if(!allowed)throw Failure("CONNECT_FAILED: outbound socket protection rejected","SOCKET_PROTECTION_FAILED");
         nonblocking(s.get());
         int r=::connect(s.get(),p->ai_addr,int(p->ai_addrlen));
         if(r==0){s.mask(c);return s;}

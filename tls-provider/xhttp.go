@@ -603,7 +603,7 @@ func (c *tlsHTTPConn) projectTLSState() (uint16, string) { return c.version, c.a
 func (s *xSession) dial(ctx context.Context, c xSettings, forced string) (net.Conn, error) {
 	raw, err := outboundDial(ctx, "tcp", net.JoinHostPort(c.Server, strconv.Itoa(c.Port)), time.Duration(c.TLS.TimeoutMS)*time.Millisecond)
 	if err != nil {
-		return nil, providerError(402)
+		return nil, providerError(tlsErrorCode(err, 402))
 	}
 	conn := net.Conn(raw)
 	if len(c.Masks) > 0 {
@@ -745,7 +745,7 @@ func (s *xSession) run(c xSettings) {
 		s.runMKCP(c)
 		return
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(providerContext())
 	s.mu.Lock()
 	if s.released {
 		s.mu.Unlock()

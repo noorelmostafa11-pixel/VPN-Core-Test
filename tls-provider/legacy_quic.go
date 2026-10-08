@@ -129,7 +129,7 @@ type legacyQUICCloser struct{ conn *quic.Conn }
 func (c legacyQUICCloser) Close() error { return c.conn.CloseWithError(0, "") }
 
 func (s *xSession) runLegacyQUIC(c xSettings) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(providerContext())
 	s.mu.Lock()
 	if s.released {
 		s.mu.Unlock()

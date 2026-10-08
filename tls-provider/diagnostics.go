@@ -69,7 +69,7 @@ func tlsErrorCode(err error, fallback int) int {
 }
 func echLookupError(err error) error {
 	code := tlsErrorCode(err, 332)
-	if code == 453 || code == 454 {
+	if code == 453 || code == 454 || code == 455 || code == 456 {
 		return providerError(code)
 	}
 	if code == 316 || code == 319 {
@@ -89,7 +89,7 @@ func xhttpErrorCode(err error) int {
 	}
 	code := tlsErrorCode(err, 401)
 	switch code {
-	case 311, 312, 313, 314, 315, 318, 321, 336:
+	case 311, 312, 313, 314, 315, 318, 319, 321, 336, 453, 454, 455, 456:
 		return code
 	}
 	// A request timeout may follow a successful TLS handshake. Do not label

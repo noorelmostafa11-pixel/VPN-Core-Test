@@ -40,7 +40,7 @@ class XHttpTests(unittest.TestCase):
             Table=table,SessionLength=options.get('sessionIDLength',0),Bad=bad)
         with tempfile.TemporaryDirectory(dir=self.directory) as directory:
             directory=pathlib.Path(directory);cfg=directory/'server.json';cfg.write_text(json.dumps(fixture));log=(directory/'peer.log').open('w')
-            process=subprocess.Popen([str(ROOT/'bin/xhttp-peer'),'-config',str(cfg)],stdout=subprocess.PIPE,stderr=log,text=True)
+            process=subprocess.Popen([str(ROOT/('bin/xhttp-peer.exe' if __import__('os').name=='nt' else 'bin/xhttp-peer')),'-config',str(cfg)],stdout=subprocess.PIPE,stderr=log,text=True)
             try:
                 endpoint=process.stdout.readline().strip();port=endpoint.rsplit(':',1)[1]
                 if separate:

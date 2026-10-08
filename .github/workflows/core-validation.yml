@@ -1,21 +1,10 @@
 name: Core Source Validation
 
 on:
-  push:
-    branches: [main, 'repair/**']
-    paths: ['src/**', 'scripts/**', 'tests/**', 'sdk/**', 'tls-provider/**', 'VERSION', '.github/workflows/**', 'docs/pre-current-source-manifest.json', 'NOTICE.md', '.gitattributes']
-  pull_request:
   workflow_dispatch:
-    inputs:
-      full_network:
-        description: Test all nodes from latest Pre after source validation
-        type: boolean
-        default: true
+
   workflow_call:
-    inputs:
-      full_network:
-        type: boolean
-        default: true
+
 
 permissions:
   contents: read
@@ -38,7 +27,7 @@ jobs:
           overwrite: true
           path: pre-run/
           if-no-files-found: error
-          retention-days: 90
+          retention-days: 1
 
   linux:
     needs: pre
@@ -56,6 +45,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
       - name: Install test dependencies
         run: |
           sudo apt-get update
@@ -73,6 +64,12 @@ jobs:
           path: pre-run
       - name: Verify support for this run's latest Pre configurations
         run: python scripts/Audit-Pre-Support.py --core bin/vpn-core-test --nodes pre-run/protocols --manifest pre-run/manifest.json --output pre-current-support
+      - name: Production shared-core acceptance
+        run: |
+          python scripts/Build.py --target linux --require-clean
+          VPN_CORE_TEST_BINARY="$PWD/build/linux-amd64/vpn-core" python -m unittest -v test_lifecycle_acceptance.LifecycleAcceptanceTests test_dns_acceptance.DnsAcceptanceTests test_packaging_acceptance.PackagingAcceptanceTests
+        env:
+          PYTHONPATH: tests
       - name: Preserve validation evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -81,7 +78,7 @@ jobs:
           path: |
             validation-linux.log
             pre-current-support/
-          retention-days: 90
+          retention-days: 14
 
   windows:
     needs: pre
@@ -119,6 +116,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Diagnostic probe build failed' }
           & python -m pip install -r tests/requirements.txt
           if ($LASTEXITCODE -ne 0) { throw 'Test dependency setup failed' }
+          Push-Location tls-provider
+          & go build -mod=vendor -o ../bin/xhttp-peer.exe ../tests/xhttp_peer.go
+          Pop-Location
+          if ($LASTEXITCODE -ne 0) { throw 'Independent peer build failed' }
       - name: PowerShell 5.1 process regression including 16 concurrent children
         shell: powershell
         run: |
@@ -142,6 +143,14 @@ jobs:
           $env:PYTHONPATH=(Resolve-Path tests).Path
           & python -m unittest -v test_batch_exitcode.BatchExitCodeTests test_windows_043.WindowsRepairTransportTests test_ready_044.ReadyReadTests 2>&1 | Tee-Object validation-windows-7.log
           if ($LASTEXITCODE -ne 0) { throw 'Windows production regression failed' }
+      - name: Windows shared core TCP, UDP, DNS and blocked-callback acceptance
+        shell: pwsh
+        env:
+          PYTHONPATH: tests
+          VPN_CORE_TEST_BINARY: ${{ github.workspace }}/bin/vpn-core.exe
+        run: |
+          & python -m unittest -v test_udp_sdk.UdpSdkTests test_lifecycle_acceptance.LifecycleAcceptanceTests test_dns_acceptance.DnsAcceptanceTests 2>&1 | Tee-Object validation-windows-sdk.log
+          if ($LASTEXITCODE -ne 0) { throw 'Windows shared core acceptance failed' }
       - uses: actions/download-artifact@v4
         with:
           name: pre-input-${{ github.run_id }}
@@ -151,11 +160,6 @@ jobs:
         run: |
           & python scripts/Audit-Pre-Support.py --core bin/vpn-core.exe --nodes pre-run/protocols --manifest pre-run/manifest.json --output pre-current-support
           if ($LASTEXITCODE -ne 0) { throw 'Latest Pre support coverage failed' }
-      - name: Assemble the complete release from this commit
-        shell: pwsh
-        run: |
-          & python scripts/Package-Release.py --nodes pre-run/protocols --pre-manifest pre-run/manifest.json
-          if ($LASTEXITCODE -ne 0) { throw 'Release packaging failed' }
       - name: Preserve Windows evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -164,174 +168,4 @@ jobs:
           path: |
             validation-windows-*.log
             pre-current-support/
-          retention-days: 90
-      - name: Upload complete Windows distribution
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-release-${{ github.sha }}
-          path: dist/
-          if-no-files-found: error
-          retention-days: 90
-      - name: Upload tested runtime for network shards
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-runtime-${{ github.sha }}
-          path: |
-            bin/vpn-core.exe
-            bin/vpn-tls.dll
-            bin/vpn-core.dll
-            bin/vpn-tls.h
-            bin/core-api.h
-            bin/build-hashes.json
-          if-no-files-found: error
-          retention-days: 90
-
-  network:
-    name: Windows Pre shard ${{ matrix.shard }}
-    needs: [linux, windows]
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || ((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') && inputs.full_network)
-    runs-on: windows-2022
-    timeout-minutes: 300
-    strategy:
-      fail-fast: false
-      max-parallel: 15
-      matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - uses: actions/download-artifact@v4
-        with:
-          name: windows-runtime-${{ github.sha }}
-          path: runtime
-      - uses: actions/download-artifact@v4
-        with:
-          name: pre-input-${{ github.run_id }}
-          path: pre-run
-      - name: Verify tested binary
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop'
-          $manifest=Get-Content runtime/build-hashes.json -Raw | ConvertFrom-Json
-          foreach ($entry in $manifest) {
-            $file=Join-Path runtime $entry.file
-            if ((Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant() -cne $entry.sha256 -or (Get-Item $file).Length -ne $entry.bytes) { throw 'Tested binary integrity failed' }
-          }
-      - name: Partition this run's latest Pre snapshot
-        shell: powershell
-        env:
-          SHARD: ${{ matrix.shard }}
-        run: |
-          $ErrorActionPreference='Stop'
-          $target='nodes/shard';[void][IO.Directory]::CreateDirectory($target)
-          $pre=Get-Content pre-run/manifest.json -Raw | ConvertFrom-Json
-          $inventory=[int](($pre.files | Measure-Object nodes -Sum).Sum)
-          $index=0;$total=0
-          foreach ($proto in @('vless','trojan','vmess','shadowsocks')) {
-            $writer=New-Object IO.StreamWriter((Join-Path $target ($proto+'.txt')),$false,(New-Object Text.UTF8Encoding($false)))
-            try {
-              foreach ($line in [IO.File]::ReadLines((Resolve-Path ('pre-run/protocols/'+$proto+'.txt')).Path)) {
-                if ([string]::IsNullOrWhiteSpace($line) -or $line.Trim().StartsWith('#')) { continue }
-                if (($index % 15) -eq [int]$env:SHARD) { $writer.WriteLine($line);$total++ }
-                $index++
-              }
-            } finally { $writer.Dispose() }
-          }
-          $expected=[int][Math]::Floor($inventory/15)
-          if ([int]$env:SHARD -lt ($inventory % 15)) { $expected++ }
-          if ($index -ne $inventory -or $total -ne $expected) { throw 'Shard partition mismatch' }
-      - name: Test this source-built version
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop'
-          try {
-            & .\scripts\Test-Batch.ps1 -Nodes nodes/shard -Core runtime/vpn-core.exe -Concurrency 8 -TimeoutSeconds 10 -OutputDrainSeconds 10 -Url 'https://example.com/' -OutputDirectory batch-results
-          } finally {
-            if (Test-Path -LiteralPath 'batch-results' -PathType Container) {
-              Copy-Item -LiteralPath 'pre-run/manifest.json' -Destination 'batch-results/pre-manifest.json'
-            }
-          }
-      - name: Reject incomplete or cancelled reports
-        shell: powershell
-        env:
-          SHARD: ${{ matrix.shard }}
-        run: |
-          $ErrorActionPreference='Stop'
-          $pre=Get-Content pre-run/manifest.json -Raw | ConvertFrom-Json
-          $inventory=[int](($pre.files | Measure-Object nodes -Sum).Sum)
-          $report=Get-Content batch-results/summary.json -Raw | ConvertFrom-Json
-          $expected=[int][Math]::Floor($inventory/15)
-          if ([int]$env:SHARD -lt ($inventory % 15)) { $expected++ }
-          if (-not $report.completed -or $report.inventory -ne $expected -or $report.inventory_error -or $report.batch_error -or $report.selected -ne $report.finished -or $report.cancelled -ne 0) { throw 'Incomplete or mismatched shard' }
-      - name: Preserve network reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: vpn-${{ github.sha }}-shard-${{ matrix.shard }}
-          path: batch-results/
-          if-no-files-found: warn
-          retention-days: 90
-
-  aggregate:
-    name: Summarize latest Pre outcomes and compare overlapping old IDs
-    needs: network
-    if: always() && needs.network.result != 'skipped'
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/download-artifact@v4
-        continue-on-error: true
-        with:
-          pattern: vpn-${{ github.sha }}-shard-*
-          path: network-reports
-      - uses: actions/download-artifact@v4
-        with:
-          name: pre-input-${{ github.run_id }}
-          path: pre-run
-      - name: Check latest coverage and compare overlapping node IDs
-        run: python3 scripts/Summarize-Network.py --reports network-reports --output network-comparison --pre-snapshot pre-run
-      - name: Show comparison in the run summary
-        if: always()
-        run: |
-          if [ -f network-comparison/network-summary.md ]; then
-            cat network-comparison/network-summary.md >> "$GITHUB_STEP_SUMMARY"
-          fi
-      - name: Preserve combined comparison
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: network-comparison-${{ github.sha }}
-          path: network-comparison/
-          retention-days: 90
-
-  release:
-    name: Publish validated complete Windows build
-    needs: [linux, windows]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/download-artifact@v4
-        with:
-          name: windows-release-${{ github.sha }}
-          path: dist
-      - name: Release exactly this tested commit
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          version=$(cat VERSION)
-          if gh release view "v$version" >/dev/null 2>&1; then
-            echo 'Version already released. Increment VERSION for the next source change.' >&2
-            exit 1
-          fi
-          gh release create "v$version" dist/* --target "$GITHUB_SHA" --title "vpn-core $version Windows amd64" --notes-file docs/RELEASE-NOTES.md
+          retention-days: 14

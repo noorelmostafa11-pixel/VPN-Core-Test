@@ -54,3 +54,6 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_noorelmostafa_vpncore_NativeCore_v
 extern "C" JNIEXPORT jint JNICALL Java_com_noorelmostafa_vpncore_NativeCore_abiVersion(JNIEnv*,jclass){return jint(vpn_core_abi_version());}
 extern "C" JNIEXPORT jint JNICALL Java_com_noorelmostafa_vpncore_NativeCore_state(JNIEnv*,jclass){return vpn_core_get_state();}
 extern "C" JNIEXPORT jint JNICALL Java_com_noorelmostafa_vpncore_NativeCore_listenPort(JNIEnv*,jclass){return vpn_core_get_listen_port();}
+
+extern "C" JNIEXPORT jstring JNICALL Java_com_noorelmostafa_vpncore_NativeCore_readEvent(JNIEnv* env,jclass){char out[4096];int n=vpn_core_read_event(out,sizeof(out));return n>0?env->NewStringUTF(out):nullptr;}
+extern "C" JNIEXPORT jint JNICALL Java_com_noorelmostafa_vpncore_NativeCore_pendingCallbacks(JNIEnv*,jclass){return jint(vpn_core_pending_callbacks());}

@@ -3,6 +3,7 @@
 #include "xhttp-provider.hpp"
 #include "version.hpp"
 #include "core-api.h"
+#include "core-events.hpp"
 #include "udp-relay.hpp"
 #include <atomic>
 #include <csignal>
@@ -12,7 +13,6 @@
 #include <thread>
 
 namespace vpn {
-std::atomic<bool> stopping{false};
 static_assert(std::atomic<bool>::is_always_lock_free, "Signal handler needs lock-free atomics");
 std::mutex log_mutex;
 void stop_handler(int){stopping.store(true,std::memory_order_relaxed);}
@@ -44,13 +44,24 @@ Bytes socks_request(Socket& client,Clock::time_point deadline,uint8_t* command=n
     return address;
 }
 void relay(Socket& client,Socket& server,SecureStream& tls,Transport& transport,Protocol& protocol,const Config& config,const Bytes& initial,uint64_t& uploaded,uint64_t& downloaded) {
-    constexpr size_t limit=524288;Queue up,down;bool client_eof=false,server_eof=false,transport_ended=false;auto last=Clock::now();
+    constexpr size_t limit=524288;Queue up,down;bool client_eof=false,server_eof=false,transport_ended=false,server_write_closed=false;auto last=Clock::now();
     auto process=[&](const Bytes& b){up.append(tls.take_control());auto data=protocol.decode(transport.decode(b));if(protocol.take_direct()){auto held=tls.switch_direct_receive();auto direct=protocol.decode(transport.decode(held));data.insert(data.end(),direct.begin(),direct.end());}downloaded+=data.size();down.append(data);auto protocol_control=protocol.take_control();if(!protocol_control.empty())up.append(tls.encrypt(transport.encode(protocol_control)));auto control=transport.take_control();if(!control.empty())up.append(tls.encrypt(control));};
     process(initial);
     for(;;) {
         if(stopping)break;
         if(down.size()<limit-65536)process(tls.feed(nullptr,0));
         if(client_eof&&!transport_ended&&!protocol.pending_bytes()){auto close=transport.finish();if(!close.empty())up.append(tls.encrypt(close));if((config.transport=="raw"||config.transport=="httpupgrade"||config.transport=="obfs-http"||config.transport=="obfs-tls")&&tls.secure())up.append(tls.close_notify());transport_ended=true;}
+
+        // Deliver FIN before waiting for a peer that is itself waiting for FIN.
+        // With no final plaintext bytes, select could time out and skip shutdown.
+        if(client_eof&&transport_ended&&!server_write_closed&&!protocol.pending_bytes()&&!tls.secure()&&(config.transport=="raw"||config.transport=="httpupgrade")&&up.empty()){
+#ifdef _WIN32
+            shutdown(server.get(),SD_SEND);
+#else
+            shutdown(server.get(),SHUT_WR);
+#endif
+            server_write_closed=true;
+        }
 
         if((server_eof||tls.closed()||transport.closed()||protocol.closed())&&down.empty()&&up.empty())break;
         if(Clock::now()-last>std::chrono::milliseconds(config.idle_ms))throw std::runtime_error("IDLE_TIMEOUT: connection idle timeout");
@@ -74,13 +85,6 @@ void relay(Socket& client,Socket& server,SecureStream& tls,Transport& transport,
         
         else if(n>0){up.append(tls.encrypt(transport.encode(protocol.encode(Bytes(buffer,buffer+n)))));uploaded+=uint64_t(n);last=Clock::now();}}
         if(FD_ISSET(server.get(),&reads)){int n=server.receive(buffer,sizeof(buffer));if(n==0){server_eof=true;if(tls.secure()&&!tls.direct_receive()&&!tls.closed())throw std::runtime_error("TLS_FAILED: truncated TLS stream");}else if(n>0){process(tls.feed(buffer,size_t(n)));last=Clock::now();}}
-        if(client_eof&&transport_ended&&!protocol.pending_bytes()&&!tls.secure()&&(config.transport=="raw"||config.transport=="httpupgrade")&&up.empty()){
-#ifdef _WIN32
-            shutdown(server.get(),SD_SEND);
-#else
-            shutdown(server.get(),SHUT_WR);
-#endif
-        }
     }
 }
 void relay_xhttp(Socket& client,XHttpStream& stream,Protocol& protocol,const Config& config,uint64_t& uploaded,uint64_t& downloaded){Queue down;Bytes pending;bool client_eof=false,finished=false,end_requested=false;auto last=Clock::now();for(;;){if(stopping)break;if(down.size()<524288-65536){auto bytes=stream.read();auto data=protocol.decode(bytes);if(protocol.take_direct())throw Failure("PROTOCOL_FAILED: Vision direct cannot bypass XHTTP framing","VISION_DIRECT_SECURITY");if(!data.empty()){downloaded+=data.size();down.append(data);last=Clock::now();}}if(pending.empty())pending=protocol.take_control();if(!pending.empty()&&stream.write(pending)){pending.clear();last=Clock::now();}if(client_eof&&pending.empty()&&!end_requested){pending=protocol.finish();end_requested=true;}if(end_requested&&pending.empty()&&!protocol.pending_bytes()&&!finished){stream.finish();finished=true;}if((stream.closed()||protocol.closed())&&down.empty())break;if(Clock::now()-last>std::chrono::milliseconds(config.idle_ms))throw Failure("RELAY_FAILED: XHTTP idle timeout","IDLE_TIMEOUT");fd_set reads,writes;FD_ZERO(&reads);FD_ZERO(&writes);if(!client_eof&&!stream.closed()&&!protocol.closed()&&pending.empty()&&stream.pending()+protocol.pending_bytes()<524288)FD_SET(client.get(),&reads);if(!down.empty())FD_SET(client.get(),&writes);if(!FD_ISSET(client.get(),&reads)&&!FD_ISSET(client.get(),&writes)){std::this_thread::sleep_for(std::chrono::milliseconds(5));continue;}timeval wait{0,5000};int result=select(int(client.get()+1),&reads,&writes,nullptr,&wait);if(result<0){
@@ -92,19 +96,19 @@ void connection(Socket client,const Config& config,uint64_t id) {
     std::string prefix="[connection "+std::to_string(id)+"] ",phase="SOCKS_FAILED",tls_version,alpn;uint64_t up=0,down=0;bool request_ok=false,tunnel_ready=false;
     try {
         auto deadline=Clock::now()+std::chrono::milliseconds(config.connect_ms);uint8_t command=1;auto destination=socks_request(client,deadline,&command);request_ok=true;
-        if(command==3){phase="RELAY_FAILED";udp_associate(client,config,destination,tunnel_ready,stopping,up,down,[&](const std::string& code){log_line(prefix+"UDP reason_code="+code);});log_line(prefix+"UDP closed; uploaded="+std::to_string(up)+" downloaded="+std::to_string(down));return;}
-        if(config.transport=="xhttp"||config.transport=="http"||config.transport=="kcp"||config.transport=="quic"){phase="PROTOCOL_FAILED";Protocol protocol(config);auto header=protocol.open(destination);phase="TRANSPORT_FAILED";XHttpStream stream;stream.open(config,header,deadline);auto metadata=stream.metadata();tls_version=metadata.at("version").scalar()=="772"?"TLS1.3":metadata.at("version").scalar()=="771"?"TLS1.2":"";alpn=metadata.at("alpn").scalar();socks_reply(client,0,deadline);tunnel_ready=true;Json negotiated=Json::obj();diagnostic_identity(negotiated,id);negotiated["event"]=Json("negotiated");negotiated["tls_version"]=Json(tls_version);negotiated["alpn"]=Json(alpn);log_line(prefix+"diagnostic="+json_dump(negotiated));log_line(prefix+"tunnel ready; protocol="+config.protocol+" transport="+config.transport+" tls="+tls_version+"; data transfer still unverified");phase="RELAY_FAILED";relay_xhttp(client,stream,protocol,config,up,down);log_line(prefix+"closed; uploaded="+std::to_string(up)+" downloaded="+std::to_string(down));return;}
+        if(command==3){phase="RELAY_FAILED";udp_associate(client,config,destination,tunnel_ready,stopping,up,down,[&](const std::string& code){Json event=Json::obj();diagnostic_identity(event,id);event["event"]=Json("udp_diagnostic");event["phase"]=Json("UDP");event["reason_code"]=Json(code);publish_event(event);log_line(prefix+"UDP reason_code="+code);});log_line(prefix+"UDP closed; uploaded="+std::to_string(up)+" downloaded="+std::to_string(down));return;}
+        if(config.transport=="xhttp"||config.transport=="http"||config.transport=="kcp"||config.transport=="quic"){phase="PROTOCOL_FAILED";Protocol protocol(config);auto header=protocol.open(destination);phase="TRANSPORT_FAILED";XHttpStream stream;stream.open(config,header,deadline);auto metadata=stream.metadata();tls_version=metadata.at("version").scalar()=="772"?"TLS1.3":metadata.at("version").scalar()=="771"?"TLS1.2":"";alpn=metadata.at("alpn").scalar();socks_reply(client,0,deadline);tunnel_ready=true;Json negotiated=Json::obj();diagnostic_identity(negotiated,id);negotiated["event"]=Json("negotiated");negotiated["tls_version"]=Json(tls_version);negotiated["alpn"]=Json(alpn);publish_event(negotiated);log_line(prefix+"diagnostic="+json_dump(negotiated));log_line(prefix+"tunnel ready; protocol="+config.protocol+" transport="+config.transport+" tls="+tls_version+"; data transfer still unverified");phase="RELAY_FAILED";relay_xhttp(client,stream,protocol,config,up,down);log_line(prefix+"closed; uploaded="+std::to_string(up)+" downloaded="+std::to_string(down));return;}
         phase="CONNECT_FAILED";Socket server=connect_server(config,deadline);SecureStream tls;phase="TLS_FAILED";tls.handshake(server,config,deadline);tls_version=tls.version();alpn=tls.alpn();
         Transport transport(config);Protocol protocol(config);Bytes header;
         if(config.transport=="websocket"&&config.ws_early_data){phase="PROTOCOL_FAILED";header=transport.prepare(protocol.open(destination));}
         phase="TRANSPORT_FAILED";auto initial=transport.open(server,tls,deadline,header.empty()?nullptr:&header);
         phase="PROTOCOL_FAILED";if(config.transport=="websocket"&&config.ws_early_data){if(!header.empty())send_secure(server,tls,transport.encode_prepared(header),deadline);}else send_secure(server,tls,transport.encode(protocol.open(destination)),deadline);
         socks_reply(client,0,deadline);tunnel_ready=true;
-        Json negotiated=Json::obj();diagnostic_identity(negotiated,id);negotiated["event"]=Json("negotiated");negotiated["tls_version"]=Json(tls_version);negotiated["alpn"]=Json(alpn);log_line(prefix+"diagnostic="+json_dump(negotiated));
+        Json negotiated=Json::obj();diagnostic_identity(negotiated,id);negotiated["event"]=Json("negotiated");negotiated["tls_version"]=Json(tls_version);negotiated["alpn"]=Json(alpn);publish_event(negotiated);log_line(prefix+"diagnostic="+json_dump(negotiated));
         log_line(prefix+"tunnel ready; protocol="+config.protocol+" transport="+config.transport+" tls="+tls.version()+"; data transfer still unverified");
         phase="RELAY_FAILED";relay(client,server,tls,transport,protocol,config,initial,up,down);log_line(prefix+"closed; uploaded="+std::to_string(up)+" downloaded="+std::to_string(down));
-    }catch(const std::exception& e){if(request_ok&&!tunnel_ready)try{socks_reply(client,1,Clock::now()+std::chrono::milliseconds(500));}catch(...){}std::string error=e.what();if(error.find("DNS")!=std::string::npos)phase="DNS_FAILED";else if(error.find("timeout")!=std::string::npos)phase="TIMEOUT";else{auto colon=error.find(':');if(colon!=std::string::npos){auto p=error.substr(0,colon);const std::set<std::string> known{"TRANSPORT_FAILED","PROTOCOL_FAILED","TLS_FAILED","CONNECT_FAILED","RELAY_FAILED","FEATURE_UNIMPLEMENTED","PARSE_INVALID"};if(known.count(p))phase=p;}}
-        Json detail=Json::obj();diagnostic_identity(detail,id);detail["event"]=Json("failure");detail["tunnel_ready"]=Json::boolean(tunnel_ready);detail["phase"]=Json(phase);auto f=dynamic_cast<const Failure*>(&e);detail["reason_code"]=Json(f?f->code:phase);detail["native_status"]=Json::integer(f?f->native_status:0);std::ostringstream hex;hex<<"0x"<<std::hex<<std::uppercase<<std::setfill('0')<<std::setw(8)<<(f?f->native_status:0);detail["native_status_hex"]=Json(hex.str());detail["http_status"]=Json::integer(f?f->http_status:0);detail["http_header_name"]=Json(f?f->http_header_name:"");detail["tls_version"]=Json(tls_version);detail["alpn"]=Json(alpn);log_line(prefix+"diagnostic="+json_dump(detail));
+    }catch(const std::exception& e){if(request_ok&&!tunnel_ready)try{socks_reply(client,1,Clock::now()+std::chrono::milliseconds(500));}catch(...){}std::string error=e.what();if(stopping)phase="CANCELLED";else if(error.find("DNS")!=std::string::npos)phase="DNS_FAILED";else if(error.find("timeout")!=std::string::npos)phase="TIMEOUT";else{auto colon=error.find(':');if(colon!=std::string::npos){auto p=error.substr(0,colon);const std::set<std::string> known{"TRANSPORT_FAILED","PROTOCOL_FAILED","TLS_FAILED","CONNECT_FAILED","RELAY_FAILED","FEATURE_UNIMPLEMENTED","PARSE_INVALID"};if(known.count(p))phase=p;}}
+        Json detail=Json::obj();diagnostic_identity(detail,id);detail["event"]=Json("failure");detail["tunnel_ready"]=Json::boolean(tunnel_ready);detail["phase"]=Json(phase);auto f=dynamic_cast<const Failure*>(&e);detail["reason_code"]=Json(f?f->code:phase);detail["native_status"]=Json::integer(f?f->native_status:0);std::ostringstream hex;hex<<"0x"<<std::hex<<std::uppercase<<std::setfill('0')<<std::setw(8)<<(f?f->native_status:0);detail["native_status_hex"]=Json(hex.str());detail["http_status"]=Json::integer(f?f->http_status:0);detail["http_header_name"]=Json(f?f->http_header_name:"");detail["tls_version"]=Json(tls_version);detail["alpn"]=Json(alpn);publish_event(detail);log_line(prefix+"diagnostic="+json_dump(detail));
         log_line(prefix+"failed phase="+phase+": "+error+"; uploaded="+std::to_string(up)+" downloaded="+std::to_string(down));}
 }
 
@@ -114,9 +118,9 @@ int run(int argc,char** argv,const vpn::NetworkHooks* hooks=nullptr) {
     static std::mutex run_mutex;
     std::unique_lock<std::mutex> active(run_mutex,std::try_to_lock);
     if(!active.owns_lock())return 2;
-    stopping.store(false,std::memory_order_relaxed);
-    core_state.store(VPN_CORE_STARTING);bool configured_hooks=false;
-    struct Cleanup {bool& configured;~Cleanup(){core_listen_port.store(0);if(configured)try{configure_network_hooks({});}catch(...){}core_state.store(VPN_CORE_STOPPED);}} cleanup{configured_hooks};
+    reset_events();stopping.store(false,std::memory_order_relaxed);
+    core_state.store(VPN_CORE_STARTING);bool configured_hooks=false;std::unique_ptr<NetworkRuntime> runtime;
+    struct Cleanup {bool& configured;~Cleanup(){core_listen_port.store(0);if(configured)try{stopping.store(true);core_state.store(VPN_CORE_STOPPING);cancel_provider_network();configure_network_hooks({});}catch(...){}core_state.store(VPN_CORE_STOPPED);if(configured)log_line("Stopped");}} cleanup{configured_hooks};
     try {
         validate_xhttp_build=validate_xhttp_configuration;
         std::string config_path,list_path;bool check=false,inspect=false;
@@ -138,8 +142,10 @@ int run(int argc,char** argv,const vpn::NetworkHooks* hooks=nullptr) {
         if(inspect){std::cout<<json_dump(inspection(config))<<'\n';return 0;}
         require_supported(config);
         if(check){std::cout<<"Config supported by this build; no network test performed\n";return 0;}
-        if(hooks){configure_network_hooks(*hooks);configured_hooks=true;}
-        [[maybe_unused]] NetworkRuntime runtime;Socket listener=listen_local(config.listen_port);
+        network_dns_timeout.store(config.connect_ms);configured_hooks=true;configure_network_hooks(hooks?*hooks:NetworkHooks{},true);
+        // Declared before Cleanup so Windows WSA lifetime extends through the
+        // callback drain, including host resolvers that return after Stop.
+        runtime=std::make_unique<NetworkRuntime>();Socket listener=listen_local(config.listen_port);
         sockaddr_in actual{};SockLen actual_size=sizeof(actual);if(getsockname(listener.get(),reinterpret_cast<sockaddr*>(&actual),&actual_size))throw Failure("STARTUP_FAILED: listener address","LISTENER_ADDRESS");config.listen_port=ntohs(actual.sin_port);core_listen_port.store(config.listen_port);
         core_state.store(stopping?VPN_CORE_STOPPING:VPN_CORE_RUNNING);
 #ifndef VPN_CORE_SHARED
@@ -164,19 +170,22 @@ int run(int argc,char** argv,const vpn::NetworkHooks* hooks=nullptr) {
 std::ofstream f(std::filesystem::u8path(config.ready_file+".tmp"),std::ios::binary);f<<json_dump(ready);f.close();if(!f)throw Failure("STARTUP_FAILED: ready file write","READY_FILE_WRITE");std::filesystem::rename(std::filesystem::u8path(config.ready_file+".tmp"),std::filesystem::u8path(config.ready_file));}
         log_line("Listening SOCKS5 on 127.0.0.1:"+std::to_string(config.listen_port)+"; TCP CONNECT and UDP ASSOCIATE; Ctrl+C to stop");
         std::vector<std::future<void>> workers;uint64_t id=0;
+        // Unwind cancellation before future destructors join connection workers.
+        // This also covers listener errors, not only an explicit Stop request.
+        struct StopBeforeJoin {~StopBeforeJoin(){stopping.store(true);core_state.store(VPN_CORE_STOPPING);core_listen_port.store(0);try{cancel_provider_network();}catch(...){}}} stop_before_join;
         while(!stopping) {
             for(auto it=workers.begin();it!=workers.end();) {if(it->wait_for(std::chrono::seconds(0))==std::future_status::ready){it->get();it=workers.erase(it);}else ++it;}
-            fd_set reads;FD_ZERO(&reads);FD_SET(listener.get(),&reads);timeval timeout{0,200000};
+            fd_set reads;FD_ZERO(&reads);FD_SET(listener.get(),&reads);timeval timeout{0,20000};
             int r=select(int(listener.get()+1),&reads,nullptr,nullptr,&timeout);
             if(r<0){if(stopping)break;throw std::runtime_error("Listener wait failed");}if(!r)continue;
-            Socket client(accept(listener.get(),nullptr,nullptr));if(client.get()==invalid_socket)continue;nonblocking(client.get());
+            if(stopping)break;Socket client(accept(listener.get(),nullptr,nullptr));if(client.get()==invalid_socket)continue;if(stopping)break;nonblocking(client.get());
             if(workers.size()>=config.max_connections){log_line("Connection limit reached; new client rejected");continue;}
             workers.push_back(std::async(std::launch::async,[client=std::move(client),&config,id=++id]()mutable{connection(std::move(client),config,id);}));
         }
+        core_state.store(VPN_CORE_STOPPING);core_listen_port.store(0);listener=Socket();cancel_provider_network();
         for(auto& worker:workers)worker.get();
-        log_line("Stopped");
         return 0;
-    } catch(const std::exception& e){auto f=dynamic_cast<const Failure*>(&e);Json j=Json::obj();diagnostic_identity(j,0);j["event"]=Json("failure");j["phase"]=Json("STARTUP_FAILED");j["reason_code"]=Json(f?f->code:"STARTUP_FAILED");j["native_status"]=Json::integer(f?f->native_status:0);j["http_status"]=Json::integer(0);j["tls_version"]=Json("");j["alpn"]=Json("");std::cerr<<"[connection 0] diagnostic="<<json_dump(j)<<"\n";std::cerr<<"vpn-core: "<<e.what()<<"\n";return 1;}
+    } catch(const std::exception& e){auto f=dynamic_cast<const Failure*>(&e);Json j=Json::obj();diagnostic_identity(j,0);j["event"]=Json("failure");j["phase"]=Json("STARTUP_FAILED");j["reason_code"]=Json(f?f->code:"STARTUP_FAILED");j["native_status"]=Json::integer(f?f->native_status:0);j["http_status"]=Json::integer(0);j["tls_version"]=Json("");j["alpn"]=Json("");publish_event(j);std::cerr<<"[connection 0] diagnostic="<<json_dump(j)<<"\n";std::cerr<<"vpn-core: "<<e.what()<<"\n";return 1;}
 }
 #ifdef VPN_CORE_SHARED
 extern "C" VPN_CORE_API const char* vpn_core_version(){return VPN_CORE_VERSION;}
@@ -185,6 +194,8 @@ extern "C" VPN_CORE_API void vpn_core_stop(){vpn::stopping.store(true,std::memor
 extern "C" VPN_CORE_API uint32_t vpn_core_abi_version(){return 2;}
 extern "C" VPN_CORE_API int vpn_core_get_state(){return vpn::core_state.load();}
 extern "C" VPN_CORE_API uint16_t vpn_core_get_listen_port(){return vpn::core_listen_port.load();}
+extern "C" VPN_CORE_API int vpn_core_read_event(char* output,uint32_t capacity){return vpn::read_event(output,capacity);}
+extern "C" VPN_CORE_API uint32_t vpn_core_pending_callbacks(){std::lock_guard<std::mutex> lock(vpn::network_hooks_mutex);return vpn::network_hooks_active;}
 extern "C" VPN_CORE_API int vpn_core_run_config(const char* path,vpn_core_socket_protector protect,vpn_core_resolver resolve,void* user){if(!path||!*path)return 1;char name[]="vpn-core",option[]="--config";char* args[]{name,option,const_cast<char*>(path)};vpn::NetworkHooks hooks{protect,resolve,user};return run(3,args,&hooks);}
 #elif defined(_WIN32)
 int wmain(int argc,wchar_t** argv) {
