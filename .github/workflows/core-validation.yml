@@ -248,9 +248,13 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          [void][IO.Directory]::CreateDirectory('batch-results')
-          Copy-Item pre-run/manifest.json batch-results/pre-manifest.json
-          & .\scripts\Test-Batch.ps1 -Nodes nodes/shard -Core runtime/vpn-core.exe -Concurrency 8 -TimeoutSeconds 10 -OutputDrainSeconds 10 -Url 'https://example.com/' -OutputDirectory batch-results
+          try {
+            & .\scripts\Test-Batch.ps1 -Nodes nodes/shard -Core runtime/vpn-core.exe -Concurrency 8 -TimeoutSeconds 10 -OutputDrainSeconds 10 -Url 'https://example.com/' -OutputDirectory batch-results
+          } finally {
+            if (Test-Path -LiteralPath 'batch-results' -PathType Container) {
+              Copy-Item -LiteralPath 'pre-run/manifest.json' -Destination 'batch-results/pre-manifest.json'
+            }
+          }
       - name: Reject incomplete or cancelled reports
         shell: powershell
         env:
