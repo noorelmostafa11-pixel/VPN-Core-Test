@@ -57,3 +57,25 @@ class NodeRunnerTests(unittest.TestCase):
     def test_https_credentials_are_rejected_before_network(self):
         result=subprocess.run([sys.executable,core.ROOT/'scripts/Test-Nodes.py','--core',core.BIN,'--nodes','unused','--pre-manifest','unused','--output','unused','--source-commit','synthetic','--url','https://user:secret@localhost/'],capture_output=True,text=True)
         self.assertNotEqual(result.returncode,0);self.assertIn('without credentials',result.stderr)
+
+    def test_parse_and_config_errors_are_separate_from_network_failure(self):
+        failed_connection=__import__('threading').Event();proxy=Service(lambda s:failed_connection.set())
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                td=pathlib.Path(td);nodes=td/'protocols';nodes.mkdir()
+                lines=['not-a-proxy-uri',f'vless://{ID}@127.0.0.1:{proxy.port}?security=tls&type=raw&fp=unknown-browser',f'vless://{ID}@127.0.0.1:{proxy.port}?security=none&type=raw#original-label']
+                path=nodes/'vless.txt';original='\n'.join(lines)+'\n';path.write_text(original)
+                inspected=subprocess.run([core.BIN,'--inspect-list',path],capture_output=True,text=True,check=True)
+                checks=[json.loads(line) for line in inspected.stdout.splitlines()]
+                self.assertEqual([c['parsed'] for c in checks],[False,False,True]);self.assertFalse(checks[0]['uri_parsed']);self.assertTrue(checks[1]['uri_parsed'])
+                manifest=td/'manifest.json';manifest.write_text(json.dumps({'commit':'synthetic-pre','files':[{'name':path.name,'sha256':hashlib.sha256(path.read_bytes()).hexdigest()}]}))
+                out=td/'results';result=subprocess.run([sys.executable,core.ROOT/'scripts/Test-Nodes.py','--core',core.BIN,'--nodes',nodes,'--pre-manifest',manifest,'--source-commit','synthetic-core','--shards','1','--concurrency','1','--timeout','2','--output',out,'--url','https://127.0.0.1:443/'],capture_output=True,text=True,timeout=15)
+                self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+                records=[json.loads(line) for line in (out/'results.ndjson').read_text().splitlines()]
+                self.assertEqual([r['status'] for r in records],['PARSE_INVALID','PARSE_INVALID','FAIL'])
+                self.assertEqual([r['phase'] for r in records[:2]],['PARSE_INVALID','CONFIG_INVALID'])
+                self.assertEqual([r['reason_code'] for r in records[:2]],[c['reason_code'] for c in checks[:2]])
+                self.assertTrue(failed_connection.is_set());summary=json.loads((out/'summary.json').read_text())
+                self.assertEqual(summary['statuses'],{'PARSE_INVALID':2,'FAIL':1});self.assertTrue(summary['completed']);self.assertEqual(summary['runner_failures'],0)
+                self.assertEqual([r['node_id'] for r in records],[hashlib.sha256(uri.encode()).hexdigest()[:20] for uri in lines]);self.assertEqual(path.read_text(),original)
+        finally:proxy.close()

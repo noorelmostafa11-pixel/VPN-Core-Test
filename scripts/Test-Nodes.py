@@ -26,7 +26,7 @@ def run(a):
         if len(checks)!=len(selected):raise ValueError('Inspection coverage mismatch')
     def test(item):
         index,(source,uri)=item;check=checks[index]
-        row={'source':source,'node_id':hashlib.sha256(uri.encode()).hexdigest()[:20],'status':'FAIL','phase':'CONFIG_INVALID' if check.get('uri_parsed') else 'PARSE_INVALID','reason_code':check.get('reason_code','CONFIG_INVALID'),'http_status':0}
+        row={'source':source,'node_id':hashlib.sha256(uri.encode()).hexdigest()[:20],'status':'FAIL' if check.get('parsed') else 'PARSE_INVALID','phase':'CONFIG_INVALID' if check.get('uri_parsed') else 'PARSE_INVALID','reason_code':check.get('reason_code','CONFIG_INVALID'),'http_status':0}
         if row['node_id']!=check['node_id']:raise ValueError('Original URI identity mismatch')
         if not check.get('parsed'):return row
         with tempfile.TemporaryDirectory(prefix='vpn-node-') as directory:
