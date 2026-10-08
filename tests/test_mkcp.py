@@ -9,15 +9,27 @@ def fnv(data):
     for b in data:value=((value^b)*16777619)&0xffffffff
     return value
 class KCPPeer:
-    def __init__(self,crypto,seed=None,loss=False,mtu=900):
+    def __init__(self,crypto,seed=None,loss=False,mtu=900,header='none'):
+        self.header=header;self.header_size={'none':0,'srtp':4,'utp':4,'wireguard':4,'dtls':13,'wechat-video':13,'dns':33}[header]
         self.crypto=crypto;self.seed=seed;self.loss=loss;self.mtu=mtu;self.errors=[];self.dropped=0;self.retransmitted=0;self.socket=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);self.socket.bind(('127.0.0.1',0));self.socket.settimeout(.01);self.port=self.socket.getsockname()[1];self.stop=threading.Event();self.sessions={};self.thread=threading.Thread(target=self.run,daemon=True);self.thread.start()
     def seal(self,data):
+        prefix={'none':b'','srtp':b'\xb5\xe8\x00\x01','utp':b'\x12\x34\x01\x00','wireguard':b'\x04\x00\x00\x00',
+                'dtls':b'\x17\xfe\xfd'+bytes(10),'wechat-video':b'\xa1\x08'+bytes(4)+b'\x00\x10\x11\x18\x30\x22\x30',
+                'dns':b'\x12\x34\x01\x00\x00\x01'+bytes(6)+b'\x03www\x07example\x03com\x00\x00\x01\x00\x01'}[self.header]
         if self.seed is not None:
-            nonce=os.urandom(12);return nonce+AESGCM(hashlib.sha256(self.seed.encode()).digest()[:16]).encrypt(nonce,data,None)
+            nonce=os.urandom(12);return prefix+nonce+AESGCM(hashlib.sha256(self.seed.encode()).digest()[:16]).encrypt(nonce,data,None)
         body=struct.pack('!H',len(data))+data;wire=bytearray(struct.pack('!I',fnv(body))+body)
         for i in range(4,len(wire)):wire[i]^=wire[i-4]
-        return wire
+        return prefix+wire
     def open(self,data):
+        if len(data)>self.mtu:raise ValueError('MTU exceeded by header')
+        if self.header=='srtp' and data[:2]!=b'\xb5\xe8':raise ValueError('SRTP prefix')
+        if self.header=='utp' and data[2:4]!=b'\x01\x00':raise ValueError('uTP prefix')
+        if self.header=='wireguard' and data[:4]!=b'\x04\x00\x00\x00':raise ValueError('WireGuard prefix')
+        if self.header=='dtls' and data[:3]!=b'\x17\xfe\xfd':raise ValueError('DTLS prefix')
+        if self.header=='wechat-video' and (data[:2]!=b'\xa1\x08' or data[6:13]!=b'\x00\x10\x11\x18\x30\x22\x30'):raise ValueError('WeChat prefix')
+        if self.header=='dns' and data[2:self.header_size]!=b'\x01\x00\x00\x01'+bytes(6)+b'\x03www\x07example\x03com\x00\x00\x01\x00\x01':raise ValueError('DNS prefix')
+        data=data[self.header_size:]
         if self.seed is not None:return AESGCM(hashlib.sha256(self.seed.encode()).digest()[:16]).decrypt(data[:12],data[12:],None)
         wire=bytearray(data)
         for i in range(len(wire)-1,3,-1):wire[i]^=wire[i-4]
@@ -88,14 +100,15 @@ class KCPPeer:
 class MKCPTests(unittest.TestCase):
     setUpClass=classmethod(old.ExpandedTests.setUpClass.__func__);tearDownClass=classmethod(old.ExpandedTests.tearDownClass.__func__)
     core=old.ExpandedTests.core;socks=old.ExpandedTests.socks
-    def exchange(self,protocol='vless',cipher='',seed=None,loss=False,tls=False,connections=1):
-        crypto=old.Peer(protocol,cipher,tls_context=self.context if tls else None);peer=KCPPeer(crypto,seed,loss)
+    def exchange(self,protocol='vless',cipher='',seed=None,loss=False,tls=False,connections=1,header='none'):
+        crypto=old.Peer(protocol,cipher,tls_context=self.context if tls else None);peer=KCPPeer(crypto,seed,loss,header=header)
         try:
             credential=str(old.ID) if protocol in ('vless','vmess') else old.SECRET
             if protocol=='ss':credential=__import__('base64').urlsafe_b64encode((cipher+':'+old.SECRET).encode()).decode().rstrip('=')
             uri=f'{protocol}://{credential}@127.0.0.1:{peer.port}?type=kcp&security={"tls" if tls else "none"}&sni=localhost&mtu=900&tti=20'
             if protocol=='vmess':uri+='&encryption='+cipher
             if seed is not None:uri+='&seed='+seed
+            uri+='&headerType='+header
             if tls:uri+='&fp=chrome'
             with self.core(uri) as (port,log):
                 def run(i):
@@ -113,4 +126,11 @@ class MKCPTests(unittest.TestCase):
             with self.subTest(protocol=protocol):self.exchange(protocol,cipher)
     def test_02_loss_reordering_duplication(self):self.exchange(loss=True,connections=8)
     def test_03_seed_and_verified_tls(self):self.exchange(seed='synthetic-seed',tls=True,connections=2)
+    def test_04_packet_headers_four_protocols(self):
+        for header in ('srtp','utp','dtls','wechat-video','wireguard','dns'):
+            for protocol,cipher in [('vless',''),('vmess','aes-128-gcm'),('trojan',''),('ss','chacha20-ietf-poly1305')]:
+                with self.subTest(header=header,protocol=protocol):self.exchange(protocol,cipher,header=header)
+    def test_05_headers_seed_loss_and_verified_tls(self):
+        for header in ('srtp','utp','dtls','wechat-video','wireguard','dns'):
+            with self.subTest(header=header):self.exchange(header=header,seed='synthetic-seed',loss=True,tls=True,connections=2)
 if __name__=='__main__':unittest.main(verbosity=2)

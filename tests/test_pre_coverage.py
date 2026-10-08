@@ -134,6 +134,31 @@ class PreCoverageTests(unittest.TestCase):
             self.assertFalse(report['coverage_met'])
             self.assertEqual(report['counts'], {'INVALID': 1, 'SUPPORTED': 3})
 
+    def test_added_support_can_exceed_historical_support_counts(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=pathlib.Path(td);manifest,_=self.fixture(root)
+            manifest['expected_support']={'SUPPORTED':3,'INVALID':1}
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(audit.audit(BIN,root,manifest,root/'audit'),0)
+            report=json.loads((root/'audit/summary.json').read_text())
+            self.assertEqual(report['counts'],{'SUPPORTED':4})
+            self.assertTrue(report['coverage_met'])
+
+    def test_added_carriers_are_reported_without_invalid_feature_labels(self):
+        from urllib.parse import quote
+        with tempfile.TemporaryDirectory() as td:
+            root=pathlib.Path(td);manifest,_=self.fixture(root)
+            auth=base64.urlsafe_b64encode(b'camellia-128-cfb:private-ss-test-password').decode()
+            uri='ss://'+auth+'@localhost:443?plugin='+quote('obfs-local;obfs=tls;obfs-host=localhost',safe='')
+            path=root/'shadowsocks.txt';path.write_text(uri+'\n')
+            entry=next(e for e in manifest['files'] if e['name']==path.name)
+            entry['bytes'],entry['sha256']=path.stat().st_size,hashlib.sha256(path.read_bytes()).hexdigest()
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(audit.audit(BIN,root,manifest,root/'audit'),0)
+            rows=[json.loads(s) for s in (root/'audit/rows.ndjson').read_text().splitlines()]
+            row=next(r for r in rows if r['source']==path.name)
+            self.assertEqual((row['status'],row['transport'],row['plugin'],row['cipher']),('SUPPORTED','obfs-tls','obfs-local','camellia-128-cfb'))
+
     def test_failed_download_validation_does_not_replace_existing_inputs(self):
         with tempfile.TemporaryDirectory() as td:
             root = pathlib.Path(td)

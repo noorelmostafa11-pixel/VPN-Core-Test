@@ -19,10 +19,11 @@ import (
 )
 
 type kcpOptions struct {
-	Seed   *string `json:"seed"`
-	MTU    int     `json:"mtu"`
-	TTI    int     `json:"tti"`
-	Header string  `json:"header"`
+	Seed         *string `json:"seed"`
+	MTU          int     `json:"mtu"`
+	TTI          int     `json:"tti"`
+	Header       string  `json:"header"`
+	HeaderDomain string  `json:"header_domain"`
 }
 
 func (o kcpOptions) validate() (kcpOptions, error) {
@@ -32,7 +33,10 @@ func (o kcpOptions) validate() (kcpOptions, error) {
 	if o.TTI == 0 {
 		o.TTI = 50
 	}
-	if o.MTU < 576 || o.MTU > 1460 || o.TTI < 10 || o.TTI > 100 || o.Header != "" && o.Header != "none" {
+	if o.MTU < 576 || o.MTU > 1460 || o.TTI < 10 || o.TTI > 100 {
+		return o, providerError(400)
+	}
+	if _, err := newPacketHeader(o.Header, o.HeaderDomain); err != nil {
 		return o, providerError(400)
 	}
 	return o, nil
@@ -48,6 +52,7 @@ type mkcpConn struct {
 	socket                      net.Conn
 	options                     kcpOptions
 	aead                        cipher.AEAD
+	header                      *packetHeader
 	conv                        uint16
 	mu                          sync.Mutex
 	changed                     *sync.Cond
@@ -71,7 +76,8 @@ func dialMKCP(ctx context.Context, address string, o kcpOptions) (*mkcpConn, err
 	}
 	b := make([]byte, 2)
 	_, _ = rand.Read(b)
-	c := &mkcpConn{socket: raw, options: o, conv: binary.BigEndian.Uint16(b), wake: make(chan struct{}, 1), stop: make(chan struct{})}
+	header, _ := newPacketHeader(o.Header, o.HeaderDomain)
+	c := &mkcpConn{socket: raw, options: o, header: header, conv: binary.BigEndian.Uint16(b), wake: make(chan struct{}, 1), stop: make(chan struct{})}
 	c.changed = sync.NewCond(&c.mu)
 	if o.Seed != nil {
 		key := sha256.Sum256([]byte(*o.Seed))
@@ -180,7 +186,7 @@ func (c *mkcpConn) seal(plain []byte) []byte {
 	if c.aead != nil {
 		nonce := make([]byte, c.aead.NonceSize())
 		_, _ = rand.Read(nonce)
-		return c.aead.Seal(nonce, nonce, plain, nil)
+		return c.header.wrap(c.aead.Seal(nonce, nonce, plain, nil))
 	}
 	b := make([]byte, len(plain)+6)
 	binary.BigEndian.PutUint16(b[4:6], uint16(len(plain)))
@@ -191,9 +197,14 @@ func (c *mkcpConn) seal(plain []byte) []byte {
 	for i := 4; i < len(b); i++ {
 		b[i] ^= b[i-4]
 	}
-	return b
+	return c.header.wrap(b)
 }
 func (c *mkcpConn) open(packet []byte) ([]byte, error) {
+	var err error
+	packet, err = c.header.unwrap(packet)
+	if err != nil {
+		return nil, err
+	}
 	if c.aead != nil {
 		n := c.aead.NonceSize()
 		if len(packet) < n+c.aead.Overhead() {
@@ -303,6 +314,7 @@ func (c *mkcpConn) run() {
 		if c.aead != nil {
 			limit = c.options.MTU - 18 - c.aead.NonceSize() - c.aead.Overhead()
 		}
+		limit -= c.header.size()
 		for len(c.up) > 0 && len(pending) < 64 && nextSend < remoteWindow {
 			n := min(len(c.up), limit)
 			pending[nextSend] = &kcpSegment{number: nextSend, payload: append([]byte{}, c.up[:n]...)}

@@ -17,6 +17,7 @@ provide provenance; they are not copy protection.
 This notice does not apply to upstream components, compiler runtimes, protocol
 specifications or public node lists. Their ownership and permissions remain with
 their respective authors. Preserve the notices in `third_party/` and
-`tls-provider/vendor/`; see `OWNERSHIP.md` and `docs/COMPONENTS.md`.
+`tls-provider/vendor/` and `tls-provider/thirdparty/`; see `OWNERSHIP.md` and
+`docs/COMPONENTS.md`.
 
 Source repository: https://github.com/noorelmostafa11-pixel/VPN-Core-Test

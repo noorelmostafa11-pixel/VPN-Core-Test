@@ -116,6 +116,9 @@ class XHttpTests(unittest.TestCase):
         for protocol,cipher in [('vless',''),('vmess','aes-128-gcm'),('trojan',''),('ss','chacha20-ietf-poly1305')]:
             for fp in ('chrome','firefox','native'):
                 with self.subTest(protocol=protocol,fp=fp):self.exchange(protocol,cipher,'stream-one',tls=True,h2=True,extra={'_legacy':True},fp=fp,connections=2)
+    def test_16_legacy_http2_cleartext(self):
+        for protocol,cipher in [('vless',''),('vmess','aes-128-gcm'),('trojan',''),('ss','chacha20-ietf-poly1305')]:
+            with self.subTest(protocol=protocol):self.exchange(protocol,cipher,'stream-one',h2=True,extra={'_legacy':True},connections=2)
     def test_09_bad_status_and_content_encoding(self):
         for bad in ('status','encoding'):
             with self.peer('vless','','stream-one',bad=bad) as (uri,crypto,peer_log):

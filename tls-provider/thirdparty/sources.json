@@ -1,0 +1,24 @@
+[
+  {
+    "repository": "https://github.com/deatil/go-cryptobin",
+    "commit": "fa6b1b0cd56abfe1eb4a2e7bf0617b03d86e82fe",
+    "packages": [
+      "cipher/camellia",
+      "cipher/idea",
+      "cipher/rc2",
+      "cipher/seed",
+      "tool/alias"
+    ],
+    "changes": "Cryptobin alias imports use a module-local path; algorithm implementations are otherwise unchanged."
+  },
+  {
+    "repository": "https://github.com/golang/crypto",
+    "commit": "c3db4df58582058384d318c87f1c912848d8c464",
+    "packages": [
+      "blowfish",
+      "cast5",
+      "salsa20/salsa"
+    ],
+    "changes": "Selected upstream packages are unchanged."
+  }
+]

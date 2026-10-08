@@ -13,9 +13,10 @@ for e in manifest:
     files[path.name]=data
 for name in ['build-hashes.json','build-provenance.json']:files[name]=(build/name).read_bytes()
 for name in ['NOTICE.md','OWNERSHIP.md','docs/BUILDING.md','docs/COMPONENTS.md']:files[name]=(root/name).read_bytes()
-for f in (root/'tls-provider/vendor').rglob('*'):
-    if f.is_file() and f.name.lower().startswith(('license','copying','notice')):
-        files[f.relative_to(root).as_posix()]=f.read_bytes()
+for folder in ['tls-provider/vendor','tls-provider/thirdparty']:
+    for f in (root/folder).rglob('*'):
+        if f.is_file() and (f.name.lower().startswith(('license','copying','notice')) or f.name=='sources.json'):
+            files[f.relative_to(root).as_posix()]=f.read_bytes()
 for f in (root/'third_party').rglob('*'):
     if f.is_file():files[f.relative_to(root).as_posix()]=f.read_bytes()
 out=pathlib.Path(a.output);out.mkdir(parents=True,exist_ok=True)

@@ -16,10 +16,14 @@
 | klauspost/compress | 1.20.1 | تبعية uTLS |
 | blake3 | 1.4.1 | KDF في تشفير VLESS ومراجع Go |
 | klauspost/cpuid/v2 | 2.0.9 | تبعية BLAKE3 |
+| go-cryptobin primitives | fa6b1b0cd56abfe1eb4a2e7bf0617b03d86e82fe | Camellia وIDEA وRC2 وSEED؛ Apache 2.0 |
+| golang/crypto legacy primitives | c3db4df58582058384d318c87f1c912848d8c464 | Blowfish وCAST5 وSalsa20؛ BSD |
 
 الإصدارات وchecksums الكاملة في `tls-provider/go.mod` و`go.sum`، والسورس المثبت والتراخيص في `tls-provider/vendor`. ترخيص Go وMinGW/GCC runtime في `third_party`. نسخة Android تحفظ NOTICE الخاص بالـNDK مع الملفات المبنية وتراخيص vendor. OpenSSL يستخدم في محول Linux للاختبار؛ ملفات Windows لا تستورد OpenSSL. أهداف Linux/Android للإنتاج تستخدم المزوّد المثبت وواجهات primitives من مكتبات Go القياسية. معمارية NDK وإصدارها في `scripts/toolchains.json`.
 
 توجد تسعة ملفات معدّلة في المكونات، مع SHA-256 للأصل والبديل في `tls-provider/component-patches/manifest.json`. ملفات replacement هي المصدر المعتمد لإعادة تطبيق التعديلات. سكربتا Apply-Component-Patches يرفضان محتوى لا يطابق الأصل أو البديل المثبت.
+
+الخوارزميات القديمة المختارة وتراخيصها محفوظة في `tls-provider/thirdparty`، مع سجل المصدر في `sources.json` واختبارات upstream. حزمة كل هدف تحفظ تراخيصها أيضًا. لم تُنسخ طبقات Shadowsocks أو أي محرك VPN من هذه المكونات.
 
 | الملفات | الغرض والدليل |
 | --- | --- |

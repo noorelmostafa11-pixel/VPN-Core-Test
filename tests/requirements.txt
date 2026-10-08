@@ -2,3 +2,4 @@ cryptography==46.0.0
 h2==4.3.0
 hpack==4.2.0
 blake3==1.0.10
+pycryptodome==3.24.0

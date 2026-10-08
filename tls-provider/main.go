@@ -40,20 +40,22 @@ import (
 const bufferLimit = 1048576
 
 type settings struct {
-	Security    string   `json:"security"`
-	Fingerprint string   `json:"fingerprint"`
-	ServerName  string   `json:"server_name"`
-	ALPN        []string `json:"alpn"`
-	CAFile      string   `json:"ca_file"`
-	PublicKey   string   `json:"public_key"`
-	ShortID     string   `json:"short_id"`
-	PQVerify    string   `json:"pq_verify"`
-	LegacyXTLS  string   `json:"legacy_xtls"`
-	Vision      bool     `json:"vision"`
-	ECH         string   `json:"ech"`
-	Pins        []string `json:"pins"`
-	Names       []string `json:"names"`
-	TimeoutMS   int      `json:"timeout_ms"`
+	Security        string   `json:"security"`
+	Fingerprint     string   `json:"fingerprint"`
+	ServerName      string   `json:"server_name"`
+	ALPN            []string `json:"alpn"`
+	CAFile          string   `json:"ca_file"`
+	CAPEM           string   `json:"ca_pem"`
+	OnlyCustomRoots bool     `json:"only_custom_roots"`
+	PublicKey       string   `json:"public_key"`
+	ShortID         string   `json:"short_id"`
+	PQVerify        string   `json:"pq_verify"`
+	LegacyXTLS      string   `json:"legacy_xtls"`
+	Vision          bool     `json:"vision"`
+	ECH             string   `json:"ech"`
+	Pins            []string `json:"pins"`
+	Names           []string `json:"names"`
+	TimeoutMS       int      `json:"timeout_ms"`
 }
 
 type memoryConn struct {
@@ -465,16 +467,26 @@ func permittedCipher(id uint16) bool {
 type providerError int
 
 func (e providerError) Error() string { return "provider operation failed" }
-func configuredTLS(ctx context.Context, conn net.Conn, c settings) (*utls.UConn, string, error) {
+func tlsRoots(c settings) (*x509.CertPool, error) {
 	roots, err := x509.SystemCertPool()
-	if err != nil {
+	if err != nil || c.OnlyCustomRoots {
 		roots = x509.NewCertPool()
 	}
 	if c.CAFile != "" {
 		pem, err := os.ReadFile(c.CAFile)
 		if err != nil || !roots.AppendCertsFromPEM(pem) {
-			return nil, "", providerError(301)
+			return nil, providerError(301)
 		}
+	}
+	if c.CAPEM != "" && !roots.AppendCertsFromPEM([]byte(c.CAPEM)) {
+		return nil, providerError(301)
+	}
+	return roots, nil
+}
+func configuredTLS(ctx context.Context, conn net.Conn, c settings) (*utls.UConn, string, error) {
+	roots, err := tlsRoots(c)
+	if err != nil {
+		return nil, "", err
 	}
 	cfg := &utls.Config{ServerName: c.ServerName, RootCAs: roots, MinVersion: utls.VersionTLS12, NextProtos: c.ALPN}
 	if len(c.Pins) > 0 || len(c.Names) > 0 {

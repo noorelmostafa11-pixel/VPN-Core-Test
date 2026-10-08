@@ -1,2 +1,2 @@
 #pragma once
-#define VPN_CORE_VERSION "0.4.6"
+#define VPN_CORE_VERSION "0.4.7"

@@ -60,12 +60,12 @@ bash build.sh --target android --abi arm64-v8a --ndk "$ANDROID_HOME/ndk/30.0.162
 
 الواجهة في `src/core-api.h`: `vpn_core_version` و`vpn_core_run(argc, argv)` و`vpn_core_stop`. شغّل run في thread مملوك للتطبيق، باستخدام `--config /absolute/path/node.ini`. يسمح تشغيلًا واحدًا؛ الثاني يعيد 2. Stop يطلب الإغلاق؛ انتظر خروج thread قبل أي عملية تحرير. لا تفك تحميل المكتبة أو مزوّد Go أثناء عمر العملية. المكتبة لا تثبت handlers للإشارات على حساب التطبيق المضيف. يحفظ الكور إعدادات العقد الأصلية وسياسة التحقق من TLS.
 
-احتفظ بالمزوّد بجانب executable أو مكتبة الكور. تحميله من مجلد المكوّن نفسه؛ لا نبحث عنه في مجلد العمل أو PATH. يرفض بناء الإنتاج `test_ca_file`. اختبارات المحاكي تمرر CA مباشرة للمزوّد بدل الاعتماد على بيئة shell عند تحميل مكتبة Go، وتستخدم `tls_ca_file` مع CA مؤقتة معروفة، وتختبر رفض الاسم الخاطئ.
+احتفظ بالمزوّد بجانب executable أو مكتبة الكور. تحميله من مجلد المكوّن نفسه؛ لا نبحث عنه في مجلد العمل أو PATH. يرفض بناء الإنتاج `test_ca_file`. اختبارات الإنتاج المحلية تستخدم CA مؤقتة معروفة وتختبر رفض الاسم الخاطئ.
 
 ## GitHub للاختبارات
 
-- **Core Source Validation:** الاختبارات المشتركة وWindows/PowerShell وفحص الحصر، ثم اختبار العقد المثبتة على main. لا اختبارات على لاب المستخدم.
-- **Build Selected Core Target:** نفس أمر البناء المحلي، مع اختيار all/windows/linux/android في Run workflow. عند تغيير السورس يُتحقق من كل أهداف البناء. Android يبنى لكل ABI وعلى Windows أيضًا، وتوجد اختبارات تشغيل مستقلة على محاكي Android x86_64. ARM على هاتف فعلي وVPNService/TUN خارج تغطية هذا workflow.
+- **Core Source Validation:** الاختبارات المشتركة وWindows/PowerShell وفحص الحصر، ثم اختبار أحدث ملفات Pre المحمّلة لهذا التشغيل على main.
+- **Build Selected Core Target:** نفس أمر البناء المحلي، مع اختيار all/windows/linux/android في Run workflow. Android يبنى لكل ABI وعلى Windows أيضًا. خطوة المحاكي أُزيلت؛ تشغيل Android على جهاز وVPNService/TUN خارج تغطية هذا workflow.
 - مدخلات مقارنة العقد يجلبها `scripts/Prepare-Pinned-Nodes.py` من commit الأصلي المثبت لـ0.4.2، ويتحقق من الحجم وSHA256 قبل فكها؛ لا حاجة لبقاء ZIP قديم في `main`.
 - Artifacts تربط الهدف بـcommit المصدر. `build-hashes.json` يتحقق من الملفات؛ `build-provenance.json` يوضح الأدوات والهدف ونوع التحقق. بناء يدوي غير مرتبط بـgit يسجل `NOT_VERIFIED` للمصدر.
 

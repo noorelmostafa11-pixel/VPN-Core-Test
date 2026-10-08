@@ -4,14 +4,12 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	quic "github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 	utls "github.com/refraction-networking/utls"
 	"net"
 	"net/http"
-	"os"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -21,6 +19,7 @@ import (
 type projectQUIC struct {
 	conn   *utls.UQUICConn
 	config *utls.Config
+	alpn   []string
 	params []byte
 }
 
@@ -68,7 +67,7 @@ func (p *projectQUIC) Start(ctx context.Context) error {
 	for _, ext := range u.Extensions {
 		switch v := ext.(type) {
 		case *utls.ALPNExtension:
-			v.AlpnProtocols = []string{"h3"}
+			v.AlpnProtocols = append([]string{}, p.alpn...)
 		case *utls.SessionTicketExtension:
 			continue
 		case *utls.RenegotiationInfoExtension:
@@ -103,18 +102,15 @@ func (p *projectQUIC) ConnectionState() tls.ConnectionState {
 	return tls.ConnectionState{Version: s.Version, HandshakeComplete: s.HandshakeComplete, DidResume: s.DidResume, CipherSuite: s.CipherSuite, NegotiatedProtocol: s.NegotiatedProtocol, NegotiatedProtocolIsMutual: s.NegotiatedProtocolIsMutual, ServerName: s.ServerName, PeerCertificates: s.PeerCertificates, VerifiedChains: s.VerifiedChains, OCSPResponse: s.OCSPResponse, SignedCertificateTimestamps: s.SignedCertificateTimestamps, TLSUnique: s.TLSUnique, ECHAccepted: s.ECHAccepted}
 }
 func quicFactory(c settings) quicbridge.Factory {
+	return quicFactoryFor(c, []string{"h3"})
+}
+func quicFactoryFor(c settings, alpn []string) quicbridge.Factory {
 	return func(ctx context.Context, std *tls.Config) (quicbridge.Conn, error) {
-		roots, err := x509.SystemCertPool()
+		roots, err := tlsRoots(c)
 		if err != nil {
-			roots = x509.NewCertPool()
+			return nil, err
 		}
-		if c.CAFile != "" {
-			pem, err := os.ReadFile(c.CAFile)
-			if err != nil || !roots.AppendCertsFromPEM(pem) {
-				return nil, providerError(301)
-			}
-		}
-		cfg := &utls.Config{ServerName: c.ServerName, RootCAs: roots, MinVersion: utls.VersionTLS13, NextProtos: []string{"h3"}, SessionTicketsDisabled: true}
+		cfg := &utls.Config{ServerName: c.ServerName, RootCAs: roots, MinVersion: utls.VersionTLS13, NextProtos: alpn, SessionTicketsDisabled: true}
 		if len(c.Pins) > 0 || len(c.Names) > 0 {
 			cfg.InsecureSkipVerify = true
 			cfg.VerifyPeerCertificate = verifyConfigured(c, roots)
@@ -135,7 +131,7 @@ func quicFactory(c settings) quicbridge.Factory {
 			native.ServerName = c.ServerName
 			native.RootCAs = roots
 			native.MinVersion = tls.VersionTLS13
-			native.NextProtos = []string{"h3"}
+			native.NextProtos = append([]string{}, alpn...)
 			native.SessionTicketsDisabled = true
 			native.ClientSessionCache = nil
 			native.VerifyPeerCertificate = cfg.VerifyPeerCertificate
@@ -143,7 +139,9 @@ func quicFactory(c settings) quicbridge.Factory {
 			native.EncryptedClientHelloConfigList = cfg.EncryptedClientHelloConfigList
 			return tls.QUICClient(&tls.QUICConfig{TLSConfig: native}), nil
 		}
-		return &projectQUIC{conn: utls.UQUICClient(&utls.QUICConfig{TLSConfig: cfg}, id), config: cfg}, nil
+		// Building a browser profile writes its default ALPN back into cfg.
+		// Retain the carrier's protocols separately before that mutation.
+		return &projectQUIC{conn: utls.UQUICClient(&utls.QUICConfig{TLSConfig: cfg}, id), config: cfg, alpn: append([]string{}, alpn...)}, nil
 	}
 }
 func (s *xSession) http3Client(c xSettings, x xOptions) (*http.Client, func(), error) {

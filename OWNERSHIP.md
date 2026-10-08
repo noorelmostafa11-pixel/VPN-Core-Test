@@ -28,6 +28,12 @@ recorded, with original and replacement SHA-256 hashes, under
 `tls-provider/component-patches`. The project-authored portions of those
 changes do not claim ownership of the upstream component code.
 
+Selected Camellia, IDEA, RC2 and SEED primitives from go-cryptobin (Apache 2.0),
+and Blowfish, CAST5 and Salsa20 primitives from golang/crypto (BSD), are
+preserved under `tls-provider/thirdparty`. Their pinned commits and exact
+selections are recorded in `sources.json`. These are cryptographic primitives;
+Shadowsocks framing and transport implementations remain project-owned.
+
 `bin/vpn-tls.dll` contains these library components plus project-authored
 carrier, queue, and cryptographic glue. It contains no imported VPN engine.
 See `docs/COMPONENTS.md`, `go.mod`, `go.sum`, and the preserved licenses for

@@ -403,7 +403,8 @@ class ExpandedTests(unittest.TestCase):
             temp = pathlib.Path(temp)
             ready = temp / 'ready.json'
             cfg = temp / 'node.ini'
-            cfg.write_text(f'node_uri={uri}\nlisten_port=0\nready_file={ready}\nconnect_timeout_ms=3000\nidle_timeout_ms=15000\ntest_ca_file={self.ca}\n')
+            ca_setting='tls_ca_file' if os.environ.get('VPN_CORE_TEST_PRODUCTION') else 'test_ca_file'
+            cfg.write_text(f'node_uri={uri}\nlisten_port=0\nready_file={ready}\nconnect_timeout_ms=3000\nidle_timeout_ms=15000\n{ca_setting}={self.ca}\n')
             with (temp / 'core.log').open('w') as log:
                 process = subprocess.Popen([str(BIN), '--config', str(cfg)], stdout=log, stderr=subprocess.STDOUT)
                 try:

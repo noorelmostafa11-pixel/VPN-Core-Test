@@ -1,0 +1,80 @@
+{
+  "schema": "vpn-support-additions-v1",
+  "version": "0.4.7",
+  "verified_utc": "2026-10-08T01:46:18.586352+00:00",
+  "baseline_core_commit": "07d534f6f4ffe6553c7d5fb1cc8431c9cfd1ff75",
+  "pre_repository": "noorelmostafa11-pixel/VPN-Nodes-Pre",
+  "pre_commit": "b228d3adb5057d5135c5ecbb7f0bdc843baf3a5d",
+  "pre_files": [
+    {
+      "name": "vless.txt",
+      "sha256": "f7175a894ebf41501b9e62f51ef4ffcd49232c93937b5ee72a7cf2c1bef5399c",
+      "bytes": 13455666,
+      "nodes": 53093
+    },
+    {
+      "name": "vmess.txt",
+      "sha256": "1e20072f27dffcc64f814356b9dd35bc99ea7191ed1979d5625e882eaa0de8f4",
+      "bytes": 1711953,
+      "nodes": 4777
+    },
+    {
+      "name": "trojan.txt",
+      "sha256": "a99fab7cb46f23588a6286d3cbd24ee10e7c373fa1f1f3db731121cb47689dc3",
+      "bytes": 2378210,
+      "nodes": 13019
+    },
+    {
+      "name": "shadowsocks.txt",
+      "sha256": "a5eec7358ef6f79dff6a54a58090680894a7a1325a7bd90ae82dd723d03b387e",
+      "bytes": 129440,
+      "nodes": 767
+    }
+  ],
+  "pre_network_test_performed": false,
+  "inventory_rows": 71656,
+  "before_counts": {
+    "SUPPORTED": 70684,
+    "INVALID": 972,
+    "UNSUPPORTED": 0
+  },
+  "after_counts": {
+    "SUPPORTED": 70754,
+    "INVALID": 902,
+    "UNSUPPORTED": 0
+  },
+  "support_added": 70,
+  "previous_support_lost": 0,
+  "source_line_coverage_and_node_ids_unchanged": true,
+  "core_test_sha256": "f97f2e59b7ffecbfcab70b48f3d27b7f5378f1ab1d83b11823cb740c137e7b07",
+  "production_linux_core_sha256": "24cf08f16e5e295c53fe5e347aa068e4a1d4c71b529c6e8e12a44d33111921e7",
+  "validation": {
+    "source_suite": {
+      "tests": 199,
+      "seconds": 219.224,
+      "result": "PASS",
+      "skipped": 2,
+      "log_sha256": "e99c231efe786bb2c535a55a5f246965ec9d422fe30c95455635fe7eb7dcda52"
+    },
+    "production_suite": {
+      "tests": 27,
+      "seconds": 49.044,
+      "result": "PASS",
+      "skipped": 0,
+      "log_sha256": "4437f3bf9883f97da061915c33ecaf93b98c50a04fcb7234cebb3325369fb181"
+    }
+  },
+  "go_race": "PASS",
+  "randomized_tls_profiles": {
+    "cases": 1024,
+    "result": "PASS"
+  },
+  "runtime_package_includes_new_component_notices": true,
+  "workflows_started": 0,
+  "not_verified": [
+    "Windows/Android builds for this source change",
+    "Live Pre node success",
+    "Public Xray node comparison",
+    "CPU/RAM/speed comparison"
+  ]
+}

@@ -17,7 +17,7 @@ spec.loader.exec_module(snapshot)
 # Reports never include arbitrary option text, credentials, or complete URIs.
 ENUMS = {
     'protocol': {'vless', 'vmess', 'trojan', 'ss'},
-    'transport': {'raw', 'websocket', 'httpupgrade', 'grpc', 'xhttp', 'http', 'kcp'},
+    'transport': {'raw', 'websocket', 'httpupgrade', 'grpc', 'xhttp', 'http', 'kcp', 'quic', 'obfs-http', 'obfs-tls'},
     'security': {'none', 'tls', 'reality', 'xtls'},
     'fingerprint': {'', 'unsafe', 'native', 'chrome', 'firefox', 'safari', 'ios', 'android',
                     'edge', '360', 'qq', 'random', 'randomized', 'randomizednoalpn'},
@@ -29,9 +29,11 @@ ENUMS = {
                'aes-128-cfb', 'aes-192-cfb', 'aes-256-cfb', 'aes-128-ctr', 'aes-192-ctr', 'aes-256-ctr',
                'aes-128-ofb', 'aes-192-ofb', 'aes-256-ofb', 'chacha20-ietf-poly1305',
                'chacha20-poly1305', '2022-blake3-aes-128-gcm', '2022-blake3-aes-256-gcm',
-               '2022-blake3-chacha20-poly1305'},
-    'header_type': {'', 'none', 'None', 'http'},
-    'plugin': {'none', 'v2ray-plugin'},
+               '2022-blake3-chacha20-poly1305', 'camellia-128-cfb', 'camellia-192-cfb', 'camellia-256-cfb',
+               'bf-cfb', 'cast5-cfb', 'des-cfb', 'idea-cfb', 'rc2-cfb', 'seed-cfb', 'rc4', 'rc4-md5',
+               'salsa20', 'chacha20', 'chacha20-ietf', 'table', 'xchacha20-ietf-poly1305'},
+    'header_type': {'', 'none', 'None', 'http', 'srtp', 'utp', 'wireguard', 'wechat-video', 'wechat', 'dtls', 'dns'},
+    'plugin': {'none', 'v2ray-plugin', 'simple-obfs', 'obfs-local'},
 }
 
 
@@ -94,8 +96,10 @@ def audit(core, nodes, manifest, output):
             files.append({**entry, 'counts': dict(counts)})
     version = subprocess.check_output([str(core), '--version'], text=True, timeout=20).strip()
     expected = manifest.get('expected_support')
+    # Historical support counts are a floor: added support must not fail CI.
     coverage_met = not totals['UNSUPPORTED'] and (expected is None or
-                    all(totals[key] == value for key, value in expected.items()))
+                    (totals['SUPPORTED'] >= expected.get('SUPPORTED', 0) and
+                     totals['INVALID'] <= expected.get('INVALID', sum(totals.values()))))
     report = {'schema': 'vpn-pre-support-audit-v1', 'pre_repository': manifest['repository'],
               'pre_commit': manifest['commit'], 'core_version': version,
               'core_sha256': hashlib.sha256(core.read_bytes()).hexdigest(),

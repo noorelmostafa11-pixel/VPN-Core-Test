@@ -126,7 +126,7 @@ class BatchTests(unittest.TestCase):
                 temp=pathlib.Path(temp)
                 nodes=temp/'nodes.txt'
                 valid=f'vless://{ID}@127.0.0.1:{proxy.port}?security=none&type=raw'
-                lines=[valid+f'#test-{i}' for i in range(6)] + [f'vless://{ID}@127.0.0.1:{free_port()}?security=none&type=raw',valid.replace(ID,'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),valid+'&fp=chrome',valid.replace('type=raw','type=quic'),'invalid-link']
+                lines=[valid+f'#test-{i}' for i in range(6)] + [f'vless://{ID}@127.0.0.1:{free_port()}?security=none&type=raw',valid.replace(ID,'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),valid+'&fp=chrome',valid.replace('type=raw','type=domainsocket'),'invalid-link']
                 nodes.write_text('\n'.join(lines)+'\n')
                 reports=temp/'results'
                 result=subprocess.run([PW,'-NoProfile','-File',str(ROOT/'scripts/Test-Batch.ps1'),'-Nodes',str(nodes),'-Core',str(BIN),'-Curl','curl','-Concurrency','8','-TimeoutSeconds','5','-Url',f'https://127.0.0.1:{target.port}/','-ExpectedBodySha256',hashlib.sha256(BODY).hexdigest(),'-TestCaFile',str(original.CoreTests.ca),'-OutputDirectory',str(reports)],capture_output=True,text=True,timeout=90)

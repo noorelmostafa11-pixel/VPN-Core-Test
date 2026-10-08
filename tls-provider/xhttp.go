@@ -158,17 +158,18 @@ func (x *xOptions) UnmarshalJSON(data []byte) error {
 }
 
 type xSettings struct {
-	Transport  string          `json:"transport"`
-	KCP        kcpOptions      `json:"kcp"`
-	LegacyHTTP bool            `json:"legacy_http"`
-	Server     string          `json:"server"`
-	Port       int             `json:"port"`
-	Host       string          `json:"host"`
-	Path       string          `json:"path"`
-	Mode       string          `json:"mode"`
-	Extra      json.RawMessage `json:"extra"`
-	TLS        settings        `json:"tls"`
-	Masks      []wireMask      `json:"masks"`
+	Transport  string            `json:"transport"`
+	KCP        kcpOptions        `json:"kcp"`
+	QUIC       legacyQUICOptions `json:"quic"`
+	LegacyHTTP bool              `json:"legacy_http"`
+	Server     string            `json:"server"`
+	Port       int               `json:"port"`
+	Host       string            `json:"host"`
+	Path       string            `json:"path"`
+	Mode       string            `json:"mode"`
+	Extra      json.RawMessage   `json:"extra"`
+	TLS        settings          `json:"tls"`
+	Masks      []wireMask        `json:"masks"`
 }
 
 func (c xSettings) options() (xOptions, error) {
@@ -180,9 +181,6 @@ func (c xSettings) options() (xOptions, error) {
 	}
 	x.Host, x.Path, x.Mode = c.Host, c.Path, c.Mode
 	if c.LegacyHTTP {
-		if c.TLS.Security == "none" {
-			return x, providerError(400)
-		}
 		x.Legacy, x.Mode, x.NoGRPCHeader, x.UplinkHTTPMethod = true, "stream-one", true, "PUT"
 		if x.Path == "" {
 			x.Path = "/"
@@ -664,6 +662,9 @@ func (s *xSession) client(ctx context.Context, c xSettings, x xOptions) (*http.C
 	}
 	first := &firstDial{conn: conn}
 	alpn := ""
+	if c.LegacyHTTP && c.TLS.Security == "none" {
+		alpn = "h2"
+	}
 	if u, ok := conn.(*tlsHTTPConn); ok {
 		alpn = u.alpn
 	}
@@ -737,6 +738,10 @@ func (s *xSession) response(client *http.Client, req *http.Request, download boo
 	return err
 }
 func (s *xSession) run(c xSettings) {
+	if c.Transport == "quic" {
+		s.runLegacyQUIC(c)
+		return
+	}
 	if c.Transport == "kcp" {
 		s.runMKCP(c)
 		return
@@ -1015,6 +1020,15 @@ func vpn_xhttp_validate(data *C.char, length C.int) C.int {
 	var c xSettings
 	if json.Unmarshal(C.GoBytes(unsafe.Pointer(data), length), &c) != nil {
 		return 400
+	}
+	if c.Transport == "quic" {
+		if err := c.QUIC.validate(); err != nil {
+			return 400
+		}
+		if c.TLS.Security != "tls" && c.TLS.Security != "none" {
+			return 400
+		}
+		return 0
 	}
 	if c.Transport == "kcp" {
 		if _, err := c.KCP.validate(); err != nil {

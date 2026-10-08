@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/quic-go/quic-go/http3"
+	"golang.org/x/net/http2"
 	"io"
 	"net"
 	"net/http"
@@ -283,6 +284,16 @@ func main() {
 	}
 	fmt.Println(l.Addr().String())
 	server := &http.Server{Handler: http.HandlerFunc(handler), MaxHeaderBytes: 1048576}
+	if cfg.H2 && !cfg.TLS {
+		h2 := &http2.Server{}
+		for {
+			conn, err := l.Accept()
+			if err != nil {
+				return
+			}
+			go h2.ServeConn(conn, &http2.ServeConnOpts{Handler: server.Handler})
+		}
+	}
 	if cfg.TLS {
 		server.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
 		if cfg.ECH {
