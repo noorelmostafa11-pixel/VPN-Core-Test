@@ -44,6 +44,25 @@ inline bool compatible_none_encryption(const std::string& text) {
     if(text.size()<=4)return false;auto value=lower(text.substr(0,8));
     return value.find("none=")==0||value.find("none@")==0||value.find("none\xc2\xac" "e=")==0;
 }
+inline std::string compatible_tagged_transport(const std::string& text) {
+    auto tag=text.find('#');if(tag==std::string::npos||tag==0||tag+1==text.size())return {};
+    auto name=lower(trim(text.substr(0,tag)));
+    if(name=="ws"||name=="websocket")return "websocket";
+    if(name=="grpc"||name=="gun")return "grpc";
+    return {};
+}
+inline std::vector<std::string> compatible_concatenated_alpn(const std::string& text) {
+    std::vector<std::string> out;size_t at=0;
+    while(at<text.size()){
+        if(text.compare(at,8,"http/1.1")==0){out.emplace_back("http/1.1");at+=8;}
+        else if(text.compare(at,2,"h2")==0||text.compare(at,2,"h3")==0){out.push_back(text.substr(at,2));at+=2;}
+        else return {};
+    }
+    return out.size()>1?out:std::vector<std::string>{};
+}
+inline bool compatible_duplicate_vision_suffix(const std::string& text) {
+    return text=="xtls-rprx-vision-udp443-udp443";
+}
 inline bool add_reality_semicolon_aliases(std::map<std::string,std::string>& decoded,std::map<std::string,std::string>& raw) {
     static const std::set<std::string> public_keys{"pbk","password","publickey","public-key"};
     for(const auto& name:public_keys)if(decoded.count(name))return false;

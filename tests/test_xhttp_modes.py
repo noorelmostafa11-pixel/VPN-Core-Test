@@ -137,6 +137,46 @@ class XHttpTests(unittest.TestCase):
                         self.assertEqual(exact(sock,len(payload)),payload)
                 self.assertFalse(crypto.errors)
 
+    def test_18_legacy_http2_with_inactive_malformed_extra(self):
+        for protocol,cipher in [('vless',''),('vmess','aes-128-gcm'),('trojan',''),('ss','chacha20-ietf-poly1305')]:
+            with self.subTest(protocol=protocol),self.peer(protocol,cipher,'stream-one',tls=True,h2=True,extra={'_legacy':True}) as (uri,crypto,peer_log):
+                imported=uri.rpartition('&extra=')[0]+'&extra=%7B'
+                with self.core(imported) as (port,log):
+                    with self.socks(port) as sock:
+                        self.assertEqual(exact(sock,len(old.HELLO)),old.HELLO)
+                        payload=random.Random(409).randbytes(100019);sock.sendall(payload)
+                        self.assertEqual(exact(sock,len(payload)),payload)
+                    self.assertNotIn('failed phase=',log.read_text())
+                self.assertFalse(crypto.errors)
+
+    def test_19_concatenated_alpn_preserves_http_version_selection(self):
+        for source in ('h2http/1.1','h3h2http/1.1'):
+            h3=source.startswith('h3')
+            with self.subTest(source=source),self.peer('vless','','packet-up',tls=True,h2=not h3,extra={'_h3':h3}) as (uri,crypto,peer_log):
+                imported=uri.replace('&alpn=h3','&alpn='+quote(source,safe='')) if h3 else uri+'&alpn='+quote(source,safe='')
+                with self.core(imported) as (port,log):
+                    with self.socks(port) as sock:
+                        self.assertEqual(exact(sock,len(old.HELLO)),old.HELLO)
+                        payload=random.Random(410).randbytes(100019);sock.sendall(payload)
+                        self.assertEqual(exact(sock,len(payload)),payload)
+                    self.assertNotIn('failed phase=',log.read_text())
+                self.assertFalse(crypto.errors)
+
+    def test_20_tagged_websocket_and_grpc_transfer_payload(self):
+        for transport,source in [('websocket','ws'),('grpc','grpc')]:
+            with self.subTest(transport=transport):
+                peer=old.Peer('vless',transport=transport,tls_context=self.context)
+                try:
+                    uri=old.ExpandedTests.uri(self,peer).replace('type='+transport,'type='+quote(source+'#source-label',safe=''))
+                    with self.core(uri) as (port,log):
+                        with self.socks(port) as sock:
+                            self.assertEqual(exact(sock,len(old.HELLO)),old.HELLO)
+                            payload=random.Random(411).randbytes(100019);sock.sendall(payload)
+                            self.assertEqual(exact(sock,len(payload)),payload)
+                        self.assertNotIn('failed phase=',log.read_text())
+                    self.assertFalse(peer.errors)
+                finally:peer.close()
+
     def test_09_bad_status_and_content_encoding(self):
         for bad in ('status','encoding'):
             with self.peer('vless','','stream-one',bad=bad) as (uri,crypto,peer_log):

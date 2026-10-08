@@ -175,4 +175,16 @@ class VisionTests(unittest.TestCase):
                     self.assertIn(reason,log.read_text())
             finally:p.close()
 
+    def test_04_duplicate_udp443_suffix_keeps_vision_framing(self):
+        p=VisionPeer(self.context)
+        try:
+            with self.core(self.uri(p)+'&flow=xtls-rprx-vision-udp443-udp443&fp=chrome') as (port,log):
+                with self.socks(port) as s:
+                    self.assertEqual(exact(s,len(old.HELLO)+4),old.HELLO+b'tail')
+                    payload=random.Random(409).randbytes(100019);s.sendall(payload)
+                    self.assertEqual(exact(s,len(payload)),payload)
+                self.assertNotIn('failed phase=',log.read_text())
+            self.assertEqual(p.errors,[])
+        finally:p.close()
+
 if __name__=='__main__':unittest.main(verbosity=2)

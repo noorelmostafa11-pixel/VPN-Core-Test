@@ -127,4 +127,64 @@ class UriCompatibilityTests(unittest.TestCase):
         self.assertEqual(self.probe('security=reality')['reason_code'],'REALITY_PUBLIC_KEY_INVALID')
         self.assertEqual(self.probe('security=reality&;pbk='+PUBLIC_KEY+'&;sid=not-hex')['reason_code'],'REALITY_SHORT_ID_INVALID')
 
+    def test_tagged_websocket_and_grpc_preserve_source_fields(self):
+        for source,network in [('ws','websocket'),('websocket','websocket'),('grpc','grpc'),('gun','grpc')]:
+            with self.subTest(source=source):
+                original=source+'#source-label'
+                row=self.probe('security=tls&type='+quote(original,safe='')+'&path=%2Fkeep');self.accepted(row)
+                self.assertEqual(row['transport'],network)
+                self.assertEqual(row['original_options']['type'],original)
+                self.assertEqual(row['original_options']['path'],'/keep')
+                self.assertEqual(row['uri_compatibility'],['TRANSPORT_ENCODED_TAG_SUFFIX'])
+
+    def test_tagged_transport_requires_a_complete_known_name_and_label(self):
+        for source in ('wsx#label','grpc-other#label','ws#','unknown#label','tcp#label'):
+            with self.subTest(source=source):
+                self.assertEqual(self.probe('security=tls&type='+quote(source,safe=''))['reason_code'],'TRANSPORT_NAME_INVALID')
+
+    def test_concatenated_xhttp_alpn_preserves_protocol_order_and_original(self):
+        for source,protocols in [('h2http/1.1',['h2','http/1.1']),('h3h2http/1.1',['h3','h2','http/1.1'])]:
+            with self.subTest(source=source):
+                row=self.probe('security=tls&type=xhttp&alpn='+quote(source,safe=''));self.accepted(row)
+                self.assertEqual(row['alpn'],protocols)
+                self.assertEqual(row['original_options']['alpn'],source)
+                self.assertEqual(row['uri_compatibility'],['ALPN_CONCATENATED_PROTOCOLS'])
+
+    def test_existing_alpn_and_unknown_tokens_are_not_reinterpreted(self):
+        row=self.probe('security=tls&type=xhttp&alpn=h2,http%2F1.1');self.accepted(row)
+        self.assertEqual(row['alpn'],['h2','http/1.1']);self.assertNotIn('uri_compatibility',row)
+        for source in ('h2http/1.1unknown','h2+http/1.1','H2http/1.1'):
+            with self.subTest(source=source):
+                self.assertEqual(self.probe('security=tls&type=xhttp&alpn='+quote(source,safe=''))['reason_code'],'XHTTP_ALPN_INVALID')
+        for query in ('security=tls&type=tcp','security=reality&type=xhttp&pbk='+PUBLIC_KEY):
+            row=self.probe(query+'&alpn=h2http%2F1.1');self.accepted(row)
+            self.assertEqual(row['alpn'],['h2http/1.1']);self.assertNotIn('uri_compatibility',row)
+
+    def test_duplicated_vision_udp443_preserves_original_flow(self):
+        original='xtls-rprx-vision-udp443-udp443'
+        row=self.probe('security=tls&flow='+original);self.accepted(row)
+        self.assertEqual(row['flow'],'xtls-rprx-vision-udp443')
+        self.assertEqual(row['original_options']['flow'],original)
+        self.assertEqual(row['uri_compatibility'],['VISION_DUPLICATE_UDP443_SUFFIX'])
+        self.assertEqual(self.probe('security=none&flow='+original)['reason_code'],'VISION_CONFIGURATION')
+        self.assertEqual(self.probe('security=tls&flow='+original+'-udp443')['reason_code'],'FLOW_NAME_INVALID')
+
+    def test_legacy_http_retains_inactive_extra_without_using_it(self):
+        for original in ('{',"{'xmux':",'[1,2]','"source-label"'):
+            with self.subTest(original=original):
+                row=self.probe('security=tls&type=h2&extra='+quote(original,safe=''));self.accepted(row)
+                expected=json.loads(original) if original in ('[1,2]','"source-label"') else original
+                self.assertEqual(row['resolved_extra'],expected)
+                self.assertEqual(row['original_options']['extra'],original)
+                self.assertIsNone(row['provider_extra'])
+                self.assertEqual(row['uri_compatibility'],['LEGACY_HTTP_INACTIVE_EXTRA'])
+
+    def test_legacy_http_keeps_existing_valid_extra_extension(self):
+        value={'headers':{'x-note':'a+b%2Fc'},'xmux':{'maxConcurrency':'1-3'},'xPaddingBytes':'100-300'}
+        original=json.dumps(value)
+        row=self.probe('security=tls&type=http&extra='+quote(original,safe=''));self.accepted(row)
+        self.assertEqual(row['resolved_extra'],value);self.assertEqual(row['provider_extra'],value)
+        self.assertEqual(row['original_options']['extra'],original)
+        self.assertNotIn('uri_compatibility',row)
+
 if __name__=='__main__':unittest.main(verbosity=2)

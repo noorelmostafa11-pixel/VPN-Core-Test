@@ -1,4 +1,10 @@
-# vpn-core 0.4.8
+# vpn-core 0.4.9
+
+Legacy HTTP/2 nodes no longer fail provider validation because an unrelated XHTTP extra value is not an object. The original value stays in Config and source options; the existing valid-object extension stays unchanged. Validation and connection creation use the same active settings.
+
+Adds import compatibility for tagged WebSocket/gRPC names, concatenated XHTTP ALPN protocol tokens and the exact duplicated Vision UDP443 suffix. The original URI, query fields, node IDs and previous support are preserved. The same 71,656 inputs now have 70,917 supported configurations and 739 invalid configurations: 16 more than 0.4.8, with no regression. See [SUPPORT-0.4.9.md](SUPPORT-0.4.9.md) for local wire verification and limits.
+
+## Previous 0.4.8 import compatibility
 
 Additive URI import compatibility preserves the original URI, original query values and node ID. Complete XHTTP objects can also use encoded plus whitespace, single quoted strings or a second URL encoding layer. Observed VLESS `none` suffixes, REALITY `tcp#` suffixes and semicolon-prefixed REALITY field aliases now resolve through explicit compatibility paths. Canonical values keep priority; incomplete JSON and missing or invalid credentials stay subject to the existing validators. See [SUPPORT-0.4.8.md](SUPPORT-0.4.8.md).
 
