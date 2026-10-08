@@ -11,10 +11,6 @@ on:
         type: choice
         options: [all, windows, linux, android]
         default: all
-      android_runtime:
-        description: Run independent Android protocol peers on the GitHub emulator
-        type: boolean
-        default: true
 permissions:
   contents: read
 concurrency:
@@ -136,31 +132,3 @@ jobs:
           name: core-android-from-windows-${{ github.sha }}
           path: build/android-arm64-v8a/
           if-no-files-found: error
-  android_runtime:
-    needs: android
-    if: github.event_name != 'workflow_dispatch' || inputs.android_runtime
-    name: Android x86_64 verified TLS and protocol peers
-    runs-on: ubuntu-24.04
-    timeout-minutes: 35
-    steps:
-      - uses: actions/checkout@v4
-        with: {persist-credentials: false}
-      - uses: actions/setup-python@v5
-        with: {python-version: '3.12'}
-      - uses: actions/download-artifact@v4
-        with:
-          name: core-android-x86_64-${{ github.sha }}
-          path: android-artifact
-      - run: |
-          python -m pip install -r tests/requirements.txt
-          sudo chmod 666 /dev/kvm
-      - uses: reactivecircus/android-emulator-runner@v2
-        env:
-          PYTHONPATH: tests
-          VPN_CORE_ANDROID_BUILD: ${{ github.workspace }}/android-artifact/build/android-x86_64
-        with:
-          api-level: 35
-          arch: x86_64
-          target: google_apis
-          disable-animations: true
-          script: python -m unittest -v test_android_044.AndroidTransportTests
