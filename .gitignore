@@ -24,3 +24,5 @@ local.ini
 /VPN-Core-Test-Public-Bundle.zip.download
 
 /pre-run/
+/tests/dotnet/bin/
+/tests/dotnet/obj/

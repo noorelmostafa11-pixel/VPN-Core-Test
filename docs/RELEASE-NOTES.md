@@ -1,4 +1,22 @@
-# vpn-core 0.4.9
+# vpn-core 0.4.10
+
+## Current 0.4.10 embedding SDK and UDP
+
+Adds SOCKS5 UDP ASSOCIATE, project-owned VLESS/Trojan/VMess packet paths and native
+Shadowsocks UDP, including existing stream/AEAD/SS2022 methods and identity headers.
+DNS datagrams follow the proxy path. URI parsing and existing TCP support are
+retained. ABI 1 exports remain; ABI 2 adds run-with-hooks, lifecycle state and
+actual listener port. C++ and Go sockets use host protection/resolution hooks
+when embedding in a VPN application.
+
+Android builds include JNI and an ABI-specific AAR; the target workflow also
+packages a combined AAR after its four ABI builds. Windows ZIPs include the C
+header and .NET adapter. Applications own VpnService/TUN/routing; there is no
+TUN inbound or raw TUN packet API in this release. See [SDK-INTEGRATION.md](SDK-INTEGRATION.md).
+
+Validation and platform limits are recorded in [SDK-0.4.10.md](SDK-0.4.10.md).
+
+## Previous 0.4.9 URI compatibility
 
 Legacy HTTP/2 nodes no longer fail provider validation because an unrelated XHTTP extra value is not an object. The original value stays in Config and source options; the existing valid-object extension stays unchanged. Validation and connection creation use the same active settings.
 

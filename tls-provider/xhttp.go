@@ -601,8 +601,7 @@ type tlsHTTPConn struct {
 
 func (c *tlsHTTPConn) projectTLSState() (uint16, string) { return c.version, c.alpn }
 func (s *xSession) dial(ctx context.Context, c xSettings, forced string) (net.Conn, error) {
-	d := net.Dialer{Timeout: time.Duration(c.TLS.TimeoutMS) * time.Millisecond, KeepAlive: 30 * time.Second}
-	raw, err := d.DialContext(ctx, "tcp", net.JoinHostPort(c.Server, strconv.Itoa(c.Port)))
+	raw, err := outboundDial(ctx, "tcp", net.JoinHostPort(c.Server, strconv.Itoa(c.Port)), time.Duration(c.TLS.TimeoutMS)*time.Millisecond)
 	if err != nil {
 		return nil, providerError(402)
 	}

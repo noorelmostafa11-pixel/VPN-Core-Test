@@ -70,7 +70,7 @@ func dialMKCP(ctx context.Context, address string, o kcpOptions) (*mkcpConn, err
 	if e != nil {
 		return nil, e
 	}
-	raw, e := (&net.Dialer{}).DialContext(ctx, "udp", address)
+	raw, e := outboundDial(ctx, "udp", address, 10*time.Second)
 	if e != nil {
 		return nil, e
 	}

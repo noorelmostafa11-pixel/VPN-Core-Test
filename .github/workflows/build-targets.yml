@@ -2,7 +2,7 @@ name: Build Selected Core Target
 on:
   push:
     branches: [main, 'repair/**']
-    paths: ['src/**', 'tls-provider/**', 'scripts/**', 'tests/**', 'build.*', 'VERSION', '.github/workflows/**']
+    paths: ['src/**', 'tls-provider/**', 'sdk/**', 'scripts/**', 'tests/**', 'build.*', 'VERSION', '.github/workflows/**']
   pull_request:
   workflow_dispatch:
     inputs:
@@ -29,10 +29,14 @@ jobs:
         with: {go-version: '1.27.1', cache-dependency-path: tls-provider/go.sum}
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
       - run: |
           python -m pip install -r tests/requirements.txt
           python scripts/Build.py --target linux --build-tests
           python -m unittest -v test_portable_044.PortableTransportTests test_portable_044.SharedCoreTests
+          python -m unittest -v test_udp_sdk.UdpSdkTests test_udp_sdk.NetworkHookTests
+          python scripts/Test-Sdk-Bindings.py --build build/linux-amd64 --java-only
           python scripts/Package-Target.py --build build/linux-amd64
         env:
           PYTHONPATH: tests
@@ -59,6 +63,8 @@ jobs:
       - uses: msys2/setup-msys2@v2
         id: msys
         with: {msystem: MINGW64, update: true, install: mingw-w64-x86_64-gcc, path-type: inherit}
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.425'}
       - shell: pwsh
         env:
           MSYS_LOCATION: ${{ steps.msys.outputs.msys2-location }}
@@ -71,6 +77,8 @@ jobs:
           python -m pip install -r tests/requirements.txt
           python -m unittest -v test_portable_044.SharedCoreTests
           if ($LASTEXITCODE) { throw 'Shared core regression failed' }
+          python scripts/Test-Sdk-Bindings.py --build build/windows-amd64 --dotnet-only
+          if ($LASTEXITCODE) { throw 'Windows .NET SDK smoke failed' }
           python scripts/Package-Target.py --build build/windows-amd64
           if ($LASTEXITCODE) { throw 'Target package failed' }
       - uses: actions/upload-artifact@v4
@@ -98,6 +106,8 @@ jobs:
         with: {python-version: '3.12'}
       - name: Install pinned NDK
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;30.0.16248370"'
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
       - name: Build the selected ABI from source
         run: |
           python scripts/Build.py --target android --abi '${{ matrix.abi }}' --ndk "$ANDROID_HOME/ndk/30.0.16248370" --build-tests
@@ -121,6 +131,8 @@ jobs:
         with: {go-version: '1.27.1', cache-dependency-path: tls-provider/go.sum}
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
       - shell: pwsh
         run: |
           & "$env:ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager.bat" 'ndk;30.0.16248370'
@@ -131,4 +143,30 @@ jobs:
         with:
           name: core-android-from-windows-${{ github.sha }}
           path: build/android-arm64-v8a/
+          if-no-files-found: error
+  android_package:
+    needs: android
+    if: github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'android'
+    name: Android SDK AAR with all four ABIs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: core-android-*-${{ github.sha }}
+          path: android-inputs
+      - name: Package verified native ABIs into one SDK
+        run: |
+          python scripts/Package-Android.py --build android-inputs/core-android-arm64-v8a-${{ github.sha }}/build/android-arm64-v8a --build android-inputs/core-android-armeabi-v7a-${{ github.sha }}/build/android-armeabi-v7a --build android-inputs/core-android-x86_64-${{ github.sha }}/build/android-x86_64 --build android-inputs/core-android-x86-${{ github.sha }}/build/android-x86 --output dist/vpn-core-android.aar
+          sha256sum dist/vpn-core-android.aar > dist/vpn-core-android.aar.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core-android-sdk-${{ github.sha }}
+          path: dist/vpn-core-android.aar*
           if-no-files-found: error

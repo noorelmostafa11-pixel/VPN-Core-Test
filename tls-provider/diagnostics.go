@@ -69,6 +69,9 @@ func tlsErrorCode(err error, fallback int) int {
 }
 func echLookupError(err error) error {
 	code := tlsErrorCode(err, 332)
+	if code == 453 || code == 454 {
+		return providerError(code)
+	}
 	if code == 316 || code == 319 {
 		code = 334
 	}

@@ -52,13 +52,13 @@ bash build.sh --target linux
 bash build.sh --target android --abi arm64-v8a --ndk "$ANDROID_HOME/ndk/30.0.16248370"
 ```
 
-يمكن اختيار `arm64-v8a` أو `armeabi-v7a` أو `x86_64` أو `x86`. كل ABI في مجلد `build/android-<abi>` مستقل. الناتج executable للاختبار بـadb، و`libvpn-core.so` و`libvpn-tls.so` وواجهة C. مكتبات 64-bit تُبنى بمحاذاة صفحات 16 KiB. البناء العابر يُسجل `CROSS_COMPILED_NOT_RUN`؛ لا يعتبر نجاح التجميع إثبات اتصال على جهاز.
+يمكن اختيار `arm64-v8a` أو `armeabi-v7a` أو `x86_64` أو `x86`. كل ABI في مجلد `build/android-<abi>` مستقل. الناتج executable للاختبار بـadb، و`libvpn-core.so` و`libvpn-tls.so` و`libvpn-jni.so` وواجهة C وحزمة AAR للمعمارية. تجميع AAR يحتاج JDK 17+ و`javac`، ويمكن تحديد مساره بـ`--javac` عند استدعاء Build.py. مكتبات 64-bit تُبنى بمحاذاة صفحات 16 KiB. البناء العابر يُسجل `CROSS_COMPILED_NOT_RUN`؛ لا يعتبر نجاح التجميع إثبات اتصال على جهاز.
 
-مكتبات الكور تعرض SOCKS5 TCP CONNECT. لا ينتج هذا الريبو APK أو AAR، ولم يُضف JNI أو TUN أو ربط VPNService أو حماية sockets عبر VPNService.protect. دمج هذه الوظائف في التطبيق يحتاج تنفيذًا واختبارات منفصلة؛ لا تستخدم المكتبات كبديل جاهز لكور التطبيق الحالي داخل VPNService.
+مكتبات الكور تعرض SOCKS5 TCP CONNECT وUDP ASSOCIATE. الريبو ينتج AAR وجسر JNI وواجهة لحماية sockets وحل أسماء خوادم الكور عبر الشبكة الأساسية. التطبيق ينفذ callbacks الخاصة بـVPNService.protect وNetwork.getAllByName ويربط TUN-to-SOCKS بخدمة VPN الحالية. لا ينتج الريبو APK، ولا يتضمن TUN inbound أو واجهة لحزم TUN الخام. تفاصيل العمر والربط وتجميع المعماريات في [SDK-INTEGRATION.md](SDK-INTEGRATION.md).
 
 ## استخدام المكتبة
 
-الواجهة في `src/core-api.h`: `vpn_core_version` و`vpn_core_run(argc, argv)` و`vpn_core_stop`. شغّل run في thread مملوك للتطبيق، باستخدام `--config /absolute/path/node.ini`. يسمح تشغيلًا واحدًا؛ الثاني يعيد 2. Stop يطلب الإغلاق؛ انتظر خروج thread قبل أي عملية تحرير. لا تفك تحميل المكتبة أو مزوّد Go أثناء عمر العملية. المكتبة لا تثبت handlers للإشارات على حساب التطبيق المضيف. يحفظ الكور إعدادات العقد الأصلية وسياسة التحقق من TLS.
+الواجهة في `src/core-api.h` تحتفظ بوظائف ABI 1 الأصلية `vpn_core_version` و`vpn_core_run(argc, argv)` و`vpn_core_stop`. ABI 2 يضيف `vpn_core_run_config` مع callbacks حماية sockets وحل أسماء الخوادم، والاستعلام عن الحالة والمنفذ الفعلي. شغّل run في thread مملوك للتطبيق، باستخدام `--config /absolute/path/node.ini`. يسمح تشغيلًا واحدًا؛ الثاني يعيد 2. Stop يطلب الإغلاق؛ انتظر خروج thread قبل أي عملية تحرير. لا تفك تحميل المكتبة أو مزوّد Go أثناء عمر العملية. المكتبة لا تثبت handlers للإشارات على حساب التطبيق المضيف. يحفظ الكور إعدادات العقد الأصلية وسياسة التحقق من TLS.
 
 احتفظ بالمزوّد بجانب executable أو مكتبة الكور. تحميله من مجلد المكوّن نفسه؛ لا نبحث عنه في مجلد العمل أو PATH. يرفض بناء الإنتاج `test_ca_file`. اختبارات الإنتاج المحلية تستخدم CA مؤقتة معروفة وتختبر رفض الاسم الخاطئ.
 

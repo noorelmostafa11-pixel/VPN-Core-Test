@@ -3,6 +3,7 @@
 #include "xhttp-provider.hpp"
 #include "version.hpp"
 #include "core-api.h"
+#include "udp-relay.hpp"
 #include <atomic>
 #include <csignal>
 #include <future>
@@ -21,7 +22,7 @@ void log_line(const std::string& text){std::lock_guard<std::mutex> guard(log_mut
 void socks_reply(Socket& s,uint8_t code,Clock::time_point deadline) {
     uint8_t b[10]={5,code,0,1,0,0,0,0,0,0};send_all(s,b,sizeof(b),deadline);
 }
-Bytes socks_request(Socket& client,Clock::time_point deadline) {
+Bytes socks_request(Socket& client,Clock::time_point deadline,uint8_t* command=nullptr) {
     auto hello=receive_exact(client,2,deadline);
     if(hello[0]!=5||hello[1]==0)throw std::runtime_error("Invalid SOCKS5 greeting");
     auto methods=receive_exact(client,hello[1],deadline);
@@ -30,14 +31,15 @@ Bytes socks_request(Socket& client,Clock::time_point deadline) {
     if(!accepted)throw std::runtime_error("SOCKS5 authentication method unsupported");
     auto request=receive_exact(client,4,deadline);
     if(request[0]!=5||request[2]!=0){socks_reply(client,1,deadline);throw std::runtime_error("Malformed SOCKS5 request");}
-    if(request[1]!=1){socks_reply(client,7,deadline);throw std::runtime_error("This core supports SOCKS5 TCP CONNECT only");}
+    if(request[1]!=1&&request[1]!=3){socks_reply(client,7,deadline);throw std::runtime_error("Unsupported SOCKS5 command");}
+    if(command)*command=request[1];
     Bytes address{request[3]};size_t length=0;
     if(request[3]==1)length=4;
     else if(request[3]==4)length=16;
     else if(request[3]==3){auto n=receive_exact(client,1,deadline);if(!n[0]){socks_reply(client,8,deadline);throw std::runtime_error("Empty destination hostname");}address.push_back(n[0]);length=n[0];}
     else{socks_reply(client,8,deadline);throw std::runtime_error("Unsupported destination address type");}
     auto body=receive_exact(client,length+2,deadline);address.insert(address.end(),body.begin(),body.end());
-    if(body[body.size()-1]==0&&body[body.size()-2]==0){socks_reply(client,1,deadline);throw std::runtime_error("Destination port must be nonzero");}
+    if(request[1]==1&&body[body.size()-1]==0&&body[body.size()-2]==0){socks_reply(client,1,deadline);throw std::runtime_error("Destination port must be nonzero");}
     if(request[3]==3)for(size_t i=0;i<length;++i)if(body[i]<=32||body[i]>=127){socks_reply(client,8,deadline);throw std::runtime_error("Destination hostname requires ASCII/IDNA");}
     return address;
 }
@@ -89,7 +91,8 @@ throw Failure("RELAY_FAILED: XHTTP client wait","XHTTP_CLIENT_WAIT",uint32_t(soc
 void connection(Socket client,const Config& config,uint64_t id) {
     std::string prefix="[connection "+std::to_string(id)+"] ",phase="SOCKS_FAILED",tls_version,alpn;uint64_t up=0,down=0;bool request_ok=false,tunnel_ready=false;
     try {
-        auto deadline=Clock::now()+std::chrono::milliseconds(config.connect_ms);auto destination=socks_request(client,deadline);request_ok=true;
+        auto deadline=Clock::now()+std::chrono::milliseconds(config.connect_ms);uint8_t command=1;auto destination=socks_request(client,deadline,&command);request_ok=true;
+        if(command==3){phase="RELAY_FAILED";udp_associate(client,config,destination,tunnel_ready,stopping,up,down,[&](const std::string& code){log_line(prefix+"UDP reason_code="+code);});log_line(prefix+"UDP closed; uploaded="+std::to_string(up)+" downloaded="+std::to_string(down));return;}
         if(config.transport=="xhttp"||config.transport=="http"||config.transport=="kcp"||config.transport=="quic"){phase="PROTOCOL_FAILED";Protocol protocol(config);auto header=protocol.open(destination);phase="TRANSPORT_FAILED";XHttpStream stream;stream.open(config,header,deadline);auto metadata=stream.metadata();tls_version=metadata.at("version").scalar()=="772"?"TLS1.3":metadata.at("version").scalar()=="771"?"TLS1.2":"";alpn=metadata.at("alpn").scalar();socks_reply(client,0,deadline);tunnel_ready=true;Json negotiated=Json::obj();diagnostic_identity(negotiated,id);negotiated["event"]=Json("negotiated");negotiated["tls_version"]=Json(tls_version);negotiated["alpn"]=Json(alpn);log_line(prefix+"diagnostic="+json_dump(negotiated));log_line(prefix+"tunnel ready; protocol="+config.protocol+" transport="+config.transport+" tls="+tls_version+"; data transfer still unverified");phase="RELAY_FAILED";relay_xhttp(client,stream,protocol,config,up,down);log_line(prefix+"closed; uploaded="+std::to_string(up)+" downloaded="+std::to_string(down));return;}
         phase="CONNECT_FAILED";Socket server=connect_server(config,deadline);SecureStream tls;phase="TLS_FAILED";tls.handshake(server,config,deadline);tls_version=tls.version();alpn=tls.alpn();
         Transport transport(config);Protocol protocol(config);Bytes header;
@@ -106,18 +109,20 @@ void connection(Socket client,const Config& config,uint64_t id) {
 }
 
 }
-int run(int argc,char** argv) {
+int run(int argc,char** argv,const vpn::NetworkHooks* hooks=nullptr) {
     using namespace vpn;
     static std::mutex run_mutex;
     std::unique_lock<std::mutex> active(run_mutex,std::try_to_lock);
     if(!active.owns_lock())return 2;
     stopping.store(false,std::memory_order_relaxed);
+    core_state.store(VPN_CORE_STARTING);bool configured_hooks=false;
+    struct Cleanup {bool& configured;~Cleanup(){core_listen_port.store(0);if(configured)try{configure_network_hooks({});}catch(...){}core_state.store(VPN_CORE_STOPPED);}} cleanup{configured_hooks};
     try {
         validate_xhttp_build=validate_xhttp_configuration;
         std::string config_path,list_path;bool check=false,inspect=false;
         for(int i=1;i<argc;++i) {
             std::string a=argv[i];
-            if(a=="--version"){std::cout<<"vpn-core " VPN_CORE_VERSION "-expanded; project-owned protocols; SOCKS5 CONNECT\n";return 0;}
+            if(a=="--version"){std::cout<<"vpn-core " VPN_CORE_VERSION "-expanded; project-owned protocols; SOCKS5 CONNECT + UDP ASSOCIATE\n";return 0;}
             if(a=="--check-components"){(void)TlsProviderAPI::instance();(void)VlessEncryptionAPI::instance();(void)XHttpAPI::instance();std::cout<<"PASS: pinned TLS/HTTP and crypto component interfaces loaded\n";return 0;}
             if(a=="--self-test"){protocol_self_test();std::cout<<"PASS: SHA224, URI, AEAD and Poly1305 standard vector\n";return 0;}
             if(a=="--check-config")check=true;
@@ -133,7 +138,10 @@ int run(int argc,char** argv) {
         if(inspect){std::cout<<json_dump(inspection(config))<<'\n';return 0;}
         require_supported(config);
         if(check){std::cout<<"Config supported by this build; no network test performed\n";return 0;}
+        if(hooks){configure_network_hooks(*hooks);configured_hooks=true;}
         [[maybe_unused]] NetworkRuntime runtime;Socket listener=listen_local(config.listen_port);
+        sockaddr_in actual{};SockLen actual_size=sizeof(actual);if(getsockname(listener.get(),reinterpret_cast<sockaddr*>(&actual),&actual_size))throw Failure("STARTUP_FAILED: listener address","LISTENER_ADDRESS");config.listen_port=ntohs(actual.sin_port);core_listen_port.store(config.listen_port);
+        core_state.store(stopping?VPN_CORE_STOPPING:VPN_CORE_RUNNING);
 #ifndef VPN_CORE_SHARED
         std::signal(SIGINT,stop_handler);std::signal(SIGTERM,stop_handler);
 #ifndef _WIN32
@@ -154,7 +162,7 @@ int run(int argc,char** argv) {
             ready["pid"]=Json::integer(getpid());
 #endif
 std::ofstream f(std::filesystem::u8path(config.ready_file+".tmp"),std::ios::binary);f<<json_dump(ready);f.close();if(!f)throw Failure("STARTUP_FAILED: ready file write","READY_FILE_WRITE");std::filesystem::rename(std::filesystem::u8path(config.ready_file+".tmp"),std::filesystem::u8path(config.ready_file));}
-        log_line("Listening SOCKS5 on 127.0.0.1:"+std::to_string(config.listen_port)+"; TCP CONNECT only; Ctrl+C to stop");
+        log_line("Listening SOCKS5 on 127.0.0.1:"+std::to_string(config.listen_port)+"; TCP CONNECT and UDP ASSOCIATE; Ctrl+C to stop");
         std::vector<std::future<void>> workers;uint64_t id=0;
         while(!stopping) {
             for(auto it=workers.begin();it!=workers.end();) {if(it->wait_for(std::chrono::seconds(0))==std::future_status::ready){it->get();it=workers.erase(it);}else ++it;}
@@ -173,7 +181,11 @@ std::ofstream f(std::filesystem::u8path(config.ready_file+".tmp"),std::ios::bina
 #ifdef VPN_CORE_SHARED
 extern "C" VPN_CORE_API const char* vpn_core_version(){return VPN_CORE_VERSION;}
 extern "C" VPN_CORE_API int vpn_core_run(int argc,char** argv){if(argc<1||argc>64||!argv)return 1;for(int i=0;i<argc;++i)if(!argv[i])return 1;return run(argc,argv);}
-extern "C" VPN_CORE_API void vpn_core_stop(){vpn::stopping.store(true,std::memory_order_relaxed);}
+extern "C" VPN_CORE_API void vpn_core_stop(){vpn::stopping.store(true,std::memory_order_relaxed);auto state=vpn::core_state.load();while(state!=VPN_CORE_STOPPED&&state!=VPN_CORE_STOPPING&&!vpn::core_state.compare_exchange_weak(state,VPN_CORE_STOPPING)){} }
+extern "C" VPN_CORE_API uint32_t vpn_core_abi_version(){return 2;}
+extern "C" VPN_CORE_API int vpn_core_get_state(){return vpn::core_state.load();}
+extern "C" VPN_CORE_API uint16_t vpn_core_get_listen_port(){return vpn::core_listen_port.load();}
+extern "C" VPN_CORE_API int vpn_core_run_config(const char* path,vpn_core_socket_protector protect,vpn_core_resolver resolve,void* user){if(!path||!*path)return 1;char name[]="vpn-core",option[]="--config";char* args[]{name,option,const_cast<char*>(path)};vpn::NetworkHooks hooks{protect,resolve,user};return run(3,args,&hooks);}
 #elif defined(_WIN32)
 int wmain(int argc,wchar_t** argv) {
     std::vector<std::string> text;

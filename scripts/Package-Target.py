@@ -12,7 +12,7 @@ for e in manifest:
     if len(data)!=e['bytes'] or hashlib.sha256(data).hexdigest()!=e['sha256']:raise SystemExit('Build hash mismatch: '+path.name)
     files[path.name]=data
 for name in ['build-hashes.json','build-provenance.json']:files[name]=(build/name).read_bytes()
-for name in ['NOTICE.md','OWNERSHIP.md','docs/BUILDING.md','docs/COMPONENTS.md']:files[name]=(root/name).read_bytes()
+for name in ['NOTICE.md','OWNERSHIP.md','docs/BUILDING.md','docs/COMPONENTS.md','docs/SDK-INTEGRATION.md','sdk/windows/VpnCore.cs']:files[name]=(root/name).read_bytes()
 for folder in ['tls-provider/vendor','tls-provider/thirdparty']:
     for f in (root/folder).rglob('*'):
         if f.is_file() and (f.name.lower().startswith(('license','copying','notice')) or f.name=='sources.json'):

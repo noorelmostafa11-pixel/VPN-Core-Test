@@ -3,7 +3,7 @@ name: Core Source Validation
 on:
   push:
     branches: [main, 'repair/**']
-    paths: ['src/**', 'scripts/**', 'tests/**', 'tls-provider/**', 'VERSION', '.github/workflows/**', 'docs/pre-current-source-manifest.json', 'NOTICE.md', '.gitattributes']
+    paths: ['src/**', 'scripts/**', 'tests/**', 'sdk/**', 'tls-provider/**', 'VERSION', '.github/workflows/**', 'docs/pre-current-source-manifest.json', 'NOTICE.md', '.gitattributes']
   pull_request:
   workflow_dispatch:
     inputs:

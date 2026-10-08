@@ -275,7 +275,7 @@ class CoreTests(unittest.TestCase):
                 s.settimeout(3)
                 s.sendall(b'\x05\x01\x00')
                 self.assertEqual(exact(s, 2), b'\x05\x00')
-                s.sendall(b'\x05\x03\x00\x01')
+                s.sendall(b'\x05\x02\x00\x01')
                 self.assertEqual(exact(s, 10)[1], 7)
 
     def test_11_empty_domain(self):

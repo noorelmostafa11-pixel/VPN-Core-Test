@@ -1,5 +1,6 @@
 #pragma once
 #include "fragment.hpp"
+#include "network-hooks.hpp"
 #include <chrono>
 #include <cstring>
 #include <utility>
@@ -111,12 +112,16 @@ inline Bytes receive_some(Socket& s,Clock::time_point deadline) {
 }
 inline Socket connect_server(const Config& c,Clock::time_point deadline) {
     addrinfo hint{};hint.ai_socktype=SOCK_STREAM;hint.ai_family=AF_UNSPEC;
-    addrinfo* list=nullptr;auto port=std::to_string(c.port);
-    if(getaddrinfo(c.server.c_str(),port.c_str(),&hint,&list))throw std::runtime_error("Server DNS resolution failed");
+    auto names=bootstrap_addresses(c.server);auto port=std::to_string(c.port);
+    for(const auto& name:names){
+    addrinfo* list=nullptr;
+    {std::lock_guard<std::mutex> lock(network_hooks_mutex);if(network_hooks.resolve)hint.ai_flags=AI_NUMERICHOST;}
+    if(getaddrinfo(name.c_str(),port.c_str(),&hint,&list))continue;
     struct Cleanup{addrinfo* p;~Cleanup(){freeaddrinfo(p);}}cleanup{list};
     for(auto p=list;p;p=p->ai_next) {
         Socket s(::socket(p->ai_family,p->ai_socktype,p->ai_protocol));
         if(s.get()==invalid_socket)continue;
+        if(!protect_socket_callback(int64_t(s.get()),nullptr))throw Failure("CONNECT_FAILED: outbound socket protection rejected","SOCKET_PROTECTION_FAILED");
         nonblocking(s.get());
         int r=::connect(s.get(),p->ai_addr,int(p->ai_addrlen));
         if(r==0){s.mask(c);return s;}
@@ -129,6 +134,7 @@ inline Socket connect_server(const Config& c,Clock::time_point deadline) {
         socklen_t len=sizeof(e);
 #endif
         if(getsockopt(s.get(),SOL_SOCKET,SO_ERROR,reinterpret_cast<char*>(&e),&len)==0&&e==0){s.mask(c);return s;}
+    }
     }
     throw std::runtime_error("CONNECT_FAILED: cannot connect to node server");
 }

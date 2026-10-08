@@ -32,7 +32,7 @@ class Vision {
     }
 
 public:
-    explicit Vision(const Config& c):config_(c),enabled_(vision_flow(c)){}
+    explicit Vision(const Config& c,bool enabled=true):config_(c),enabled_(enabled&&vision_flow(c)){}
     Bytes initial_padding(){return enabled_?frame(0,{},true):Bytes{};}
     Bytes encode(const Bytes& data){if(!enabled_||writing_done_||data.empty())return data;if(data.size()>65535)throw Failure("PROTOCOL_FAILED: Vision payload length","VISION_LENGTH");writing_done_=true;return frame(1,data,false);}
     bool take_direct(){return std::exchange(direct_,false);}

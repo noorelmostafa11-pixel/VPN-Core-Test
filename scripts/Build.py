@@ -84,6 +84,12 @@ def build(a):
     destination.parent.mkdir(parents=True, exist_ok=True)
     call([sys.executable, ROOT / 'scripts/Apply-Component-Patches.py'])
     version = (ROOT / 'VERSION').read_text().strip()
+    source_hash = hashlib.sha256()
+    for directory in ['src','tls-provider','sdk','scripts']:
+        for path in sorted((ROOT/directory).rglob('*')):
+            if path.is_file() and '__pycache__' not in path.parts and path.suffix not in {'.pyc','.log'}:
+                source_hash.update(path.relative_to(ROOT).as_posix().encode()+b'\0')
+                source_hash.update(hashlib.sha256(path.read_bytes()).digest())
     if '#define VPN_CORE_VERSION "' + version + '"' not in (ROOT / 'src/version.hpp').read_text():
         raise RuntimeError('VERSION does not match src/version.hpp.')
     commit = os.environ.get('GITHUB_SHA')
@@ -118,6 +124,13 @@ def build(a):
         entry_flags = ['-municode'] if target == 'windows' else ['-pie']
         call([cxx, *flags, *entry_flags, ROOT / 'src/main.cpp', '-o', stage / binary, *libraries])
         call([cxx, *flags, '-DVPN_CORE_SHARED', '-shared', ROOT / 'src/main.cpp', '-o', stage / shared, *libraries])
+        if target == 'android':
+            call([cxx, *flags, '-shared', ROOT / 'sdk/android/jni.cpp', '-o', stage / 'libvpn-jni.so',
+                  '-L' + str(stage), '-l:libvpn-core.so', *libraries])
+            javac = a.javac or (str(pathlib.Path(os.environ['JAVA_HOME']) / 'bin/javac') if os.environ.get('JAVA_HOME') else 'javac')
+            call([sys.executable, ROOT / 'scripts/Package-Android.py', '--build', stage,
+                  '--abi', a.abi, '--version', version, '--min-sdk', str(a.android_api),
+                  '--javac', executable(javac), '--output', stage / ('vpn-core-' + version + '-' + a.abi + '.aar')])
         if a.build_tests and target != 'windows':
             call([cxx, *target_flags, '-std=c++17', '-O2', '-pie', '-static-libstdc++',
                   ROOT / 'tests/core_api_smoke.cpp', '-o', stage / 'core-api-smoke', '-ldl'])
@@ -141,7 +154,8 @@ def build(a):
                       'go': go_version, 'compiler': compiler, 'android_ndk': ndk_version,
                       'android_api': a.android_api if target == 'android' else None,
                       'runtime_checks': checks, 'files': files,
-                      'interface': 'SOCKS5 TCP CONNECT; shared C API; no TUN or JNI integration'}
+                      'interface': 'SOCKS5 TCP CONNECT + UDP ASSOCIATE; C ABI 2 network hooks; Android JNI/AAR; application-owned TUN',
+                      'core_abi': 2, 'source_files_sha256': source_hash.hexdigest()}
         (stage / 'build-provenance.json').write_text(json.dumps(provenance, indent=2) + '\n')
         destination.mkdir(parents=True, exist_ok=True)
         for f in stage.iterdir(): shutil.copy2(f, destination / f.name)
@@ -156,7 +170,7 @@ def main():
     p.add_argument('--android-api', type=int, default=LOCK['android_api'])
     p.add_argument('--ndk', default=os.environ.get('ANDROID_NDK_HOME') or os.environ.get('ANDROID_NDK_ROOT'))
     p.add_argument('--go', default=os.environ.get('VPN_CORE_GO', 'go'))
-    p.add_argument('--cc'); p.add_argument('--cxx'); p.add_argument('--output')
+    p.add_argument('--cc'); p.add_argument('--cxx'); p.add_argument('--output'); p.add_argument('--javac')
     p.add_argument('--build-tests', action='store_true', help='Also build the target shared-library smoke executable.')
     a = p.parse_args()
     try: build(a)

@@ -160,7 +160,10 @@ func resolveECH(ctx context.Context, text, serverName string, roots *x509.CertPo
 	var response []byte
 	switch parsed.Scheme {
 	case "https":
-		transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots}, ForceAttemptHTTP2: true}
+		transport := &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots}, ForceAttemptHTTP2: true,
+			DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+				return outboundDial(ctx, network, address, 10*time.Second)
+			}}
 		defer transport.CloseIdleConnections()
 		request, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(query))
 		if err != nil {
@@ -190,12 +193,22 @@ func resolveECH(ctx context.Context, text, serverName string, roots *x509.CertPo
 			}
 		}
 		address := net.JoinHostPort(parsed.Hostname(), port)
-		dialer := net.Dialer{Timeout: 10 * time.Second}
 		var conn net.Conn
 		if parsed.Scheme == "tls" {
-			conn, err = (&tls.Dialer{NetDialer: &dialer, Config: &tls.Config{ServerName: parsed.Hostname(), MinVersion: tls.VersionTLS12, RootCAs: roots}}).DialContext(ctx, "tcp", address)
+			conn, err = outboundDial(ctx, "tcp", address, 10*time.Second)
+			if err == nil {
+				secure := tls.Client(conn, &tls.Config{ServerName: parsed.Hostname(), MinVersion: tls.VersionTLS12, RootCAs: roots})
+				handshake, cancel := context.WithTimeout(ctx, 10*time.Second)
+				err = secure.HandshakeContext(handshake)
+				cancel()
+				if err != nil {
+					_ = conn.Close()
+				} else {
+					conn = secure
+				}
+			}
 		} else {
-			conn, err = dialer.DialContext(ctx, parsed.Scheme, address)
+			conn, err = outboundDial(ctx, parsed.Scheme, address, 10*time.Second)
 		}
 		if err != nil {
 			return nil, echLookupError(err)

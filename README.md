@@ -1,6 +1,6 @@
-# vpn-core 0.4.9
+# vpn-core 0.4.10
 
-المستودع هو المصدر الأساسي لتطوير الكور واختباره. تنفيذ البروتوكولات VLESS وTrojan وVMess وShadowsocks خاص بالمشروع؛ المكونات الخارجية وتراخيصها محفوظة كما هي. السورس يدعم مسارات بناء Windows وLinux وAndroid من اللاب ومن GitHub. Android يخرج مكتبات الكور وواجهة C؛ ربط JNI/TUN/VPNService بالتطبيق له عمل منفصل.
+المستودع هو المصدر الأساسي لتطوير الكور واختباره. تنفيذ البروتوكولات VLESS وTrojan وVMess وShadowsocks خاص بالمشروع؛ المكونات الخارجية وتراخيصها محفوظة كما هي. السورس يدعم مسارات بناء Windows وLinux وAndroid من اللاب ومن GitHub. الكور يعرض SOCKS5 TCP وUDP وواجهة C ABI 2، مع الحفاظ على ABI 1 ودعم الروابط السابق. Android يخرج مكتبات الكور وجسر JNI وحزمة AAR؛ التطبيق يربطها بخدمة VPN وطبقة TUN-to-SOCKS. لا يوجد TUN inbound داخل الكور. تعليمات الدمج في [docs/SDK-INTEGRATION.md](docs/SDK-INTEGRATION.md).
 
 ## البناء من الريبو على اللاب
 

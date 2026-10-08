@@ -163,13 +163,25 @@ func (s *xSession) http3Client(c xSettings, x xOptions) (*http.Client, func(), e
 			}
 			return observer, nil
 		})
-		conn, err := quic.DialAddr(timeout, net.JoinHostPort(c.Server, strconv.Itoa(c.Port)), tlsConfig, config)
+		address, err := outboundUDPAddress(timeout, net.JoinHostPort(c.Server, strconv.Itoa(c.Port)))
 		if err != nil {
+			return nil, err
+		}
+		udp, err := outboundPacket(timeout, "udp", ":0")
+		if err != nil {
+			return nil, err
+		}
+		qt := &quic.Transport{Conn: udp}
+		conn, err := qt.Dial(timeout, address, tlsConfig, config)
+		if err != nil {
+			_ = qt.Close()
+			_ = udp.Close()
 			if code := cause.Load(); code != 0 {
 				return nil, providerError(code)
 			}
 			return nil, err
 		}
+		go func() { <-conn.Context().Done(); _ = qt.Close(); _ = udp.Close() }()
 		state := conn.ConnectionState().TLS
 		if state.Version != tls.VersionTLS13 || state.NegotiatedProtocol != "h3" || !permittedCipher(state.CipherSuite) {
 			_ = conn.CloseWithError(0, "TLS policy")

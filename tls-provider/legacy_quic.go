@@ -143,12 +143,12 @@ func (s *xSession) runLegacyQUIC(c xSettings) {
 		s.fail(err)
 		return
 	}
-	address, err := net.ResolveUDPAddr("udp", net.JoinHostPort(c.Server, strconv.Itoa(c.Port)))
+	address, err := outboundUDPAddress(ctx, net.JoinHostPort(c.Server, strconv.Itoa(c.Port)))
 	if err != nil {
 		s.fail(err)
 		return
 	}
-	udp, err := net.ListenPacket("udp", ":0")
+	udp, err := outboundPacket(ctx, "udp", ":0")
 	if err != nil {
 		s.fail(err)
 		return
