@@ -17,7 +17,7 @@ python3 scripts/Apply-Component-Patches.py
 "$GO_BINARY" build -buildvcs=false -o bin/mldsa-signer tests/mldsa_signer.go
 flags=(-std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -Wno-misleading-indentation -DVPN_CORE_TEST_BACKEND)
 g++ "${flags[@]}" src/main.cpp -o bin/vpn-core-test -lssl -lcrypto -ldl -pthread
-for probe in protocol crypto expansion schannel-state repair; do
+for probe in protocol crypto expansion schannel-state repair uri-source; do
   source="${probe//-/_}"
   g++ "${flags[@]}" "tests/${source}_probe.cpp" -o "bin/${probe}-probe" -lssl -lcrypto -ldl -pthread
 done

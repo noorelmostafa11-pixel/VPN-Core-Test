@@ -1,4 +1,4 @@
-# vpn-core 0.4.7
+# vpn-core 0.4.8
 
 المستودع هو المصدر الأساسي لتطوير الكور واختباره. تنفيذ البروتوكولات VLESS وTrojan وVMess وShadowsocks خاص بالمشروع؛ المكونات الخارجية وتراخيصها محفوظة كما هي. السورس يدعم مسارات بناء Windows وLinux وAndroid من اللاب ومن GitHub. Android يخرج مكتبات الكور وواجهة C؛ ربط JNI/TUN/VPNService بالتطبيق له عمل منفصل.
 
@@ -29,6 +29,8 @@
 لتشغيل الكور فقط، فك النسخة الكاملة في مجلد جديد واستخدم `scripts/New-Config.ps1` ثم `bin/vpn-core.exe --config node.ini`. لا يلزم Python أو compiler للمستخدم. Python/Go/MinGW مطلوبون للبناء والاختبارات، ويُجهَّزون تلقائيًا في Actions.
 
 ## ما تغيّر
+
+إضافات 0.4.8: دعم صيغ استيراد XHTTP extra البديلة، والبيانات الملتصقة بقيمة VLESS `none` واسم نقل REALITY `tcp`، وأسماء حقول REALITY المسبوقة بـ`;`، مع حفظ الرابط والحقول الأصلية. مقارنة كل 71,656 عقدة أثبتت 147 إعدادًا مقبولًا إضافيًا وصفر فقد دعم سابق. تفاصيل التحقق وحدوده في [docs/SUPPORT-0.4.8.md](docs/SUPPORT-0.4.8.md).
 
 إضافات 0.4.7: ترويسات mKCP، وHTTP/2 cleartext (h2c)، وQUIC stream و`v2ray-plugin` QUIC، وخوارزميات Shadowsocks القديمة وXChaCha20-Poly1305، و`simple-obfs` HTTP/TLS، وشهادات plugin المرفقة. تفاصيل التحقق وحدوده في [docs/SUPPORT-0.4.7.md](docs/SUPPORT-0.4.7.md). هذه إضافات لمسارات الاتصال؛ الأصل والهاش وهوية كل رابط تبقى كما هي.
 

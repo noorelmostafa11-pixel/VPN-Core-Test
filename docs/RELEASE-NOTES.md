@@ -1,4 +1,6 @@
-# vpn-core 0.4.6
+# vpn-core 0.4.8
+
+Additive URI import compatibility preserves the original URI, original query values and node ID. Complete XHTTP objects can also use encoded plus whitespace, single quoted strings or a second URL encoding layer. Observed VLESS `none` suffixes, REALITY `tcp#` suffixes and semicolon-prefixed REALITY field aliases now resolve through explicit compatibility paths. Canonical values keep priority; incomplete JSON and missing or invalid credentials stay subject to the existing validators. See [SUPPORT-0.4.8.md](SUPPORT-0.4.8.md).
 
 Each workflow run resolves the latest Pre main commit once and downloads its four protocol files. Linux/Windows inspection, all 15 network shards and the Windows package share those exact inputs. Shard and report totals follow the downloaded inventory; the old network fixture compares overlapping IDs only.
 

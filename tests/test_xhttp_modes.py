@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 import time
 import unittest
-from urllib.parse import quote
+from urllib.parse import quote,unquote
 import test_expanded as old
 from test_core import exact,ROOT
 
@@ -119,6 +119,24 @@ class XHttpTests(unittest.TestCase):
     def test_16_legacy_http2_cleartext(self):
         for protocol,cipher in [('vless',''),('vmess','aes-128-gcm'),('trojan',''),('ss','chacha20-ietf-poly1305')]:
             with self.subTest(protocol=protocol):self.exchange(protocol,cipher,'stream-one',h2=True,extra={'_legacy':True},connections=2)
+    def test_17_alternate_import_syntax_transfers_original_payload(self):
+        for syntax in ('plus','single-quotes','double-encoded','quotes-and-plus'):
+            with self.subTest(syntax=syntax),self.peer('vless','','packet-up',tls=True,h2=True,extra={'headers':{'x-note':'a+b%2Fc'}}) as (uri,crypto,peer_log):
+                prefix,separator,encoded=uri.rpartition('&extra=')
+                original=unquote(encoded)
+                if syntax=='plus':alternate=original.replace(': ',':+').replace(', ',',+')
+                elif syntax=='double-encoded':alternate=quote(original,safe='')
+                else:
+                    alternate=repr(json.loads(original))
+                    if syntax=='quotes-and-plus':alternate=alternate.replace(': ',':+').replace(', ',',+')
+                imported=prefix+separator+quote(alternate,safe='')
+                with self.core(imported) as (port,log):
+                    with self.socks(port) as sock:
+                        self.assertEqual(exact(sock,len(old.HELLO)),old.HELLO)
+                        payload=random.Random(408).randbytes(100019);sock.sendall(payload)
+                        self.assertEqual(exact(sock,len(payload)),payload)
+                self.assertFalse(crypto.errors)
+
     def test_09_bad_status_and_content_encoding(self):
         for bad in ('status','encoding'):
             with self.peer('vless','','stream-one',bad=bad) as (uri,crypto,peer_log):
