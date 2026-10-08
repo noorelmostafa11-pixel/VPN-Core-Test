@@ -116,17 +116,17 @@ inline std::vector<std::string> node_addresses(const std::string& host,Clock::ti
     addrinfo hints{};hints.ai_socktype=SOCK_STREAM;hints.ai_family=AF_UNSPEC;hints.ai_flags=AI_NUMERICHOST;addrinfo* numeric=nullptr;
     if(getaddrinfo(host.c_str(),nullptr,&hints,&numeric)==0){freeaddrinfo(numeric);return {host};}
     auto lease=std::make_shared<HookLease>(true);auto result=std::make_shared<DnsResult>();
-    std::thread([lease,result,host]{
+    auto worker=launch_dns_worker(result,[lease,result,host]{
         std::string text;try{[[maybe_unused]] NetworkRuntime runtime;addrinfo h{};h.ai_family=AF_UNSPEC;h.ai_socktype=SOCK_STREAM;addrinfo* list=nullptr;
         if(getaddrinfo(host.c_str(),nullptr,&h,&list)==0){
             struct Cleanup{addrinfo* p;~Cleanup(){freeaddrinfo(p);}} cleanup{list};unsigned count=0;
             for(auto p=list;p&&count<32;p=p->ai_next){char address[1025];if(getnameinfo(p->ai_addr,int(p->ai_addrlen),address,sizeof(address),nullptr,0,NI_NUMERICHOST)==0){text+=address;text+='\n';++count;}}
         }}catch(...){}
         {std::lock_guard<std::mutex> lock(result->mutex);if(!text.empty()&&text.size()<sizeof(result->output)){std::memcpy(result->output,text.data(),text.size());result->size=int(text.size());}result->done=true;}result->ready.notify_all();
-    }).detach();
+    });
     std::unique_lock<std::mutex> lock(result->mutex);
     while(!result->done){check_cancelled();if(Clock::now()>=deadline)throw Failure("DNS_FAILED: system resolver timeout","BOOTSTRAP_DNS_TIMEOUT");result->ready.wait_until(lock,std::min(deadline,Clock::now()+std::chrono::milliseconds(20)));}
-    check_cancelled();if(result->size<=0)throw Failure("DNS_FAILED: system lookup failed","BOOTSTRAP_DNS_FAILED");
+    check_cancelled();lock.unlock();join_dns_worker(worker);if(result->size<=0)throw Failure("DNS_FAILED: system lookup failed","BOOTSTRAP_DNS_FAILED");
     std::istringstream input(std::string(result->output,size_t(result->size)));std::vector<std::string> out;std::string address;while(std::getline(input,address))out.push_back(address);return out;
 }
 inline Socket connect_server(const Config& c,Clock::time_point deadline) {

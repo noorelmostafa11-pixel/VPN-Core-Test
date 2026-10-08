@@ -8,6 +8,8 @@
 #include <mutex>
 #include <sstream>
 #include <thread>
+#include <utility>
+#include <vector>
 namespace vpn {
 using HookClock=std::chrono::steady_clock;
 struct NetworkHooks {vpn_core_socket_protector protect=nullptr;vpn_core_resolver resolve=nullptr;void* user=nullptr;};
@@ -38,19 +40,51 @@ inline bool has_bootstrap_resolver(){std::lock_guard<std::mutex> lock(network_ho
 inline int protect_socket_callback(int64_t fd,void*){
     try{HookLease lease(false);if(!lease.hooks.protect)return 1;auto result=lease.hooks.protect(fd,lease.hooks.user);return !stopping&&result==1?1:0;}catch(...){return 0;}
 }
-struct DnsResult {std::mutex mutex;std::condition_variable ready;bool done=false;int size=-1;char output[4096]{};};
+struct DnsResult {std::mutex mutex;std::condition_variable ready;bool done=false;std::atomic<bool> finished{false};int size=-1;char output[4096]{};};
+// Callback completion is not native-thread completion. Keep joinable workers
+// until their thread-local cleanup has finished, including timed-out requests.
+struct DnsWorker {
+    std::shared_ptr<DnsResult> result;std::thread thread;std::mutex join_mutex;
+    ~DnsWorker(){if(thread.joinable())thread.join();}
+};
+inline std::mutex dns_workers_mutex;
+inline std::vector<std::shared_ptr<DnsWorker>> dns_workers;
+inline void join_dns_worker(const std::shared_ptr<DnsWorker>& worker){
+    // Only workers whose callback has returned are reaped during operation.
+    // This per-worker lock never blocks another DNS request or registry access.
+    {std::lock_guard<std::mutex> lock(worker->join_mutex);if(worker->thread.joinable())worker->thread.join();}
+    std::lock_guard<std::mutex> lock(dns_workers_mutex);
+    for(auto it=dns_workers.begin();it!=dns_workers.end();++it)if(*it==worker){dns_workers.erase(it);break;}
+}
+inline void reap_dns_workers(bool drain=false){
+    for(;;){std::shared_ptr<DnsWorker> retired;
+        {std::lock_guard<std::mutex> lock(dns_workers_mutex);
+            for(const auto& worker:dns_workers)if(drain||worker->result->finished.load(std::memory_order_acquire)){retired=worker;break;}}
+        if(!retired)return;join_dns_worker(retired);
+    }
+}
+template<class Task>inline std::shared_ptr<DnsWorker> launch_dns_worker(const std::shared_ptr<DnsResult>& result,Task task){
+    reap_dns_workers();auto worker=std::make_shared<DnsWorker>();worker->result=result;
+    std::lock_guard<std::mutex> lock(dns_workers_mutex);dns_workers.push_back(worker);
+    try{worker->thread=std::thread([result,task=std::move(task)]()mutable{
+        try{task();}catch(...){std::lock_guard<std::mutex> lock(result->mutex);result->size=-1;result->done=true;}
+        result->finished.store(true,std::memory_order_release);result->ready.notify_all();
+    });}catch(...){dns_workers.pop_back();throw;}
+    return worker;
+}
 inline std::string invoke_bootstrap(const std::string& host,HookClock::time_point deadline){
     check_cancelled();auto lease=std::make_shared<HookLease>(true);
     if(!lease->hooks.resolve)return host;
     auto result=std::make_shared<DnsResult>();
-    std::thread([lease,result,host]{
+    auto worker=launch_dns_worker(result,[lease,result,host]{
         int n=-1;try{n=lease->hooks.resolve(host.c_str(),result->output,sizeof(result->output),lease->hooks.user);}catch(...){}
         {std::lock_guard<std::mutex> lock(result->mutex);result->size=n;result->done=true;}result->ready.notify_all();
         // lease is released only after the callback no longer uses host/output/user.
-    }).detach();
+    });
     std::unique_lock<std::mutex> lock(result->mutex);
     while(!result->done){check_cancelled();if(HookClock::now()>=deadline)throw Failure("DNS_FAILED: bootstrap callback timeout","BOOTSTRAP_DNS_TIMEOUT");result->ready.wait_until(lock,std::min(deadline,HookClock::now()+std::chrono::milliseconds(20)));}
     check_cancelled();auto n=result->size;
+    lock.unlock();join_dns_worker(worker);
     if(n<=0||n>=int(sizeof(result->output)))throw Failure("DNS_FAILED: bootstrap resolver failed","BOOTSTRAP_DNS_FAILED");
     return std::string(result->output,size_t(n));
 }
@@ -62,7 +96,11 @@ inline void configure_network_hooks(const NetworkHooks& hooks,bool start=false){
     using Setter=void(*)(uintptr_t,uintptr_t,uintptr_t);Setter setter=nullptr;ProviderModule::instance().symbol(setter,"vpn_socket_set_hooks");
     {std::lock_guard<std::mutex> lock(network_hooks_mutex);network_hooks_accepting=false;}
     setter(0,0,0); // Go also drains leases without holding a lock over callbacks.
-    {std::unique_lock<std::mutex> lock(network_hooks_mutex);network_hooks_idle.wait(lock,[]{return network_hooks_active==0;});network_hooks=hooks;network_hooks_accepting=true;}
+    {std::unique_lock<std::mutex> lock(network_hooks_mutex);network_hooks_idle.wait(lock,[]{return network_hooks_active==0;});}
+    // No callback or thread may still use the old application's context when
+    // run_config returns. Join without holding either shared registry lock.
+    reap_dns_workers(true);
+    {std::lock_guard<std::mutex> lock(network_hooks_mutex);network_hooks=hooks;network_hooks_accepting=true;}
     if(start){using Start=void(*)();Start begin=nullptr;ProviderModule::instance().symbol(begin,"vpn_socket_start");begin();}
     setter(hooks.protect?reinterpret_cast<uintptr_t>(&protect_socket_callback):0,hooks.resolve?reinterpret_cast<uintptr_t>(&resolve_callback):0,0);
 }

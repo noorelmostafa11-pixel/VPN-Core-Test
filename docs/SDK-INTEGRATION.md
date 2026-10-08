@@ -25,7 +25,11 @@ also remain active. Neither is killed by force. Other requests can progress whil
 the callback remains alive. A host callback must be safe for concurrent calls.
 
 `run_config` stays in STOPPING and does not return until all callback leases have
-drained. Keep callback objects, user resources, core/provider modules and JNI/.NET
+drained and every C++ DNS worker has been joined, including native thread-local
+cleanup. Successful DNS calls also join their own worker before returning. A
+timed-out or cancelled call leaves its worker owned until it finishes or run
+shutdown drains it; shared registry locks are not held while joining. Keep
+callback objects, user resources, core/provider modules and JNI/.NET
 references alive until that return. An indefinitely blocked host callback means
 an indefinitely draining run. The application must arrange its eventual return;
 starting another run before then returns 2. Callbacks must not synchronously wait

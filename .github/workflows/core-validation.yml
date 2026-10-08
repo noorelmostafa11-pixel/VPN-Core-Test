@@ -114,6 +114,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows build failed' }
           & g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -Wno-misleading-indentation -D_WIN32_WINNT=0x0A00 -static -static-libgcc -static-libstdc++ tests/repair_probe.cpp -o bin/repair-probe.exe -lws2_32 -lsecur32 -lcrypt32 -lbcrypt -pthread
           if ($LASTEXITCODE -ne 0) { throw 'Diagnostic probe build failed' }
+          & g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -Wno-misleading-indentation -D_WIN32_WINNT=0x0A00 -static -static-libgcc -static-libstdc++ tests/dns_worker_probe.cpp -o bin/dns-worker-probe.exe -lws2_32 -lsecur32 -lcrypt32 -lbcrypt -pthread
+          if ($LASTEXITCODE -ne 0) { throw 'DNS worker probe build failed' }
           & python -m pip install -r tests/requirements.txt
           if ($LASTEXITCODE -ne 0) { throw 'Test dependency setup failed' }
           Push-Location tls-provider
@@ -149,7 +151,7 @@ jobs:
           PYTHONPATH: tests
           VPN_CORE_TEST_BINARY: ${{ github.workspace }}/bin/vpn-core.exe
         run: |
-          & python -m unittest -v test_udp_sdk.UdpSdkTests test_lifecycle_acceptance.LifecycleAcceptanceTests test_dns_acceptance.DnsAcceptanceTests 2>&1 | Tee-Object validation-windows-sdk.log
+          & python -m unittest -v test_udp_sdk.UdpSdkTests test_lifecycle_acceptance.LifecycleAcceptanceTests test_dns_acceptance.DnsAcceptanceTests test_dns_worker.DnsWorkerTests 2>&1 | Tee-Object validation-windows-sdk.log
           if ($LASTEXITCODE -ne 0) { throw 'Windows shared core acceptance failed' }
       - uses: actions/download-artifact@v4
         with:

@@ -8,6 +8,7 @@ names+=['test_uri_compatibility.UriCompatibilityTests']
 names+=['test_quic_carrier.QUICCarrierTests']
 names+=['test_udp_sdk.UdpSdkTests','test_udp_sdk.NetworkHookTests','test_lifecycle_acceptance.LifecycleAcceptanceTests','test_dns_acceptance.DnsAcceptanceTests','test_packaging_acceptance.PackagingAcceptanceTests','test_node_runner.NodeRunnerTests','test_cleanup_policy.CleanupPolicyTests']
 names+=['test_cng_contract.CngContractTests']
+names+=['test_dns_worker.DnsWorkerTests']
 if not args.no_batch:names+=['test_repair_batch_043.RepositoryBatchRepairTests','test_repair_batch_042.RepairBatchTests','test_batch.BatchTests','test_batch_expansion_030.ExpandedBatchTests','test_batch_exitcode.BatchExitCodeTests','test_batch_pre_expansion.PreBatchTests']
 result=unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromNames(names))
 raise SystemExit(0 if result.wasSuccessful() else 1)

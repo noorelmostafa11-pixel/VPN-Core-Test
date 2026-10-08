@@ -18,7 +18,7 @@ python3 scripts/Apply-Component-Patches.py
 flags=(-std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -Wno-misleading-indentation -DVPN_CORE_TEST_BACKEND)
 g++ "${flags[@]}" src/main.cpp -o bin/vpn-core-test -lssl -lcrypto -ldl -pthread
 g++ "${flags[@]}" -DVPN_CORE_SHARED -shared -fPIC src/main.cpp -o bin/libvpn-core.so -lssl -lcrypto -ldl -pthread
-for probe in protocol crypto expansion schannel-state repair uri-source; do
+for probe in protocol crypto expansion schannel-state repair uri-source dns-worker; do
   source="${probe//-/_}"
   g++ "${flags[@]}" "tests/${source}_probe.cpp" -o "bin/${probe}-probe" -lssl -lcrypto -ldl -pthread
 done
