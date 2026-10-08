@@ -1,4 +1,8 @@
-# vpn-core 0.4.5
+# vpn-core 0.4.6
+
+Each workflow run resolves the latest Pre main commit once and downloads its four protocol files. Linux/Windows inspection, all 15 network shards and the Windows package share those exact inputs. Shard and report totals follow the downloaded inventory; the old network fixture compares overlapping IDs only.
+
+## Previous 0.4.5 connection coverage
 
 Adds the `randomizednoalpn` TLS fingerprint found in the 2026-10-07 Pre snapshot, including verified byte transfer on TLS 1.2/1.3 and WebSocket, concurrent sessions and certificate-name rejection. A misfiled XHTTP options object in `fm` now reports `FINALMASK_STRUCTURE_INVALID`; an unimplemented TCP mask inside a valid mask list still reports `FINALMASK`.
 

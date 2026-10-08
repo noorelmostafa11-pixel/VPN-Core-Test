@@ -22,3 +22,5 @@ local.ini
 /build/
 /VPN-Core-Test-Public-Bundle.zip
 /VPN-Core-Test-Public-Bundle.zip.download
+
+/pre-run/

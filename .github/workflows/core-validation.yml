@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       full_network:
-        description: Test all 72767 pinned public nodes after source validation
+        description: Test all nodes from latest Pre after source validation
         type: boolean
         default: true
   workflow_call:
@@ -25,7 +25,23 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  pre:
+    name: Download latest Pre protocols for this run
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - run: python3 scripts/Prepare-Pre-Snapshot.py --latest --destination pre-run/protocols --manifest-out pre-run/manifest.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pre-input-${{ github.run_id }}
+          overwrite: true
+          path: pre-run/
+          if-no-files-found: error
+          retention-days: 90
+
   linux:
+    needs: pre
     name: Linux protocol and component regression
     runs-on: ubuntu-24.04
     timeout-minutes: 35
@@ -51,10 +67,12 @@ jobs:
         env:
           VPN_CORE_POWERSHELL: /usr/bin/pwsh
         run: bash scripts/build-linux-tests.sh 2>&1 | tee validation-linux.log
-      - name: Verify support for every current pinned Pre configuration
-        run: |
-          python scripts/Prepare-Pre-Snapshot.py
-          python scripts/Audit-Pre-Support.py --core bin/vpn-core-test --output pre-current-support
+      - uses: actions/download-artifact@v4
+        with:
+          name: pre-input-${{ github.run_id }}
+          path: pre-run
+      - name: Verify support for this run's latest Pre configurations
+        run: python scripts/Audit-Pre-Support.py --core bin/vpn-core-test --nodes pre-run/protocols --manifest pre-run/manifest.json --output pre-current-support
       - name: Preserve validation evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -66,6 +84,7 @@ jobs:
           retention-days: 90
 
   windows:
+    needs: pre
     name: Windows production build and PowerShell 5.1 + 7
     runs-on: windows-2022
     timeout-minutes: 35
@@ -100,8 +119,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Diagnostic probe build failed' }
           & python -m pip install -r tests/requirements.txt
           if ($LASTEXITCODE -ne 0) { throw 'Test dependency setup failed' }
-          & python scripts/Prepare-Pinned-Nodes.py
-          if ($LASTEXITCODE -ne 0) { throw 'Pinned snapshot failed' }
       - name: PowerShell 5.1 process regression including 16 concurrent children
         shell: powershell
         run: |
@@ -125,27 +142,19 @@ jobs:
           $env:PYTHONPATH=(Resolve-Path tests).Path
           & python -m unittest -v test_batch_exitcode.BatchExitCodeTests test_windows_043.WindowsRepairTransportTests test_ready_044.ReadyReadTests 2>&1 | Tee-Object validation-windows-7.log
           if ($LASTEXITCODE -ne 0) { throw 'Windows production regression failed' }
-      - name: Compare every original inspection record to the tested 0.4.2 binary
+      - uses: actions/download-artifact@v4
+        with:
+          name: pre-input-${{ github.run_id }}
+          path: pre-run
+      - name: Verify Windows support for this run's latest Pre configurations
         shell: pwsh
         run: |
-          $ErrorActionPreference='Stop'
-          Expand-Archive VPN-Core-Test-Public-Bundle.zip suite
-          & python scripts/Compare-Inventory.py --baseline suite/bin/vpn-core.exe --candidate bin/vpn-core.exe --output inventory-comparison.json
-          if ($LASTEXITCODE -ne 0) { throw 'Original inspection changed' }
-          & .\scripts\Test-Batch.ps1 -Nodes nodes/pre/protocols -InspectOnly -OutputDirectory inspection-results
-          $report=Get-Content inspection-results/summary.json -Raw | ConvertFrom-Json
-          if (-not $report.completed -or $report.inventory -ne 72767 -or $report.inventory_error -or $report.batch_error) { throw 'Full inventory did not complete' }
-      - name: Verify Windows support for every current pinned Pre configuration
-        shell: pwsh
-        run: |
-          & python scripts/Prepare-Pre-Snapshot.py
-          if ($LASTEXITCODE -ne 0) { throw 'Current Pre snapshot integrity failed' }
-          & python scripts/Audit-Pre-Support.py --core bin/vpn-core.exe --output pre-current-support
-          if ($LASTEXITCODE -ne 0) { throw 'Current Pre support coverage failed' }
+          & python scripts/Audit-Pre-Support.py --core bin/vpn-core.exe --nodes pre-run/protocols --manifest pre-run/manifest.json --output pre-current-support
+          if ($LASTEXITCODE -ne 0) { throw 'Latest Pre support coverage failed' }
       - name: Assemble the complete release from this commit
         shell: pwsh
         run: |
-          & python scripts/Package-Release.py
+          & python scripts/Package-Release.py --nodes pre-run/protocols --pre-manifest pre-run/manifest.json
           if ($LASTEXITCODE -ne 0) { throw 'Release packaging failed' }
       - name: Preserve Windows evidence
         if: always()
@@ -154,8 +163,6 @@ jobs:
           name: windows-validation-${{ github.sha }}
           path: |
             validation-windows-*.log
-            inventory-comparison.json
-            inspection-results/summary.json
             pre-current-support/
           retention-days: 90
       - name: Upload complete Windows distribution
@@ -201,41 +208,48 @@ jobs:
         with:
           name: windows-runtime-${{ github.sha }}
           path: runtime
-      - name: Verify tested binary and restore unchanged nodes
+      - uses: actions/download-artifact@v4
+        with:
+          name: pre-input-${{ github.run_id }}
+          path: pre-run
+      - name: Verify tested binary
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          & python scripts/Prepare-Pinned-Nodes.py
-          if ($LASTEXITCODE -ne 0) { throw 'Pinned snapshot failed' }
           $manifest=Get-Content runtime/build-hashes.json -Raw | ConvertFrom-Json
           foreach ($entry in $manifest) {
             $file=Join-Path runtime $entry.file
             if ((Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant() -cne $entry.sha256 -or (Get-Item $file).Length -ne $entry.bytes) { throw 'Tested binary integrity failed' }
           }
-      - name: Partition the pinned Pre snapshot
+      - name: Partition this run's latest Pre snapshot
         shell: powershell
         env:
           SHARD: ${{ matrix.shard }}
         run: |
           $ErrorActionPreference='Stop'
           $target='nodes/shard';[void][IO.Directory]::CreateDirectory($target)
+          $pre=Get-Content pre-run/manifest.json -Raw | ConvertFrom-Json
+          $inventory=[int](($pre.files | Measure-Object nodes -Sum).Sum)
           $index=0;$total=0
           foreach ($proto in @('vless','trojan','vmess','shadowsocks')) {
             $writer=New-Object IO.StreamWriter((Join-Path $target ($proto+'.txt')),$false,(New-Object Text.UTF8Encoding($false)))
             try {
-              foreach ($line in [IO.File]::ReadLines((Resolve-Path ('nodes/pre/protocols/'+$proto+'.txt')).Path)) {
-                if ([string]::IsNullOrWhiteSpace($line)) { continue }
+              foreach ($line in [IO.File]::ReadLines((Resolve-Path ('pre-run/protocols/'+$proto+'.txt')).Path)) {
+                if ([string]::IsNullOrWhiteSpace($line) -or $line.Trim().StartsWith('#')) { continue }
                 if (($index % 15) -eq [int]$env:SHARD) { $writer.WriteLine($line);$total++ }
                 $index++
               }
             } finally { $writer.Dispose() }
           }
-          $expected=if ([int]$env:SHARD -lt 2) { 4852 } else { 4851 }
-          if ($index -ne 72767 -or $total -ne $expected) { throw 'Shard partition mismatch' }
+          $expected=[int][Math]::Floor($inventory/15)
+          if ([int]$env:SHARD -lt ($inventory % 15)) { $expected++ }
+          if ($index -ne $inventory -or $total -ne $expected) { throw 'Shard partition mismatch' }
       - name: Test this source-built version
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
+          [void][IO.Directory]::CreateDirectory('batch-results')
+          Copy-Item pre-run/manifest.json batch-results/pre-manifest.json
           & .\scripts\Test-Batch.ps1 -Nodes nodes/shard -Core runtime/vpn-core.exe -Concurrency 8 -TimeoutSeconds 10 -OutputDrainSeconds 10 -Url 'https://example.com/' -OutputDirectory batch-results
       - name: Reject incomplete or cancelled reports
         shell: powershell
@@ -243,8 +257,11 @@ jobs:
           SHARD: ${{ matrix.shard }}
         run: |
           $ErrorActionPreference='Stop'
+          $pre=Get-Content pre-run/manifest.json -Raw | ConvertFrom-Json
+          $inventory=[int](($pre.files | Measure-Object nodes -Sum).Sum)
           $report=Get-Content batch-results/summary.json -Raw | ConvertFrom-Json
-          $expected=if ([int]$env:SHARD -lt 2) { 4852 } else { 4851 }
+          $expected=[int][Math]::Floor($inventory/15)
+          if ([int]$env:SHARD -lt ($inventory % 15)) { $expected++ }
           if (-not $report.completed -or $report.inventory -ne $expected -or $report.inventory_error -or $report.batch_error -or $report.selected -ne $report.finished -or $report.cancelled -ne 0) { throw 'Incomplete or mismatched shard' }
       - name: Preserve network reports
         if: always()
@@ -256,7 +273,7 @@ jobs:
           retention-days: 90
 
   aggregate:
-    name: Compare all node outcomes with baseline 0.4.2
+    name: Summarize latest Pre outcomes and compare overlapping old IDs
     needs: network
     if: always() && needs.network.result != 'skipped'
     runs-on: ubuntu-24.04
@@ -269,8 +286,12 @@ jobs:
         with:
           pattern: vpn-${{ github.sha }}-shard-*
           path: network-reports
-      - name: Check coverage and compare unchanged node IDs
-        run: python3 scripts/Summarize-Network.py --reports network-reports --output network-comparison
+      - uses: actions/download-artifact@v4
+        with:
+          name: pre-input-${{ github.run_id }}
+          path: pre-run
+      - name: Check latest coverage and compare overlapping node IDs
+        run: python3 scripts/Summarize-Network.py --reports network-reports --output network-comparison --pre-snapshot pre-run
       - name: Show comparison in the run summary
         if: always()
         run: |

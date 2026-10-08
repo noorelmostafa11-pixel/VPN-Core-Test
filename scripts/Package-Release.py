@@ -1,13 +1,24 @@
 """Make a complete Windows distribution with original source, licenses and build provenance."""
-import argparse,hashlib,json,os,pathlib,subprocess,zipfile
-p=argparse.ArgumentParser();p.add_argument('--output',default='dist');a=p.parse_args()
+import argparse,hashlib,importlib.util,json,os,pathlib,subprocess,zipfile
+p=argparse.ArgumentParser();p.add_argument('--output',default='dist');p.add_argument('--nodes',type=pathlib.Path);p.add_argument('--pre-manifest',type=pathlib.Path);a=p.parse_args()
 root=pathlib.Path(__file__).resolve().parents[1];version=(root/'VERSION').read_text().strip();files={}
 reported=subprocess.run([str(root/'bin/vpn-core.exe'),'--version'],capture_output=True,text=True,check=True,timeout=20).stdout.strip()
 if not reported.startswith('vpn-core '+version+'-expanded;'):raise SystemExit('Release binary version does not match VERSION')
-for folder in ['src','scripts','tests','tls-provider','third_party','nodes/pre/protocols','.github']:
+for folder in ['src','scripts','tests','tls-provider','third_party','.github']:
     for file in (root/folder).rglob('*'):
         if file.is_file() and '__pycache__' not in file.parts and file.suffix not in {'.pyc','.log'}:
             files[file.relative_to(root).as_posix()]=file.read_bytes()
+if bool(a.nodes)!=bool(a.pre_manifest):raise SystemExit('--nodes and --pre-manifest must be supplied together')
+if a.nodes:
+    spec=importlib.util.spec_from_file_location('snapshot',root/'scripts/Prepare-Pre-Snapshot.py')
+    snapshot=importlib.util.module_from_spec(spec);spec.loader.exec_module(snapshot)
+    pre=snapshot.load_manifest(a.pre_manifest)
+    for entry in pre['files']:
+        data=(a.nodes/entry['name']).read_bytes();snapshot.verify(data,entry)
+        files['nodes/pre/protocols/'+entry['name']]=data
+    files['docs/pre-run-manifest.json']=a.pre_manifest.read_bytes()
+else:
+    for file in (root/'nodes/pre/protocols').glob('*.txt'):files[file.relative_to(root).as_posix()]=file.read_bytes()
 for name in ['BASELINE-0.4.2.json','BASELINE-NETWORK.json','COMPONENTS.md','PROTOCOL-SOURCES.md','REPAIRS-0.4.2.md','SUPPORT-0.4.0.md','REPAIRS-0.4.3.md','RELEASE-NOTES.md','BUILDING.md','RUN-37600257138.md','pre-source-manifest.json','pre-current-source-manifest.json','PRE-COVERAGE-0.4.5.md']:
     files['docs/'+name]=(root/'docs'/name).read_bytes()
 for name in ['README.md','OWNERSHIP.md','NOTICE.md','VERSION','.gitignore','.gitattributes','build.ps1','build.sh']:
