@@ -40,7 +40,7 @@ unsigned handles(){
 #endif
 }
 int main(int argc,char** argv){try{
-    check(argc==2,"Expected cleanup, drain or resources");const std::string mode=argv[1];
+    check(argc==2,"Expected cleanup, drain, resources or resources-retained");const std::string mode=argv[1];
     [[maybe_unused]] NetworkRuntime runtime;
     Gate gate;network_hooks={nullptr,resolver,&gate};stopping=false;
     if(mode=="cleanup"){
@@ -66,15 +66,48 @@ int main(int argc,char** argv){try{
         check(timed_out&&independent&&callback_live&&began&&!premature&&complete,"Stop did not preserve callback/native cleanup lifetime");
         check(network_hooks_active==0&&network_dns_active==0,"Callback lease retained after drain");
         std::cout<<"PASS: independent DNS, timeout and Stop drain native thread cleanup\n";
-    }else if(mode=="resources"){
+    }else if(mode=="resources"||mode=="resources-retained"){
         gate.block_cleanup=false;
-        for(unsigned i=0;i<8;++i)(void)invoke_bootstrap("held.invalid",HookClock::now()+std::chrono::seconds(3));
-        const auto baseline=handles();
+        std::vector<Socket> retained;
+        auto sample=[&](const char* stage,unsigned cycle,const char* phase){
+            const auto count=handles();
+            std::cout<<"DNS_RESOURCE {\"stage\":\""<<stage<<"\",\"cycle\":"<<cycle
+                     <<",\"phase\":\""<<phase<<"\",\"handles\":"<<count<<"}"<<std::endl;
+            return count;
+        };
+        auto callback_step=[&](const char* stage,unsigned cycle){
+            check(invoke_bootstrap("held.invalid",HookClock::now()+std::chrono::seconds(3))=="127.0.0.1\n","DNS result changed");
+            return sample(stage,cycle,"callback");
+        };
+        auto system_step=[&](const char* stage,unsigned cycle){
+            network_hooks={};
+            const auto addresses=node_addresses("localhost",HookClock::now()+std::chrono::seconds(3));
+            network_hooks={nullptr,resolver,&gate};
+            check(!addresses.empty(),"System DNS returned no addresses");
+            return sample(stage,cycle,"system");
+        };
+        // Both resolver paths must be initialized before choosing a baseline.
+        // A bounded warmup may initialize Windows DNS resources once, but its
+        // final three cycles must already be stable; growth cannot reset it.
+        sample("initial",0,"before");
+        std::vector<std::pair<unsigned,unsigned>> warmup;
+        for(unsigned i=0;i<8;++i){
+            if(mode=="resources-retained"){
+                retained.emplace_back(::socket(AF_INET,SOCK_STREAM,IPPROTO_TCP));
+                check(retained.back().get()!=invalid_socket,"Retained socket creation failed");
+            }
+            const auto callback_count=callback_step("warmup",i);
+            const auto system_count=system_step("warmup",i);
+            warmup.emplace_back(callback_count,system_count);
+        }
+        const auto stable=warmup.back().second;
+        for(size_t i=warmup.size()-3;i<warmup.size();++i)
+            check(warmup[i].first==stable&&warmup[i].second==stable,"DNS warmup handles did not stabilize");
+        const auto baseline=sample("baseline",0,"fixed");
+        check(baseline==stable,"DNS handles changed before fixed baseline");
         for(unsigned i=0;i<32;++i){
-            (void)invoke_bootstrap("held.invalid",HookClock::now()+std::chrono::seconds(3));
-            check(handles()==baseline,"Native DNS callback worker retained handles");
-            network_hooks={};(void)node_addresses("localhost",HookClock::now()+std::chrono::seconds(3));
-            check(handles()==baseline,"System DNS worker retained handles");network_hooks={nullptr,resolver,&gate};
+            check(callback_step("measured",i)==baseline,"Native DNS callback worker retained handles");
+            check(system_step("measured",i)==baseline,"System DNS worker retained handles");
         }
         std::cout<<"PASS: native callback and system DNS handles stable for 32 cycles; baseline="<<baseline<<'\n';
     }else throw std::runtime_error("Unknown mode");
