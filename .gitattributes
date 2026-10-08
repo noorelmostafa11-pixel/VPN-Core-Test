@@ -1,2 +1,3 @@
 # Preserve the exact pinned component bytes and source hashes on every platform.
+# Retain those bytes for the full 0.4.7 Pre network test.
 * -text
