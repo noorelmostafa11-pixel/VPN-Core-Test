@@ -44,6 +44,14 @@ class Reliable {
 public:
     Reliable():generator_(std::random_device{}()){}
     size_t size()const noexcept{return connections_.size();}
+    // Upper bound for one newly decrypted SOCKS chunk. Never consume bytes from
+    // the local proxy when TCP still has an unacknowledged outgoing segment.
+    size_t send_capacity(const Key& key)const noexcept {
+        auto it=connections_.find(key);
+        if(it==connections_.end()||!it->second.established||it->second.local_fin||
+           it->second.pending)return 0;
+        return std::min(max_segment_,size_t(it->second.window));
+    }
     void clear() noexcept {connections_.clear();}
     Result receive(const uint8_t* bytes,size_t size,Clock::time_point now=Clock::now()) {
         Result result;
