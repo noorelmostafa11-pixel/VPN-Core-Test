@@ -1,9 +1,19 @@
 """Independent controlled TLS + VLESS/Trojan TCP/UDP peer for OS TUN tests."""
-import hashlib,socket,ssl,struct
+import hashlib,socket,ssl,struct,threading
 import test_core as core
 import test_expanded as peers
 from test_udp_sdk import address
 class NativeTunPeer(peers.Peer):
+    def __init__(self,protocol,cipher='',transport='raw',tls_context=None,corrupt=False,path='/test/Tun',bind_address=None):
+        if bind_address is None:
+            super().__init__(protocol,cipher,transport,tls_context,corrupt,path);return
+        self.protocol,self.cipher,self.transport=protocol,cipher,transport
+        self.tls_context,self.corrupt,self.path=tls_context,corrupt,path
+        self.listener=socket.socket(socket.AF_INET6 if ':' in bind_address else socket.AF_INET)
+        self.listener.bind((bind_address,0));self.port=self.listener.getsockname()[1]
+        self.listener.listen(64);self.listener.settimeout(.2)
+        self.stop=threading.Event();self.errors=[];self.accepted=0
+        self.thread=threading.Thread(target=self.accept,daemon=True);self.thread.start()
     def handle(self,raw):
         sock=raw
         try:

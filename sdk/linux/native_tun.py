@@ -37,6 +37,8 @@ class LinuxPolicy:
  type filter hook output priority -150; policy drop;
  oifname "lo" accept
  oifname "{self.name}" accept
+ ip6 hoplimit 255 meta l4proto ipv6-icmp icmpv6 type {{ 133, 135, 136 }} icmpv6 code 0 accept
+ ip6 daddr ff02::/16 ip6 hoplimit 1 meta l4proto ipv6-icmp icmpv6 type {{ 131, 132, 143 }} icmpv6 code 0 accept
  {'; '.join(allow)}
  counter drop
  }}

@@ -36,6 +36,7 @@ def main():
                     median['native_final_counters']=final
                 report['performance_medians'].append(median)
         report['platforms'][platform]=entry
+    report['platforms']['linux']['ipv6_node_uplink']=read(a.artifacts/('native-tun-linux-'+sha)/'evidence/linux/ipv6-uplink/ipv6-uplink-report.json')
     compatibility=read(a.artifacts/('native-tun-linux-'+sha)/'evidence/linux/stable-parser-comparison.json')
     if compatibility['rows']!=72767 or compatibility['changed_rows']!=0:raise RuntimeError('Parser regression')
     report['original_corpus_comparison']=compatibility

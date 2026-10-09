@@ -17,11 +17,34 @@ class NativeWindowsPolicy {
     HANDLE engine_=nullptr;
 
     static void checked(DWORD code){if(code)throw Failure("STARTUP_FAILED: owned WFP policy","TUN_WFP_POLICY",code);}
-    void add(const GUID& layer,std::vector<FWPM_FILTER_CONDITION0>& c) {
+    void block(const GUID& layer,std::vector<FWPM_FILTER_CONDITION0>& c) {
         FWPM_FILTER0 filter{};filter.providerKey=const_cast<GUID*>(&tun_policy_owner);filter.subLayerKey=tun_policy_layer;
         filter.layerKey=layer;filter.displayData.name=const_cast<wchar_t*>(L"VpnCore Native TUN guard v1");
         filter.flags=tun_wfp_persistent;filter.action.type=FWP_ACTION_BLOCK;
         filter.weight.type=FWP_UINT8;filter.weight.uint8=15;filter.numFilterConditions=UINT32(c.size());filter.filterCondition=c.data();checked(FwpmFilterAdd0(engine_,&filter,nullptr,nullptr));
+    }
+    void add(const GUID& layer,std::vector<FWPM_FILTER_CONDITION0>& c) {
+        // Physical IPv6 neighbor/MLD control is guarded independently below.
+        // Never exempt arbitrary IPv6 TCP, UDP, echo or error traffic.
+        if(IsEqualGUID(layer,tun_fwpm_layer_outbound_transport_v6)||IsEqualGUID(layer,tun_fwpm_layer_ale_auth_connect_v6)){
+            auto conditions=c;FWPM_FILTER_CONDITION0 protocol{};protocol.fieldKey=tun_fwpm_condition_ip_protocol;protocol.matchType=FWP_MATCH_NOT_EQUAL;protocol.conditionValue.type=FWP_UINT8;protocol.conditionValue.uint8=IPPROTO_ICMPV6;conditions.push_back(protocol);block(layer,conditions);
+        }else block(layer,c);
+    }
+    void control_guard(uint64_t luid){
+        FWPM_FILTER_CONDITION0 protocol{},iface{},loop{},type{},code{};
+        protocol.fieldKey=tun_fwpm_condition_ip_protocol;protocol.matchType=FWP_MATCH_EQUAL;protocol.conditionValue.type=FWP_UINT8;protocol.conditionValue.uint8=IPPROTO_ICMPV6;
+        iface.fieldKey=tun_fwpm_condition_ip_local_interface;iface.matchType=FWP_MATCH_NOT_EQUAL;iface.conditionValue.type=FWP_UINT64;iface.conditionValue.uint64=&luid;
+        loop.fieldKey=tun_fwpm_condition_flags;loop.matchType=FWP_MATCH_FLAGS_NONE_SET;loop.conditionValue.type=FWP_UINT32;loop.conditionValue.uint32=FWP_CONDITION_FLAG_IS_LOOPBACK;
+        type.fieldKey=tun_fwpm_condition_ip_local_port;type.matchType=FWP_MATCH_RANGE;type.conditionValue.type=FWP_RANGE_TYPE;
+        code.fieldKey=tun_fwpm_condition_ip_remote_port;code.matchType=FWP_MATCH_NOT_EQUAL;code.conditionValue.type=FWP_UINT16;code.conditionValue.uint16=0;
+        // Only host link-maintenance types: MLD reports/done, router solicitation,
+        // neighbor solicitation/advertisement. No echo/application data exemption.
+        const std::set<unsigned> allowed{131,132,133,135,136,143};
+        for(const auto& layer:{tun_fwpm_layer_outbound_transport_v6,tun_fwpm_layer_ale_auth_connect_v6}){
+            auto deny=[&](unsigned low,unsigned high){if(low>high)return;FWP_RANGE0 range{};range.valueLow.type=range.valueHigh.type=FWP_UINT16;range.valueLow.uint16=uint16_t(low);range.valueHigh.uint16=uint16_t(high);type.conditionValue.rangeValue=&range;std::vector<FWPM_FILTER_CONDITION0> c{protocol,iface,loop,type};block(layer,c);};
+            unsigned next=0;for(unsigned value:allowed){if(next<value)deny(next,value-1);next=value+1;}if(next<=255)deny(next,255);
+            std::vector<FWPM_FILTER_CONDITION0> c{protocol,iface,loop,code};block(layer,c);
+        }
     }
     static bool bit(const std::array<uint8_t,16>& ip,unsigned b){return (ip[b/8]>>(7-b%8))&1;}
     void complement(bool v6,std::array<uint8_t,16> base,unsigned prefix,const std::vector<std::array<uint8_t,16>>& excluded,uint64_t luid) {
@@ -68,7 +91,7 @@ public:
                 FWPM_FILTER_CONDITION0 process{};process.fieldKey=tun_fwpm_condition_ale_app_id;process.matchType=FWP_MATCH_NOT_EQUAL;process.conditionValue.type=FWP_BYTE_BLOB_TYPE;process.conditionValue.byteBlob=identity;
                 c={remote,process,iface,loop};add(v6?tun_fwpm_layer_ale_auth_connect_v6:tun_fwpm_layer_ale_auth_connect_v4,c);
             }
-            complement(false,{},0,ipv4,tun_luid);complement(true,{},0,ipv6,tun_luid);
+            complement(false,{},0,ipv4,tun_luid);complement(true,{},0,ipv6,tun_luid);control_guard(tun_luid);
             checked(FwpmTransactionCommit0(engine_));
         }catch(...){FwpmTransactionAbort0(engine_);throw;}
     }

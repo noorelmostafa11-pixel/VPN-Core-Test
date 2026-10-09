@@ -132,6 +132,8 @@ def build(a):
                   ROOT / 'tests/netstack_core_probe.cpp', '-o', stage / probe, *libraries])
         if a.experimental_netstack and target == 'windows':
             call([cxx, *flags, '-municode', ROOT / 'src/native-windows-launcher.cpp', '-o', stage / 'vpn-native-tun.exe', *libraries, '-liphlpapi', '-lfwpuclnt', '-lrpcrt4'])
+        if a.experimental_netstack and target == 'windows':
+            call([cxx, *flags, ROOT / 'tests/native_wfp_drop_probe.cpp', '-o', stage / 'vpn-wfp-drop-probe.exe', *libraries, '-lfwpuclnt', '-lrpcrt4'])
         if target == 'android':
             notice = ndk / 'NOTICE'
             if not notice.is_file(): raise RuntimeError('Pinned NDK is missing its NOTICE file.')

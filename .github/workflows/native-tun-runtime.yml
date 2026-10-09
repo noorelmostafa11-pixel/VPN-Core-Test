@@ -46,6 +46,7 @@ jobs:
           sudo ip netns add vpncoreci
           sudo ip netns exec vpncoreci "$(command -v python)" scripts/Test-Native-Tun-Device.py --build build/linux-amd64 --output evidence/linux/device --isolated-linux
           sudo ip netns exec vpncoreci "$(command -v python)" scripts/Test-Native-Tun-Policy.py --build build/linux-amd64 --output evidence/linux/policy --isolated-linux
+          sudo ip netns exec vpncoreci "$(command -v python)" scripts/Test-Native-Tun-IPv6-Uplink.py --build build/linux-amd64 --output evidence/linux/ipv6-uplink --isolated-linux
           sudo ip netns delete vpncoreci
       - name: Windows build and independent encrypted cases
         if: matrix.target == 'windows'

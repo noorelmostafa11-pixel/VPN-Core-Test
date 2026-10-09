@@ -41,11 +41,9 @@ def main():
                         try:physical_connect();raise AssertionError('Physical IPv4 escaped kill switch')
                         except OSError as e:assert e.winerror==10013,repr(e)
                         rows.append({'test':'WFP_PHYSICAL_IPV4_BLOCK','status':'PASS'})
-                        with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as dns_probe:
-                            dns_probe.setsockopt(socket.IPPROTO_IP,31,socket.htonl(int(physical)))
-                            try:dns_probe.sendto(b'must-not-leave-physical-interface',('1.1.1.1',53));raise AssertionError('Physical DNS UDP escaped')
-                            except OSError as e:assert e.winerror==10013,repr(e)
-                        rows.append({'test':'WFP_PHYSICAL_DNS_UDP_BLOCK','status':'PASS'})
+                        proof=cmd(a.build/'vpn-wfp-drop-probe.exe',physical)
+                        assert proof.startswith('PASS: owned WFP UDP DNS classify-drop'),proof
+                        rows.append({'test':'WFP_PHYSICAL_DNS_UDP_BLOCK','status':'PASS','evidence':proof.strip()})
                         dns=cmd('powershell','-NoProfile','-Command',"Get-DnsClientServerAddress -InterfaceAlias VpnCore-Policy-CI | ConvertTo-Json -Depth 4")
                         assert '9.9.9.9' in dns and '2620:fe::fe' in dns
                         rows.append({'test':'OWNED_ADAPTER_DNS_IPV4_IPV6','status':'PASS'})
