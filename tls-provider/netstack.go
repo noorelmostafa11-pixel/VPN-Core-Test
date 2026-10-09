@@ -333,3 +333,19 @@ func vpn_tun_copy_probe(input *C.uint8_t, output *C.uint8_t, size C.int) C.int {
     b:=C.GoBytes(unsafe.Pointer(input),size)
     return C.int(copy(unsafe.Slice((*byte)(unsafe.Pointer(output)),int(size)),b))
 }
+
+// Test-only explicit collection barrier for process resource measurements.
+// Never called from the packet loop. Runtime-owned scheduler/GC resources are
+// warmed before the baseline; subsequent measurement cycles allow no growth.
+//export vpn_tun_resource_probe
+func vpn_tun_resource_probe(out *C.uint8_t, capacity C.int) C.int {
+    if out==nil || capacity<1{return -1}
+    runtime.GC()
+    runtime.Gosched()
+    tunRegistry.Lock();active:=len(tunRegistry.stacks);tunRegistry.Unlock()
+    threads,_:=runtime.ThreadCreateProfile(nil)
+    var memory runtime.MemStats;runtime.ReadMemStats(&memory)
+    b,_:=json.Marshal(map[string]uint64{"registered_stacks":uint64(active),"go_goroutines":uint64(runtime.NumGoroutine()),"go_created_threads":uint64(threads),"go_gc_count":uint64(memory.NumGC),"go_heap_alloc_bytes":memory.HeapAlloc})
+    if len(b)>int(capacity){return -3}
+    return C.int(copy(unsafe.Slice((*byte)(unsafe.Pointer(out)),int(capacity)),b))
+}

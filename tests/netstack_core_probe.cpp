@@ -5,6 +5,9 @@
 #include <future>
 #include <iostream>
 #include <cstring>
+#ifdef _WIN32
+#include <processsnapshot.h>
+#endif
 using namespace vpn;
 static void require(bool condition,const char* text){if(!condition)throw std::runtime_error(text);}
 static uint16_t u16(const uint8_t* p){return uint16_t(uint16_t(p[0])<<8|p[1]);}
@@ -147,11 +150,46 @@ static void cleanup_cycle() {
     stack.inject(endpoint.packet(6,{},42,0,2));Bytes p;
     wait_until([&]{},[&]{return stack.packet(p);},"pending TCP cleanup handshake");
 }
+static uint64_t metric_integer(const Json& row,const char* key){return std::stoull(row.at(key).scalar());}
+static Json resource_snapshot() {
+    NetstackAPI api;uint8_t buffer[2048];int n=api.resource_probe(buffer,sizeof(buffer));
+    require(n>0,"Go resource collection barrier");Json result=json_parse(std::string(reinterpret_cast<char*>(buffer),size_t(n)));
+    require(metric_integer(result,"registered_stacks")==0,"packet registry retained a closed stack");
+#ifdef _WIN32
+    HPSS snapshot=nullptr;auto flags=PSS_CAPTURE_FLAGS(PSS_CAPTURE_HANDLES|PSS_CAPTURE_HANDLE_BASIC_INFORMATION|PSS_CAPTURE_HANDLE_TYPE_SPECIFIC_INFORMATION|PSS_CAPTURE_THREADS);
+    require(PssCaptureSnapshot(GetCurrentProcess(),flags,0,&snapshot)==ERROR_SUCCESS,"resource type snapshot");
+    Json types=Json::obj();HPSSWALK marker=nullptr;
+    DWORD status=PssWalkMarkerCreate(nullptr,&marker);if(status!=ERROR_SUCCESS){PssFreeSnapshot(GetCurrentProcess(),snapshot);throw std::runtime_error("resource walk marker");}
+    PSS_HANDLE_ENTRY entry{};
+    while((status=PssWalkSnapshot(snapshot,PSS_WALK_HANDLES,marker,&entry,sizeof(entry)))==ERROR_SUCCESS) {
+        std::string type="object_type_"+std::to_string(unsigned(entry.ObjectType));
+        if(entry.ObjectType==PSS_OBJECT_TYPE_EVENT)type="Event";else if(entry.ObjectType==PSS_OBJECT_TYPE_THREAD)type="Thread";else if(entry.ObjectType==PSS_OBJECT_TYPE_MUTANT)type="Mutant";else if(entry.ObjectType==PSS_OBJECT_TYPE_SEMAPHORE)type="Semaphore";else if(entry.ObjectType==PSS_OBJECT_TYPE_SECTION)type="Section";else if(entry.ObjectType==PSS_OBJECT_TYPE_PROCESS)type="Process";
+        if(entry.TypeName&&entry.TypeNameLength){type.clear();for(size_t i=0;i<entry.TypeNameLength/sizeof(wchar_t);++i)type.push_back(entry.TypeName[i]<128?char(entry.TypeName[i]):'?');}
+        auto count=types.has(type)?metric_integer(types,type.c_str()):0;types[type]=Json::integer(count+1);
+    }
+    PSS_THREAD_INFORMATION threads{};DWORD thread_status=PssQuerySnapshot(snapshot,PSS_QUERY_THREAD_INFORMATION,&threads,sizeof(threads));
+    PssWalkMarkerFree(marker);PssFreeSnapshot(GetCurrentProcess(),snapshot);
+    require(status==ERROR_NO_MORE_ITEMS&&thread_status==ERROR_SUCCESS,"resource type enumeration");
+    result["handle_types"]=types;result["native_threads"]=Json::integer(threads.ThreadsCaptured);
+#endif
+    // Snapshot and marker ownership has ended before the process count.
+    result["resources"]=Json::integer(resource_count());return result;
+}
 static Json resource_probe() {
-    uint64_t previous=resource_count();unsigned unchanged=0;bool stable=false;
-    for(unsigned i=0;i<24;++i){cleanup_cycle();auto n=resource_count();Json row=Json::obj();row["test"]=Json("RESOURCE_WARMUP");row["cycle"]=Json::integer(i);row["resources"]=Json::integer(n);row["status"]=Json("PASS");std::cout<<json_dump(row)<<'\n';unchanged=n==previous?unchanged+1:0;previous=n;if(unchanged>=4){stable=true;break;}}
+    auto initial=resource_snapshot();uint64_t previous=metric_integer(initial,"resources");unsigned unchanged=0;bool stable=false;
+    const auto warmup_start=Clock::now();
+    for(unsigned i=0;i<24;++i){
+        cleanup_cycle();std::this_thread::sleep_for(std::chrono::milliseconds(100));auto row=resource_snapshot();auto n=metric_integer(row,"resources");
+        row["test"]=Json("RESOURCE_WARMUP");row["cycle"]=Json::integer(i);row["status"]=Json("PASS");std::cout<<json_dump(row)<<'\n';
+        unchanged=n==previous?unchanged+1:0;previous=n;
+        if(unchanged>=4&&Clock::now()-warmup_start>=std::chrono::seconds(2)){stable=true;break;}
+    }
     require(stable,"resource warmup did not stabilize within 24 cycles");const auto baseline=previous;
-    for(unsigned i=0;i<32;++i){cleanup_cycle();auto n=resource_count();Json row=Json::obj();row["test"]=Json("RESOURCE_CYCLE");row["cycle"]=Json::integer(i);row["resources"]=Json::integer(n);row["baseline"]=Json::integer(baseline);row["status"]=Json(n<=baseline?"PASS":"FAIL");std::cout<<json_dump(row)<<'\n';require(n<=baseline,"packet stack resource count increased after stable warmup");}
+    for(unsigned i=0;i<32;++i){
+        cleanup_cycle();std::this_thread::sleep_for(std::chrono::milliseconds(100));auto row=resource_snapshot();auto n=metric_integer(row,"resources");
+        row["test"]=Json("RESOURCE_CYCLE");row["cycle"]=Json::integer(i);row["baseline"]=Json::integer(baseline);row["status"]=Json(n<=baseline?"PASS":"FAIL");std::cout<<json_dump(row)<<'\n';
+        require(n<=baseline,"packet stack resource count increased after stable warmup");
+    }
     Json result=Json::obj();result["test"]=Json("RESOURCE_CLEANUP");result["cycles"]=Json::integer(32);result["baseline"]=Json::integer(baseline);result["status"]=Json("PASS");return result;
 }
 int main(int argc,char** argv) {

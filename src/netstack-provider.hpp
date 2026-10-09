@@ -32,6 +32,7 @@ public:
     int(*metrics)(uint64_t,uint8_t*,int)=nullptr;
     int(*set_wakeup)(uint64_t,int64_t)=nullptr;
     int(*copy_probe)(const uint8_t*,uint8_t*,int)=nullptr;
+    int(*resource_probe)(uint8_t*,int)=nullptr;
     NetstackAPI() {
         auto& p=ProviderModule::instance();
         p.symbol(abi,"vpn_tun_abi_version");
@@ -42,7 +43,7 @@ public:
         p.symbol(write,"vpn_tun_write");p.symbol(shutdown_write,"vpn_tun_shutdown_write");
         p.symbol(drop,"vpn_tun_drop");p.symbol(metrics,"vpn_tun_metrics");
         p.symbol(release,"vpn_tun_release");
-        p.symbol(copy_probe,"vpn_tun_copy_probe");p.symbol(set_wakeup,"vpn_tun_set_wakeup");
+        p.symbol(copy_probe,"vpn_tun_copy_probe");p.symbol(set_wakeup,"vpn_tun_set_wakeup");p.symbol(resource_probe,"vpn_tun_resource_probe");
     }
 };
 class NetstackWakeup {
