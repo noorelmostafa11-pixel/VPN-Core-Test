@@ -35,7 +35,11 @@ int main() {
     }
     Socket listener=listen_local(0);
     sockaddr_in address{};
-    SockLen length=sizeof(address);
+#ifdef _WIN32
+    int length=sizeof(address);
+#else
+    socklen_t length=sizeof(address);
+#endif
     if(getsockname(listener.get(),reinterpret_cast<sockaddr*>(&address),&length))
         throw std::runtime_error("listener port missing");
     const uint16_t port=ntohs(address.sin_port);
