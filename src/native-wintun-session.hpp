@@ -55,6 +55,13 @@ public:
     void request_stop() noexcept {stopped_.store(true,std::memory_order_relaxed);}
     uint64_t accepted_packets() const noexcept {return accepted_;}
     uint64_t dropped_packets() const noexcept {return dropped_;}
+    // Windows interface identifier used to bind later owned routes to exactly
+    // this adapter; this does not add addresses or change any network setting.
+    uint64_t adapter_luid() const {
+        NET_LUID luid{};
+        api_.get_adapter_luid(adapter_,&luid);
+        return luid.Value;
+    }
 
     // Single-reader contract. At most 50 ms is spent waiting for a read event.
     // The caller owns any further processing; this method never forwards.
