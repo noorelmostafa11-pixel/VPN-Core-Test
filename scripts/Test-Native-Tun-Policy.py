@@ -41,6 +41,11 @@ def main():
                         try:physical_connect();raise AssertionError('Physical IPv4 escaped kill switch')
                         except OSError as e:assert e.winerror==10013,repr(e)
                         rows.append({'test':'WFP_PHYSICAL_IPV4_BLOCK','status':'PASS'})
+                        with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as dns_probe:
+                            dns_probe.setsockopt(socket.IPPROTO_IP,31,socket.htonl(int(physical)))
+                            try:dns_probe.sendto(b'must-not-leave-physical-interface',('1.1.1.1',53));raise AssertionError('Physical DNS UDP escaped')
+                            except OSError as e:assert e.winerror==10013,repr(e)
+                        rows.append({'test':'WFP_PHYSICAL_DNS_UDP_BLOCK','status':'PASS'})
                         dns=cmd('powershell','-NoProfile','-Command',"Get-DnsClientServerAddress -InterfaceAlias VpnCore-Policy-CI | ConvertTo-Json -Depth 4")
                         assert '9.9.9.9' in dns and '2620:fe::fe' in dns
                         rows.append({'test':'OWNED_ADAPTER_DNS_IPV4_IPV6','status':'PASS'})
@@ -50,6 +55,24 @@ def main():
                         except subprocess.TimeoutExpired:process.kill();process.wait()
                         # Explicit recovery also covers the intentional crash case.
                         cmd(a.build/'vpn-native-tun.exe','--recover-network')
+                # Kill an actual owner process: persistent guard must remain;
+                # recovery must restore connectivity, never a global reset.
+                crashlog=a.output/'windows-crash-policy.log'
+                with crashlog.open('w') as log:
+                    owner=subprocess.Popen([str(a.build/'vpn-native-tun.exe'),'--config',str(cfg),'--wintun',str(a.build/'wintun.dll'),'--uplink-index',uplink,'--name','VpnCore-Policy-CI','--test-policy'],stdout=log,stderr=subprocess.STDOUT,creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+                    try:
+                        deadline=time.monotonic()+20
+                        while 'native_tun_network_ready' not in crashlog.read_text():
+                            if owner.poll() is not None or time.monotonic()>deadline:raise RuntimeError(crashlog.read_text())
+                            time.sleep(.05)
+                        owner.kill();owner.wait(10)
+                        try:physical_connect();raise AssertionError('Process death opened physical networking')
+                        except OSError as e:assert e.winerror==10013,repr(e)
+                        rows.append({'test':'PROCESS_CRASH_GUARD_RETAINED','status':'PASS'})
+                    finally:
+                        if owner.poll() is None:owner.kill();owner.wait(10)
+                        cmd(a.build/'vpn-native-tun.exe','--recover-network')
+                physical_connect();rows.append({'test':'PHYSICAL_CONNECTIVITY_AFTER_OWNED_RECOVERY','status':'PASS'})
             else:
                 from native_tun import LinuxPolicy,MARK,TABLE
                 cmd('ip','link','set','lo','up')

@@ -3,7 +3,7 @@
 #include "config.hpp"
 namespace vpn {
 struct NativeBootstrapTarget {std::string host;uint16_t port;};
-inline const Json& bootstrap_field(const Json& j,const std::string& name) {
+inline const Json& bootstrap_field(const Json& j,const char* name) {
     // The provider receives json_dump(Config.extra), in sorted key order.
     // Go's case-insensitive struct decoding overwrites earlier matching keys.
     static const Json empty;const Json* result=&empty;

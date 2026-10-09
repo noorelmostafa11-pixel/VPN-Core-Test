@@ -15,6 +15,7 @@ def verify(build,sha):
 def main():
     p=argparse.ArgumentParser();p.add_argument('--artifacts',type=pathlib.Path,required=True);p.add_argument('--output',type=pathlib.Path,required=True);a=p.parse_args()
     sha=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip();a.output.mkdir(parents=True,exist_ok=True)
+    subprocess.run([__import__('sys').executable,ROOT/'scripts/Report-Native-Tun-Trials.py','--artifacts',a.artifacts,'--output',a.output],cwd=ROOT,check=True)
     source=a.output/('native-tun-source-'+sha[:12]+'.zip')
     subprocess.run(['git','archive','--format=zip','--output='+str(source.resolve()),sha],cwd=ROOT,check=True)
     with tempfile.TemporaryDirectory() as td:
@@ -24,6 +25,7 @@ def main():
             if not artifact.is_dir():raise RuntimeError('Missing completed artifact '+target)
             trial=td/('VPN-Native-TUN-'+target);trial.mkdir();(trial/'SDK').mkdir()
             shutil.copy2(source,trial/source.name)
+            for report in ('native-tun-report.json','NATIVE-TUN-REPORT.md'):shutil.copy2(a.output/report,trial/report)
             shutil.copytree(ROOT/'docs',trial/'Docs')
             shutil.copytree(artifact/'evidence',trial/'Evidence')
             if target=='android':

@@ -68,6 +68,20 @@ public static class VpnCore
     private delegate int TunFunction([MarshalAs(UnmanagedType.LPUTF8Str)] string config,
         ref TunOptions options,ProtectCallback protect,ResolveCallback resolve,IntPtr user);
     public static uint TunAbiVersion => Export<AbiFunction>("vpn_core_tun_abi_version")();
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate int BootstrapFunction([MarshalAs(UnmanagedType.LPUTF8Str)] string config,IntPtr output,uint capacity);
+    // JSON array of original bootstrap {host,port} pairs; no DNS I/O.
+    // Pre-resolve all entries and admit exact own-process endpoint ports.
+    public static string BootstrapTargets(string config)
+    {
+        if(string.IsNullOrEmpty(config)||config.Contains('\0'))throw new ArgumentException("config");
+        var read=Export<BootstrapFunction>("vpn_core_bootstrap_targets");
+        int required=read(config,IntPtr.Zero,0);
+        if(required>=-1||required==-5)throw new InvalidOperationException("Native TUN bootstrap metadata unavailable");
+        IntPtr output=Marshal.AllocHGlobal(-required);
+        try{int n=read(config,output,(uint)-required);if(n<=0)throw new InvalidOperationException("Invalid bootstrap metadata");return Marshal.PtrToStringUTF8(output,n)!;}
+        finally{Marshal.FreeHGlobal(output);}
+    }
     public static bool TunReady => Export<StateFunction>("vpn_core_tun_ready")()!=0;
     // Caller owns elevated network policy (see native-windows-launcher.cpp).
     // Acquire guard before routes/DNS. Retain all callbacks/options until join.
