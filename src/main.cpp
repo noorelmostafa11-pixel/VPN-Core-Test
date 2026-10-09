@@ -7,6 +7,7 @@
 #include "udp-relay.hpp"
 #include "native-tun-udp-protocol.hpp"
 #include "native-tun-tcp-reliable.hpp"
+#include "native-tun-tcp-socks.hpp"
 #ifdef _WIN32
 #include "native-tun-udp-pump.hpp"
 #endif
