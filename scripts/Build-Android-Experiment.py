@@ -37,7 +37,7 @@ def main():
         # The key is outside artifacts and never a production signing key.
         key=pathlib.Path(os.environ.get('VPN_CORE_EXPERIMENT_KEYSTORE',td/'experiment.p12'))
         if not key.exists():
-            key.parent.mkdir(parents=True,exist_ok=True)
+            key.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
             run('keytool','-genkeypair','-keystore',key,'-storepass','vpn-experiment','-keypass','vpn-experiment','-alias','experiment','-keyalg','RSA','-keysize','2048','-validity','365','-dname','CN=VPN Core Experiment')
         run(tools/'apksigner','sign','--ks',key,'--ks-pass','pass:vpn-experiment','--out',a.output,aligned)
         run(tools/'apksigner','verify','--verbose',a.output)
