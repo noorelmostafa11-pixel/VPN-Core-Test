@@ -27,7 +27,7 @@ public class VpnCoreVpnService extends VpnService {
     private String config;
     private ConnectivityManager connectivity;
     private ConnectivityManager.NetworkCallback callback;
-    private long generation;private int retry;
+    private volatile long generation;private int retry;
     @Override public void onCreate(){
         super.onCreate();connectivity=(ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);
         callback=new ConnectivityManager.NetworkCallback(){
@@ -50,8 +50,10 @@ public class VpnCoreVpnService extends VpnService {
     }
     @Override public int onStartCommand(Intent intent,int flags,int id){
         if(intent!=null&&DISCONNECT.equals(intent.getAction())){lifecycle.execute(this::disconnect);return START_NOT_STICKY;}
-        foreground();if(intent==null)return START_NOT_STICKY;
-        String path=intent.getStringExtra(CONFIG);
+        foreground();
+        String provided=intent==null?null:intent.getStringExtra(CONFIG);
+        final String path=provided!=null?provided:getSharedPreferences("vpn-core-tun",MODE_PRIVATE).getString(CONFIG,null);
+        if(path==null){report("CONFIG_REQUIRED",1);stopSelf();return START_NOT_STICKY;}
         lifecycle.execute(()->{try{connect(path);}catch(Exception e){report("START_FAILED",1);/* An established TUN is retained fail closed. */}});
         return START_NOT_STICKY;
     }
@@ -69,7 +71,7 @@ public class VpnCoreVpnService extends VpnService {
         if(path==null||!new File(path).isFile())throw new IOException("configPath");
         if(tun!=null){disconnect();foreground();}
         if(prepare(this)!=null)throw new IOException("VPN consent required");
-        config=path;underlying=chooseNetwork();if(underlying==null)throw new IOException("Underlying network unavailable");
+        config=path;getSharedPreferences("vpn-core-tun",MODE_PRIVATE).edit().putString(CONFIG,path).apply();underlying=chooseNetwork();if(underlying==null)throw new IOException("Underlying network unavailable");
         Builder builder=new Builder().setSession("VpnCore Native TUN").setMtu(1500).setBlocking(false)
             .addAddress("198.18.0.2",30).addAddress("fd71:5650::2",126)
             .addRoute("0.0.0.0",0).addRoute("::",0).addDnsServer("9.9.9.9").addDnsServer("2620:fe::fe")
@@ -88,7 +90,20 @@ public class VpnCoreVpnService extends VpnService {
         NativeCore.NetworkHooks hooks=new NativeCore.NetworkHooks(){
             @Override public boolean protect(int socketFd){
                 if(!VpnCoreVpnService.this.protect(socketFd)){report("SOCKET_PROTECT_DENIED",1);return false;}
-                try(ParcelFileDescriptor borrowed=ParcelFileDescriptor.fromFd(socketFd)){selected.bindSocket(borrowed.getFileDescriptor());return true;}catch(IOException e){android.util.Log.i("VpnCoreService","SOCKET_BIND_FAILED "+e.getClass().getSimpleName()+": "+e.getMessage());return false;}
+                try(ParcelFileDescriptor borrowed=ParcelFileDescriptor.fromFd(socketFd)){
+                    long deadline=System.nanoTime()+2000000000L;
+                    for(;;){
+                        if(disconnected||token!=generation||!selected.equals(underlying))return false;
+                        try{selected.bindSocket(borrowed.getFileDescriptor());break;}
+                        catch(java.net.SocketException e){
+                            if(e.getMessage()==null||!e.getMessage().contains("EPERM")||System.nanoTime()>=deadline)throw e;
+                            // Await a bounded OS permission transition using the
+                            // same protected socket and selected network; never bypass.
+                            try{Thread.sleep(20);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();return false;}
+                        }
+                    }
+                    if(!VpnCoreVpnService.this.protect(socketFd)){report("SOCKET_REPROTECT_DENIED",1);return false;}return true;
+                }catch(IOException e){android.util.Log.i("VpnCoreService","SOCKET_BIND_FAILED "+e.getClass().getSimpleName()+": "+e.getMessage());return false;}
             }
             @Override public String[] resolve(String host){try{InetAddress[] list=selected.getAllByName(host);String[] ips=new String[list.length];for(int i=0;i<list.length;i++)ips[i]=list[i].getHostAddress();return ips;}catch(UnknownHostException e){return new String[0];}}
         };

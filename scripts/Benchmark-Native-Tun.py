@@ -76,7 +76,7 @@ def main():
                                         time.sleep(.01)
                                     info=json.loads(ready.read_text())
                                     if mode=='tun':
-                                        if os.name=='nt':command('powershell','-NoProfile','-Command',"$ErrorActionPreference='Stop'; Set-NetIPInterface -InterfaceAlias vpnbbench -AddressFamily IPv4 -NlMtuBytes 1500; New-NetIPAddress -InterfaceAlias vpnbbench -IPAddress 198.18.0.2 -PrefixLength 30 -AddressFamily IPv4 | Out-Null; New-NetRoute -InterfaceAlias vpnbbench -DestinationPrefix 203.0.113.0/24 -NextHop 0.0.0.0 | Out-Null")
+                                        if os.name=='nt':command('powershell','-NoProfile','-Command',"$ErrorActionPreference='Stop'; Set-NetIPInterface -InterfaceAlias vpnbbench -AddressFamily IPv4 -NlMtuBytes 1500 -DadTransmits 0; New-NetIPAddress -InterfaceAlias vpnbbench -IPAddress 198.18.0.2 -PrefixLength 30 -AddressFamily IPv4 | Out-Null; New-NetRoute -InterfaceAlias vpnbbench -DestinationPrefix 203.0.113.0/24 -NextHop 0.0.0.0 | Out-Null; $deadline=(Get-Date).AddSeconds(15); while((Get-NetIPAddress -InterfaceAlias vpnbbench -AddressFamily IPv4 -IPAddress 198.18.0.2).AddressState -ne 'Preferred'){ if((Get-Date) -gt $deadline){throw 'TUN address not preferred'}; Start-Sleep -Milliseconds 50 }")
                                         else:command('ip','link','set','vpnbbench','up');command('ip','addr','add','198.18.0.2/30','dev','vpnbbench');command('ip','route','add','203.0.113.0/24','dev','vpnbbench')
                                     def connect():
                                         s=socket.create_connection(('203.0.113.9',443) if mode=='tun' else ('127.0.0.1',info['port']),10)

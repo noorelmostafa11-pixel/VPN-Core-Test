@@ -31,6 +31,7 @@ def main():
                 for build in sorted((artifact/'build').glob('android-*')):
                     verify(build,sha);shutil.copytree(build,runtime/build.name)
                 shutil.copy2(artifact/'dist/vpn-core-native-tun-experiment.apk',trial/'vpn-core-native-tun-experiment.apk')
+                shutil.copy2(artifact/'dist/vpn-core-native-tun.aar',trial/'vpn-core-native-tun.aar')
                 shutil.copytree(ROOT/'sdk/android',trial/'SDK/android')
                 instructions='Install the debug experiment APK. Enter the unchanged original node URI, approve VPN access, connect and use Test HTTPS connection. Disconnect explicitly. Enable Android always-on and Block connections without VPN for crash protection. The service integration is supplied as source: include NativeCore, JNI libraries and VpnCoreVpnService in the app with the documented manifest permissions. Test packages use a fresh debug key; uninstall the previous experiment before installing a new build. Existing proxy runStandalone/run APIs remain available.'
             else:
