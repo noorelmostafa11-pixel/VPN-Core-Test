@@ -50,6 +50,8 @@ jobs:
           ./bin/native_tun_tcp_probe
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror tests/native_tun_tcp_reliable_probe.cpp -o bin/native_tun_tcp_reliable_probe
           ./bin/native_tun_tcp_reliable_probe
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror tests/native_network_rollback_probe.cpp -o bin/native_network_rollback_probe
+          ./bin/native_network_rollback_probe
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -Wno-misleading-indentation -DVPN_CORE_PORTABLE tests/native_tun_udp_protocol_probe.cpp -o bin/native_tun_udp_protocol_probe -ldl -pthread
           ./bin/native_tun_udp_protocol_probe
           python scripts/Build.py --target linux --build-tests --require-clean
@@ -111,6 +113,10 @@ jobs:
           if ($LASTEXITCODE) { throw 'Native TUN reliable TCP probe compilation failed' }
           & (Join-Path 'bin' 'native_tun_tcp_reliable_probe.exe')
           if ($LASTEXITCODE) { throw 'Native TUN reliable TCP probe failed' }
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror tests/native_network_rollback_probe.cpp -o bin/native_network_rollback_probe.exe
+          if ($LASTEXITCODE) { throw 'Native network rollback journal compilation failed' }
+          & (Join-Path 'bin' 'native_network_rollback_probe.exe')
+          if ($LASTEXITCODE) { throw 'Native network rollback journal test failed' }
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -Wno-misleading-indentation -D_WIN32_WINNT=0x0A00 tests/native_tun_udp_protocol_probe.cpp -o bin/native_tun_udp_protocol_probe.exe -lws2_32 -lsecur32 -lcrypt32 -lbcrypt -pthread
           if ($LASTEXITCODE) { throw 'Native TUN UDP protocol bridge compilation failed' }
           & (Join-Path 'bin' 'native_tun_udp_protocol_probe.exe')
