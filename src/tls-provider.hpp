@@ -33,7 +33,13 @@ public:
     ProviderTls()=default;ProviderTls(const ProviderTls&)=delete;ProviderTls& operator=(const ProviderTls&)=delete;~ProviderTls(){if(id_)api_.free(id_);}
     void handshake(Socket& socket,const Config& c,Clock::time_point deadline){Json settings=provider_settings(c);recordwise_=c.flow=="xtls-rprx-vision"||c.flow=="xtls-rprx-vision-udp443"||c.security=="xtls";
         auto text=json_dump(settings);id_=api_.create(text.data(),int(text.size()));if(!id_)throw Failure("TLS_FAILED: provider initialization","TLS_PROVIDER_CREATE");
-        for(;;){check_cancelled();auto wire=take_control();send_all(socket,wire.data(),wire.size(),deadline);check();if(api_.state(id_)!=0)break;if(Clock::now()>=deadline)throw Failure("TLS_FAILED: TLS provider timeout","TLS_PROVIDER_TIMEOUT");fd_set read;FD_ZERO(&read);FD_SET(socket.get(),&read);timeval timeout{0,1000};int r=select(int(socket.get()+1),&read,nullptr,nullptr,&timeout);if(r<0)throw Failure("TLS_FAILED: TLS provider socket wait","TLS_PROVIDER_WAIT");if(r){auto b=receive_some(socket,deadline);for(size_t offset=0;offset<b.size();offset+=65536){auto n=std::min(size_t(65536),b.size()-offset);if(api_.feed(id_,reinterpret_cast<char*>(b.data()+offset),int(n))<0){check();throw Failure("TLS_FAILED: provider handshake input","TLS_PROVIDER_INPUT");}}}}
+        for(;;){check_cancelled();auto wire=take_control();send_all(socket,wire.data(),wire.size(),deadline);check();if(api_.state(id_)!=0)break;if(Clock::now()>=deadline)throw Failure("TLS_FAILED: TLS provider timeout","TLS_PROVIDER_TIMEOUT");fd_set read;FD_ZERO(&read);FD_SET(socket.get(),&read);timeval timeout{0,1000};int r=select(int(socket.get()+1),&read,nullptr,nullptr,&timeout);if(r<0){auto error=socket_error();
+#ifdef _WIN32
+            if(error==WSAEINTR)continue;
+#else
+            if(error==EINTR)continue;
+#endif
+            throw Failure("TLS_FAILED: TLS provider socket wait","TLS_PROVIDER_WAIT",uint32_t(error));}if(r){auto b=receive_some(socket,deadline);for(size_t offset=0;offset<b.size();offset+=65536){auto n=std::min(size_t(65536),b.size()-offset);if(api_.feed(id_,reinterpret_cast<char*>(b.data()+offset),int(n))<0){check();throw Failure("TLS_FAILED: provider handshake input","TLS_PROVIDER_INPUT");}}}}
         char data[8192];int n=api_.info(id_,data,sizeof(data));if(n<=0)throw Failure("TLS_FAILED: provider metadata","TLS_PROVIDER_INFO");auto info=json_parse(std::string(data,size_t(n)));alpn_=info.at("alpn").scalar();version_=info.at("version").scalar()=="772"?"TLS1.3":"TLS1.2";
     }
     Bytes encrypt(const Bytes& plain){check();for(size_t offset=0;offset<plain.size();offset+=16384){auto n=std::min(size_t(16384),plain.size()-offset);if(api_.write(id_,reinterpret_cast<char*>(const_cast<uint8_t*>(plain.data()+offset)),int(n))!=int(n)){check();throw Failure("TLS_FAILED: provider encryption","TLS_PROVIDER_ENCRYPT");}}return drain(0);}

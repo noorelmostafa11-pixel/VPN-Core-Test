@@ -45,7 +45,7 @@ Bytes socks_request(Socket& client,Clock::time_point deadline,uint8_t* command=n
 }
 void relay(Socket& client,Socket& server,SecureStream& tls,Transport& transport,Protocol& protocol,const Config& config,const Bytes& initial,uint64_t& uploaded,uint64_t& downloaded) {
     constexpr size_t limit=524288;Queue up,down;bool client_eof=false,server_eof=false,transport_ended=false,server_write_closed=false;auto last=Clock::now();
-    auto process=[&](const Bytes& b){up.append(tls.take_control());auto data=protocol.decode(transport.decode(b));if(protocol.take_direct()){auto held=tls.switch_direct_receive();auto direct=protocol.decode(transport.decode(held));data.insert(data.end(),direct.begin(),direct.end());}downloaded+=data.size();down.append(data);auto protocol_control=protocol.take_control();if(!protocol_control.empty())up.append(tls.encrypt(transport.encode(protocol_control)));auto control=transport.take_control();if(!control.empty())up.append(tls.encrypt(control));};
+    auto process=[&](const Bytes& b){up.append(tls.take_control());auto data=protocol.decode(transport.decode(b));if(protocol.take_direct()){auto held=tls.switch_direct_receive();auto direct=protocol.decode(transport.decode(held));data.insert(data.end(),direct.begin(),direct.end());}downloaded+=data.size();down.append(data);auto protocol_control=protocol.take_control();if(!protocol_control.empty()&&tls.write_open())up.append(tls.encrypt(transport.encode(protocol_control)));auto control=transport.take_control();if(!control.empty()&&tls.write_open())up.append(tls.encrypt(control));};
     process(initial);
     for(;;) {
         if(stopping)break;

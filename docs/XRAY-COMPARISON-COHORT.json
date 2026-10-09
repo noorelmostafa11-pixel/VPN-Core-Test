@@ -1,0 +1,14 @@
+{
+  "schema": "vpn-xray-cohort-v1",
+  "rows": 278,
+  "core_baseline_run": 37855491775,
+  "core_baseline_commit": "d6f06988accbe7ce95921fe738731632251de74e",
+  "pre_commit": "52e96402a2fd80e5d593d2ee77d8a19ce623be8a",
+  "xray_success_runs": [
+    37773848427,
+    37705387725
+  ],
+  "identity": "source + SHA256(exact original URI)[:20]",
+  "sanitized_fixture": "docs/xray-both-success-core-failure.csv",
+  "fixture_sha256": "910d6ea7e8fe402d5cb707248105b37b26c02087030d417435a57fc362989e10"
+}

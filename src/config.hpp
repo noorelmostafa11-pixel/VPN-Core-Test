@@ -63,7 +63,11 @@ inline void parse_uri(Config& c,std::string uri){if(uri.size()>65536)throw std::
     // Keep the original fields and translate only their carrier-specific use.
     if(legacy&&c.transport=="quic"){if(!present(q,{"quicsecurity","quic-security"}))c.original_options["quicsecurity"]=option(q,{"host"},"none");if(!present(q,{"quickey","quic-key","key"}))c.original_options["quickey"]=option(q,{"path"});}
     c.service=option(q,{"servicename","service-name","grpc-service-name","service_name"});if(!present(q,{"servicename","service-name","grpc-service-name","service_name"})){c.service=c.path;auto a=c.service.find_first_not_of('/');c.service=a==std::string::npos?"":c.service.substr(a);}
-    c.explicit_sni=present(q,{"sni","servername","server-name","peer"});c.tls_name=option(q,{"sni","servername","server-name","peer"},c.server);c.public_key=option(q,{"pbk","password","publickey","public-key"});c.short_id=option(q,{"sid","shortid","short-id"});c.spider_x=option(q,{"spx","spiderx"});c.ech=option(q,{"ech","echconfiglist","ech-config-list"});
+    c.explicit_sni=present(q,{"sni","servername","server-name","peer"});c.tls_name=option(q,{"sni","servername","server-name","peer"},c.server);
+    // Empty legacy JSON/null or URI SNI means the endpoint name, never an
+    // instruction to omit certificate name verification. Keep original_options.
+    if(c.tls_name.empty())c.tls_name=c.server;
+    c.public_key=option(q,{"pbk","password","publickey","public-key"});c.short_id=option(q,{"sid","shortid","short-id"});c.spider_x=option(q,{"spx","spiderx"});c.ech=option(q,{"ech","echconfiglist","ech-config-list"});
     c.legacy_insecure_requested=true_value(option(q,{"allowinsecure","allow_insecure","allow-insecure","insecure","skip-cert-verify","skip_cert_verify"}));
     std::istringstream list(option(q,{"alpn"}));std::string p;while(std::getline(list,p,',')){p=trim(p);if(!p.empty()){if(p.size()>255)throw std::runtime_error("PARSE_INVALID: ALPN token too long");c.alpn.push_back(p);}}
     if(c.transport=="xhttp"&&c.security!="reality"&&c.alpn.size()==1){auto protocols=compatible_concatenated_alpn(c.alpn[0]);if(!protocols.empty()){c.alpn=std::move(protocols);c.uri_compatibility.push_back("ALPN_CONCATENATED_PROTOCOLS");}}

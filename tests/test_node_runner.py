@@ -2,6 +2,7 @@
 import hashlib,json,os,pathlib,select,socket,ssl,subprocess,sys,tempfile,unittest
 import test_core as core
 from test_batch import Service,ID
+RUNNER=pathlib.Path(__file__).resolve().parents[1]/'scripts/Test-Nodes.py'
 
 class NodeRunnerTests(unittest.TestCase):
     @classmethod
@@ -46,7 +47,7 @@ class NodeRunnerTests(unittest.TestCase):
                 env=dict(os.environ,CURL_CA_BUNDLE=str(core.CoreTests.cert))
                 for status in [200,202,204,206]:
                     out=td/f'results-{status}'
-                    result=subprocess.run([sys.executable,core.ROOT/'scripts/Test-Nodes.py','--core',core.BIN,'--nodes',nodes,'--pre-manifest',manifest,'--source-commit','synthetic-core','--shards','1','--output',out,'--url',f'https://localhost:{target.port}/{status}'],env=env,capture_output=True,text=True,timeout=20)
+                    result=subprocess.run([sys.executable,RUNNER,'--core',core.BIN,'--nodes',nodes,'--pre-manifest',manifest,'--source-commit','synthetic-core','--shards','1','--output',out,'--url',f'https://localhost:{target.port}/{status}'],env=env,capture_output=True,text=True,timeout=20)
                     self.assertEqual(result.returncode,0,result.stdout+result.stderr)
                     row=json.loads((out/'results.ndjson').read_text());self.assertEqual(row['status'],'PASS',row);self.assertEqual(row['http_status'],status)
                     self.assertEqual(row['node_id'],hashlib.sha256(uri.encode()).hexdigest()[:20]);self.assertNotIn(ID,(out/'results.ndjson').read_text())
@@ -55,8 +56,57 @@ class NodeRunnerTests(unittest.TestCase):
         finally:proxy.close();target.close()
 
     def test_https_credentials_are_rejected_before_network(self):
-        result=subprocess.run([sys.executable,core.ROOT/'scripts/Test-Nodes.py','--core',core.BIN,'--nodes','unused','--pre-manifest','unused','--output','unused','--source-commit','synthetic','--url','https://user:secret@localhost/'],capture_output=True,text=True)
+        result=subprocess.run([sys.executable,RUNNER,'--core',core.BIN,'--nodes','unused','--pre-manifest','unused','--output','unused','--source-commit','synthetic','--url','https://user:secret@localhost/'],capture_output=True,text=True)
         self.assertNotEqual(result.returncode,0);self.assertIn('without credentials',result.stderr)
+
+    def test_real_inner_tls_error_retains_curl_code_and_ready_tunnel(self):
+        def plaintext_origin(sock):
+            sock.recv(16384)
+            sock.sendall(b'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n')
+            __import__('time').sleep(.2)
+        target=Service(plaintext_origin)
+        def forward(sock):
+            self.assertEqual(core.exact(sock,18),b'\0'+bytes.fromhex(ID.replace('-',''))+b'\0')
+            self.assertEqual(core.exact(sock,1),b'\1');port=int.from_bytes(core.exact(sock,2),'big')
+            kind=core.exact(sock,1)
+            if kind==b'\2':core.exact(sock,core.exact(sock,1)[0])
+            elif kind==b'\1':core.exact(sock,4)
+            else:raise ValueError('Unexpected address')
+            self.assertEqual(port,target.port)
+            with socket.create_connection(('127.0.0.1',port),2) as remote:
+                sock.sendall(b'\0\0')
+                while True:
+                    ready,_,_=select.select([sock,remote],[],[],3)
+                    if not ready:return
+                    for source in ready:
+                        data=source.recv(16384)
+                        if not data:return
+                        (remote if source is sock else sock).sendall(data)
+        proxy=Service(forward)
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                td=pathlib.Path(td);nodes=td/'nodes';nodes.mkdir()
+                uri=f'vless://{ID}@127.0.0.1:{proxy.port}?security=none&type=raw#original'
+                source=nodes/'vless.txt';source.write_text(uri+'\n')
+                manifest=td/'manifest.json';manifest.write_text(json.dumps({'commit':'synthetic-pre','files':[{'name':source.name,'sha256':hashlib.sha256(source.read_bytes()).hexdigest()}]}))
+                out=td/'results'
+                result=subprocess.run([sys.executable,RUNNER,'--core',core.BIN,'--nodes',nodes,
+                    '--pre-manifest',manifest,'--source-commit','fixture','--shards','1','--output',out,
+                    '--timeout','3','--url',f'https://127.0.0.1:{target.port}/'],capture_output=True,text=True,timeout=12)
+                self.assertEqual(result.returncode,0,result.stderr)
+                row=json.loads((out/'results.ndjson').read_text())
+                self.assertEqual(row['status'],'FAIL')
+                self.assertEqual(row['curl_exit_code'],35)
+                self.assertEqual(row['curl_reason_code'],'CURL_35')
+                self.assertEqual(row['reason_code'],'CURL_35')
+                self.assertEqual(row['curl_tls_error_class'],'TLS_RECORD_VERSION')
+                self.assertTrue(row['core_tunnel_ready'])
+                self.assertEqual(row['failure_scope'],'HTTPS_TLS_OR_TUNNEL')
+                self.assertEqual(row['security'],'none')
+                self.assertEqual(source.read_text(),uri+'\n')
+                self.assertNotIn(uri,(out/'results.ndjson').read_text())
+            self.assertEqual(proxy.errors,[]);self.assertEqual(target.errors,[])
+        finally:proxy.close();target.close()
 
     def test_parse_and_config_errors_are_separate_from_network_failure(self):
         failed_connection=__import__('threading').Event();proxy=Service(lambda s:failed_connection.set())
@@ -69,7 +119,7 @@ class NodeRunnerTests(unittest.TestCase):
                 checks=[json.loads(line) for line in inspected.stdout.splitlines()]
                 self.assertEqual([c['parsed'] for c in checks],[False,False,True]);self.assertFalse(checks[0]['uri_parsed']);self.assertTrue(checks[1]['uri_parsed'])
                 manifest=td/'manifest.json';manifest.write_text(json.dumps({'commit':'synthetic-pre','files':[{'name':path.name,'sha256':hashlib.sha256(path.read_bytes()).hexdigest()}]}))
-                out=td/'results';result=subprocess.run([sys.executable,core.ROOT/'scripts/Test-Nodes.py','--core',core.BIN,'--nodes',nodes,'--pre-manifest',manifest,'--source-commit','synthetic-core','--shards','1','--concurrency','1','--timeout','2','--output',out,'--url','https://127.0.0.1:443/'],capture_output=True,text=True,timeout=15)
+                out=td/'results';result=subprocess.run([sys.executable,RUNNER,'--core',core.BIN,'--nodes',nodes,'--pre-manifest',manifest,'--source-commit','synthetic-core','--shards','1','--concurrency','1','--timeout','2','--output',out,'--url','https://127.0.0.1:443/'],capture_output=True,text=True,timeout=15)
                 self.assertEqual(result.returncode,0,result.stdout+result.stderr)
                 records=[json.loads(line) for line in (out/'results.ndjson').read_text().splitlines()]
                 self.assertEqual([r['status'] for r in records],['PARSE_INVALID','PARSE_INVALID','FAIL'])

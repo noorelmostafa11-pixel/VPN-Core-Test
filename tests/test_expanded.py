@@ -457,7 +457,9 @@ class ExpandedTests(unittest.TestCase):
                     self.assertFalse(writer.is_alive())
                     self.assertEqual(errors, [])
                 if tls:
-                    self.assertIn('TLSv1.3', log.read_text())
+                    # OpenSSL test and production provider spell the same
+                    # negotiated version TLSv1.3 and TLS1.3 respectively.
+                    self.assertRegex(log.read_text(),r'TLSv?1\.3')
             self.assertEqual(peer.errors, [])
         finally:
             peer.close()

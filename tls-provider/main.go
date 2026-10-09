@@ -592,7 +592,11 @@ func (s *session) run(c settings) {
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				s.mu.Lock()
-				s.state = 2
+				// A concurrent write failure is terminal; a later authenticated
+				// read close must never turn it back into a usable session.
+				if s.state == 1 {
+					s.state = 2
+				}
 				s.mu.Unlock()
 			} else {
 				s.fail(tlsErrorCode(err, 304))
@@ -663,9 +667,12 @@ func vpn_tls_write(id C.uint64_t, data *C.char, length C.int) C.int {
 		return -1
 	}
 	s.mu.Lock()
-	u, state := s.stream, s.state
+	u, state, version := s.stream, s.state, s.version
 	s.mu.Unlock()
-	if u == nil || state != 1 {
+	// A verified TLS 1.3 peer close_notify ends its sending direction only.
+	// Preserve the TLS implementation's own write/CloseWrite error checks.
+	// Never allow writes after failure or a TLS 1.2 bidirectional closure.
+	if u == nil || (state != 1 && !(state == 2 && version == utls.VersionTLS13)) {
 		return -1
 	}
 	n, err := u.Write(C.GoBytes(unsafe.Pointer(data), length))
