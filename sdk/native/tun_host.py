@@ -6,6 +6,7 @@ successful proxy connection. All borrowed fd/hook resources outlive join().
 """
 import ctypes as c
 import json, os, pathlib, socket, threading, time
+from collections import deque
 
 Protect=c.CFUNCTYPE(c.c_int,c.c_int64,c.c_void_p)
 Resolve=c.CFUNCTYPE(c.c_int,c.c_char_p,c.c_void_p,c.c_int,c.c_void_p)
@@ -24,7 +25,7 @@ class TunHost:
         self.name=name.encode();self.wintun=os.fsencode(pathlib.Path(wintun).resolve()) if wintun else None
         self.options=Options(c.sizeof(Options),1,fd,0 if fd>=0 else 2 if os.name=='nt' else 1,1500,maximum_flows,0,self.name,self.wintun)
         if not protect or not resolve:raise ValueError('Protected socket and underlying bootstrap resolver required')
-        self.protected=0;self.errors=[];self.events=[];self.result=None
+        self.protected=0;self.errors=deque(maxlen=128);self.events=deque(maxlen=256);self.result=None
         def p(fd,user):
             try:
                 ok=protect(fd)

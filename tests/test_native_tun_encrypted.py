@@ -1,8 +1,9 @@
 """Controlled encrypted peers through real netstack/C++ protocol path."""
-import base64, json, os, pathlib, ssl, subprocess, tempfile, unittest
+import base64, json, os, pathlib, socket, ssl, subprocess, tempfile, unittest
 from urllib.parse import quote
 import test_core as core
 import test_expanded as peers
+import test_reality as reality
 from test_udp_sdk import UdpStreamPeer,ShadowsocksUdpPeer
 BUILD=pathlib.Path(os.environ.get('VPN_NATIVE_BUILD',core.ROOT/'build/linux-amd64'))
 PROBE=BUILD/('netstack-core-probe.exe' if os.name=='nt' else 'netstack-core-probe')
@@ -22,7 +23,7 @@ class EncryptedPacketTests(unittest.TestCase):
                 row=json.loads(result.stdout.splitlines()[-1]);self.assertEqual(row['status'],'PASS')
             else:self.assertNotEqual(result.returncode,0,'Invalid certificate accepted')
     def uri(self,proto,port,transport):
-        credential=str(peers.ID) if proto=='vless' else quote(peers.SECRET,safe='')
+        credential=str(peers.ID) if proto in ('vless','vmess') else quote(peers.SECRET,safe='')
         return f'{proto}://{credential}@127.0.0.1:{port}?security=tls&type={transport}&sni=localhost&path=/test&serviceName=test&fp=chrome'
     def test_tcp_encrypted_protocols_transports_both_families(self):
         for proto in ('vless','trojan'):
@@ -51,5 +52,21 @@ class EncryptedPacketTests(unittest.TestCase):
             for family in (4,6):
                 peer=ShadowsocksUdpPeer(method);credential=base64.urlsafe_b64encode((method+':'+peer.password).encode()).decode().rstrip('=')
                 try:self.probe(f'ss://{credential}@127.0.0.1:{peer.port}',f'udp{family}');self.assertEqual(peer.errors,[])
+                finally:peer.close()
+    def test_vmess_authenticated_tcp_and_tls_transports(self):
+        for cipher in ('aes-128-gcm','chacha20-poly1305','none'):
+            for transport in ('raw','websocket','grpc'):
+                for family in (4,6):
+                    with self.subTest(cipher=cipher,transport=transport,ip=family):
+                        peer=peers.Peer('vmess',cipher=cipher,transport=transport,tls_context=self.context)
+                        peer.expected_vmess_destination=b'\1\1\xbb'+(b'\1'+socket.inet_aton('203.0.113.9') if family==4 else b'\3'+socket.inet_pton(socket.AF_INET6,'2001:db8::9'))
+                        uri=self.uri('vmess',peer.port,transport)+'&encryption='+cipher
+                        try:self.probe(uri,f'tcp{family}');self.assertEqual(peer.errors,[])
+                        finally:peer.close()
+    def test_reality_authenticated_tcp_both_families_and_bad_auth(self):
+        for family in (4,6):
+            for corrupt in (False,True):
+                peer=reality.RealityPeer(corrupt=corrupt)
+                try:self.probe(reality.RealityTests.uri(peer),f'tcp{family}',success=not corrupt);self.assertEqual(peer.authenticated,1);self.assertEqual(peer.errors,[])
                 finally:peer.close()
 if __name__=='__main__':unittest.main()

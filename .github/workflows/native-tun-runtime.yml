@@ -124,6 +124,14 @@ jobs:
             python scripts/Build.py --target android --abi "$abi" --ndk "$ANDROID_HOME/ndk/30.0.16248370" --experimental-netstack --require-clean
           done
           python scripts/Build-Android-Experiment.py --build build/android-arm64-v8a --build build/android-armeabi-v7a --build build/android-x86_64 --build build/android-x86 --output dist/vpn-core-native-tun-experiment.apk
+      - name: Checkout pinned Android performance reference
+        uses: actions/checkout@v4
+        with:
+          ref: 90a1853114de3e4bcb3deed6747801c10bc5b370
+          path: stable-source
+          persist-credentials: false
+      - name: Build stable Android emulator ABI
+        run: python stable-source/scripts/Build.py --target android --abi x86_64 --ndk "$ANDROID_HOME/ndk/30.0.16248370" --require-clean
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -135,7 +143,9 @@ jobs:
           arch: x86_64
           target: default
           disable-animations: true
-          script: python scripts/Test-Android-Native-Tun.py --build build/android-x86_64 --output evidence/android
+          script: |
+            python scripts/Test-Android-Native-Tun.py --build build/android-x86_64 --output evidence/android
+            python scripts/Benchmark-Android-Native-Tun.py --stable stable-source/build/android-x86_64 --candidate build/android-x86_64 --output evidence/android/performance
       - uses: actions/upload-artifact@v4
         if: always()
         with:

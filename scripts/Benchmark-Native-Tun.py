@@ -91,6 +91,8 @@ def main():
                                     process.stdin.write('stop\n');process.stdin.flush()
                                     try:process.wait(15)
                                     except subprocess.TimeoutExpired:process.kill();process.wait();raise RuntimeError('Benchmark stop failed')
+                                if mode=='tun':
+                                    result['native_abi_metrics_including_warmup']=json.loads(ready.with_suffix('.metrics.json').read_text())
                 finally:peer.close()
         report={'schema':'vpn-native-tun-performance-v1','status':'PASS','stable_version':'0.4.11','stable_commit':'90a1853114de3e4bcb3deed6747801c10bc5b370','host':'Windows native runner' if os.name=='nt' else 'Linux native namespace','scope':'Same Python C ABI host, same TLS fixture, payloads, warmup and load. Separate controller/peer process is excluded from engine process CPU/RSS. This is a controlled local benchmark, not WAN/physical-device throughput.','measurements':rows}
         (a.output/'performance-report.json').write_text(json.dumps(report,indent=2)+'\n')

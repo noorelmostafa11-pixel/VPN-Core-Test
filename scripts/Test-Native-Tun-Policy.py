@@ -1,7 +1,7 @@
 """Owned kill-switch and rollback tests on isolated Linux / disposable Windows.
 Full physical traffic is briefly blocked. No global firewall reset is performed.
 """
-import argparse,json,os,pathlib,signal,socket,ssl,subprocess,sys,tempfile,time
+import argparse,errno,json,os,pathlib,signal,socket,ssl,subprocess,sys,tempfile,time
 ROOT=pathlib.Path(__file__).resolve().parents[1];sys.path[:0]=[str(ROOT/'tests'),str(ROOT/'sdk/native'),str(ROOT/'sdk/linux'),str(ROOT/'scripts')]
 from native_tun_peer import NativeTunPeer
 from tun_host import TunHost
@@ -20,7 +20,13 @@ def main():
         with tempfile.TemporaryDirectory() as td:
             cfg=pathlib.Path(td)/'node.ini';cfg.write_text(f'node_uri=vless://{peers.ID}@127.0.0.1:{peer.port}?security=tls&sni=localhost&fp=chrome\ntls_ca_file={core.CoreTests.ca}\n')
             if os.name=='nt':
-                physical=cmd('powershell','-NoProfile','-Command',"(Get-NetIPInterface -AddressFamily IPv4 | Where-Object {$_.ConnectionState -eq 'Connected' -and $_.InterfaceAlias -notlike '*Loopback*'} | Select-Object -First 1).InterfaceIndex").strip()
+                physical=cmd('powershell','-NoProfile','-Command',"(Get-NetRoute -AddressFamily IPv4 -DestinationPrefix 0.0.0.0/0 | Sort-Object RouteMetric | Select-Object -First 1).InterfaceIndex").strip()
+                def physical_connect():
+                    s=socket.socket();s.settimeout(3);s.setsockopt(socket.IPPROTO_IP,31,socket.htonl(int(physical)))
+                    try:s.connect(('1.1.1.1',443))
+                    finally:s.close()
+                # An unreachable interface is not blocking evidence.
+                physical_connect()
                 uplink=cmd('powershell','-NoProfile','-Command',"(Get-NetIPInterface -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -like '*Loopback*'} | Select-Object -First 1).InterfaceIndex").strip()
                 logfile=a.output/'windows-policy.log'
                 with logfile.open('w') as log:
@@ -32,10 +38,8 @@ def main():
                             time.sleep(.05)
                         rows+=device.transfers()
                         # Physical TCP SYN is rejected by WFP, not a remote timeout.
-                        with socket.socket() as s:
-                            s.settimeout(2);s.setsockopt(socket.IPPROTO_IP,31,socket.htonl(int(physical)))
-                            try:s.connect(('1.1.1.1',443));raise AssertionError('Physical IPv4 escaped kill switch')
-                            except OSError as e:assert e.winerror==10013,repr(e)
+                        try:physical_connect();raise AssertionError('Physical IPv4 escaped kill switch')
+                        except OSError as e:assert e.winerror==10013,repr(e)
                         rows.append({'test':'WFP_PHYSICAL_IPV4_BLOCK','status':'PASS'})
                         dns=cmd('powershell','-NoProfile','-Command',"Get-DnsClientServerAddress -InterfaceAlias VpnCore-Policy-CI | ConvertTo-Json -Depth 4")
                         assert '9.9.9.9' in dns and '2620:fe::fe' in dns
@@ -57,7 +61,11 @@ def main():
                     cmd('ip','route','add','203.0.113.0/24','dev','vpncorepolicy');cmd('ip','-6','route','add','2001:db8::/32','dev','vpncorepolicy');rows+=device.transfers()
                     cmd('ip','link','add','vpnphys','type','dummy');cmd('ip','link','set','vpnphys','up');cmd('ip','addr','add','192.0.2.2/24','dev','vpnphys');cmd('ip','-6','addr','add','2001:db8:ffff::2/64','dev','vpnphys','nodad')
                     for family,dest in ((socket.AF_INET,'192.0.2.9'),(socket.AF_INET6,'2001:db8:ffff::9')):
-                        with socket.socket(family,socket.SOCK_DGRAM) as s:s.setsockopt(socket.SOL_SOCKET,socket.SO_BINDTODEVICE,b'vpnphys\0');s.sendto(b'forbidden DNS egress',(dest,53))
+                        with socket.socket(family,socket.SOCK_DGRAM) as s:
+                            s.setsockopt(socket.SOL_SOCKET,socket.SO_BINDTODEVICE,b'vpnphys\0')
+                            try:s.sendto(b'forbidden DNS egress',(dest,53))
+                            except OSError as e:
+                                if e.errno!=errno.EPERM:raise
                     state=json.loads(cmd('nft','-j','list','table','inet',TABLE));drops=sum(v['counter'].get('packets',0) for item in state['nftables'] for v in item.get('rule',{}).get('expr',[]) if 'counter' in v)
                     assert drops>=2,state;rows.append({'test':'NFT_PHYSICAL_DNS_IPV4_IPV6_BLOCK','status':'PASS','blocked_packets':drops})
                     assert host.stop()==0

@@ -190,6 +190,7 @@ int run(int argc,char** argv,const vpn::NetworkHooks* hooks=nullptr,const vpn_co
                 bridge.poll();
                 if(Clock::now()-report_at>=std::chrono::seconds(1)){Json event=bridge.metrics();event["event"]=Json("tun_metrics");publish_event(event);report_at=Clock::now();}
             }}catch(const Failure& e){if(e.code!="CANCELLED"||!stopping)throw;}
+            Json final_metrics=bridge.metrics();final_metrics["event"]=Json("tun_metrics");final_metrics["final"]=Json::boolean(true);publish_event(final_metrics);
             return 0;
 #else
             return -5;

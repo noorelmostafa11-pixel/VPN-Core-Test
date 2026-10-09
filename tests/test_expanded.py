@@ -302,7 +302,8 @@ class Peer:
                 header = AESGCM(request(b'VMess Header AEAD Key', 16)).decrypt(request(b'VMess Header AEAD Nonce', 12), exact(wire, length+16), auth)
                 if fnv(header[:-4]) != int.from_bytes(header[-4:], 'big') or header[0] != 1 or header[34] != 1:
                     raise ValueError('VMess request header')
-                if header[35] != (5 if self.cipher=='none' else 4 if self.cipher=='chacha20-poly1305' else 3) or not getattr(self,'forward_target',None) and header[37:42] != b'\1\1\xbb\2\x0c':
+                expected=getattr(self,'expected_vmess_destination',b'\1\1\xbb\2\x0c')
+                if header[35] != (5 if self.cipher=='none' else 4 if self.cipher=='chacha20-poly1305' else 3) or not getattr(self,'forward_target',None) and header[37:37+len(expected)] != expected:
                     raise ValueError('VMess body cipher or destination')
                 request_iv, request_key, response_v = header[1:17], header[17:33], header[33]
                 response_key = hashlib.sha256(request_key).digest()[:16]

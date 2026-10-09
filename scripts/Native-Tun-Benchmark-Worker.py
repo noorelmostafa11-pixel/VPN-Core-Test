@@ -13,7 +13,9 @@ if a.mode=='tun':
     a.ready.write_text(json.dumps({'mode':'tun','interface':'vpnbbench','pid':os.getpid(),'luid':info['luid']}))
     try:
         while host.thread.is_alive():host.drain();time.sleep(.02)
-    finally:host.stop()
+    finally:
+        host.stop()
+        a.ready.with_suffix('.metrics.json').write_text(json.dumps([e for e in host.events if e.get('event')=='tun_metrics'][-1:]))
 else:
     # Same managed host, same callbacks/thread count, baseline packet-free entry.
     if os.name=='nt':directory=os.add_dll_directory(str(a.build));provider=c.CDLL(str(a.build/'vpn-tls.dll'));core=c.CDLL(str(a.build/'vpn-core.dll'))
