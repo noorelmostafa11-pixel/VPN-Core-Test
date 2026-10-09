@@ -240,14 +240,17 @@ using NativeTls = ProviderTls;
 #endif
 class Tls {
     NativeTls native_;std::unique_ptr<ProviderTls> provider_;
+    bool ready_=false,write_closed_=false,failed_=false;
+    template<class F>auto checked(F&& operation)->decltype(operation()){try{return operation();}catch(...){failed_=true;throw;}}
 public:
     const char* backend()const{return "native TLS + pinned uTLS provider; project-owned proxy protocols";}
-    void handshake(Socket& socket,const Config& config,Clock::time_point deadline){bool use=config.tls_only_custom_roots||!config.tls_ca_pem.empty()||!config.tls_ca_file.empty()||config.security=="xtls"||config.flow=="xtls-rprx-vision"||config.flow=="xtls-rprx-vision-udp443"||config.security=="reality"||!config.ech.empty()||(!config.fingerprint.empty()&&config.fingerprint!="unsafe")||!certificate_pins(config).empty()||!certificate_names(config).empty();if(use){provider_=std::make_unique<ProviderTls>();provider_->handshake(socket,config,deadline);}else native_.handshake(socket,config,deadline);}
-    Bytes encrypt(const Bytes& b){return provider_?provider_->encrypt(b):native_.encrypt(b);}
-    Bytes feed(const uint8_t* b,size_t n){return provider_?provider_->feed(b,n):native_.feed(b,n);}
+    void handshake(Socket& socket,const Config& config,Clock::time_point deadline){try{bool use=config.tls_only_custom_roots||!config.tls_ca_pem.empty()||!config.tls_ca_file.empty()||config.security=="xtls"||config.flow=="xtls-rprx-vision"||config.flow=="xtls-rprx-vision-udp443"||config.security=="reality"||!config.ech.empty()||(!config.fingerprint.empty()&&config.fingerprint!="unsafe")||!certificate_pins(config).empty()||!certificate_names(config).empty();if(use){provider_=std::make_unique<ProviderTls>();provider_->handshake(socket,config,deadline);}else native_.handshake(socket,config,deadline);ready_=true;}catch(...){failed_=true;throw;}}
+    bool write_open()const{if(!ready_||write_closed_||failed_)return false;if(provider_)return provider_->write_open();return !native_.closed()||native_.version()=="TLS1.3"||native_.version()=="TLSv1.3";}
+    Bytes encrypt(const Bytes& b){if(failed_)throw Failure("TLS_FAILED: session already failed","TLS_SESSION_FAILED");if(provider_)checked([&]{provider_->verify_state();});if(!write_open())throw Failure("TLS_FAILED: writing direction closed","TLS_WRITE_CLOSED");return checked([&]{return provider_?provider_->encrypt(b):native_.encrypt(b);});}
+    Bytes feed(const uint8_t* b,size_t n){if(failed_)throw Failure("TLS_FAILED: session already failed","TLS_SESSION_FAILED");return checked([&]{return provider_?provider_->feed(b,n):native_.feed(b,n);});}
     Bytes release_input(){if(!provider_)throw Failure("PROTOCOL_FAILED: Vision provider unavailable","VISION_TLS_PROVIDER");return provider_->release_input();}
-    Bytes take_control(){return provider_?provider_->take_control():native_.take_control();}
-    Bytes close_notify(){return provider_?provider_->close_notify():native_.close_notify();}
+    Bytes take_control(){return checked([&]{return provider_?provider_->take_control():native_.take_control();});}
+    Bytes close_notify(){if(failed_||!ready_)throw Failure("TLS_FAILED: shutdown of unavailable session","TLS_SESSION_FAILED");if(write_closed_)return {};write_closed_=true;return checked([&]{return provider_?provider_->close_notify():native_.close_notify();});}
     bool closed()const{return provider_?provider_->closed():native_.closed();}
     bool negotiating()const{return provider_?provider_->negotiating():native_.negotiating();}
     size_t pending_bytes()const{return provider_?provider_->pending_bytes():native_.pending_bytes();}

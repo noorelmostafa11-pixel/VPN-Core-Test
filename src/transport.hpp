@@ -21,7 +21,7 @@ public:
     bool secure()const{return secure_;}
     // TLS 1.2 closes both directions; TLS 1.3 authenticated read closure leaves
     // the writing direction open until our own close_notify (RFC 8446 6.1).
-    bool write_open()const{return !secure_||!tls_.closed()||tls_.version()=="TLS1.3";}
+    bool write_open()const{return !secure_||tls_.write_open();}
     const std::string& alpn()const{return tls_.selected_alpn();}
     const std::string& version()const{return tls_.version();}
 };

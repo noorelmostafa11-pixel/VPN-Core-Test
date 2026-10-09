@@ -150,8 +150,10 @@ type session struct {
 		CloseWrite() error
 	}
 	mu            sync.Mutex
+	writeMu       sync.Mutex // serialize application writes with local CloseWrite
+	writeClosed   bool
 	plain         []byte
-	state         int // 0 handshake, 1 ready, 2 authenticated close, -1 failed
+	state         int // 0 handshake, 1 ready/read open, 2 authenticated read close, -1 failed
 	code          int
 	version       uint16
 	alpn, profile string
@@ -170,8 +172,10 @@ func find(id C.uint64_t) *session {
 }
 func (s *session) fail(code int) {
 	s.mu.Lock()
-	s.state = -1
-	s.code = code
+	if s.state >= 0 {
+		s.state = -1
+		s.code = code
+	}
 	s.mu.Unlock()
 	_ = s.conn.Close()
 }
@@ -666,21 +670,27 @@ func vpn_tls_write(id C.uint64_t, data *C.char, length C.int) C.int {
 	if s == nil || length < 0 || length > 65536 {
 		return -1
 	}
+	return C.int(s.write(C.GoBytes(unsafe.Pointer(data), length)))
+}
+
+func (s *session) write(data []byte) int {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	s.mu.Lock()
-	u, state, version := s.stream, s.state, s.version
+	u, state, version, closed := s.stream, s.state, s.version, s.writeClosed
 	s.mu.Unlock()
 	// A verified TLS 1.3 peer close_notify ends its sending direction only.
 	// Preserve the TLS implementation's own write/CloseWrite error checks.
 	// Never allow writes after failure or a TLS 1.2 bidirectional closure.
-	if u == nil || (state != 1 && !(state == 2 && version == utls.VersionTLS13)) {
+	if u == nil || closed || (state != 1 && !(state == 2 && version == utls.VersionTLS13)) {
 		return -1
 	}
-	n, err := u.Write(C.GoBytes(unsafe.Pointer(data), length))
+	n, err := u.Write(data)
 	if err != nil {
 		s.fail(tlsErrorCode(err, 305))
 		return -1
 	}
-	return C.int(n)
+	return n
 }
 
 //export vpn_tls_read
@@ -758,13 +768,26 @@ func vpn_tls_shutdown(id C.uint64_t) C.int {
 	if s == nil {
 		return -1
 	}
+	return C.int(s.shutdown())
+}
+
+func (s *session) shutdown() int {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	s.mu.Lock()
-	u := s.stream
+	u, state, closed := s.stream, s.state, s.writeClosed
+	if u != nil && state >= 1 {
+		s.writeClosed = true
+	}
 	s.mu.Unlock()
-	if u == nil {
+	if u == nil || state < 1 {
 		return -1
 	}
-	if u.CloseWrite() != nil {
+	if closed {
+		return 0
+	}
+	if err := u.CloseWrite(); err != nil {
+		s.fail(tlsErrorCode(err, 305))
 		return -1
 	}
 	return 0

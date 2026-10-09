@@ -10,7 +10,7 @@ inline std::string http_host(const Config& c){auto host=c.host_header.empty()?c.
     // endpoint host. A Host value does not inherit the dial port. Preserve the
     // original endpoint-authority behavior for every other carrier.
     bool upgrade=(c.transport=="websocket"||c.transport=="httpupgrade");
-    if(c.host_header.empty()&&upgrade){if((c.security=="tls"||c.security=="xtls")&&!c.tls_name.empty())host=c.tls_name;if(host.find(':')!=std::string::npos)host='['+host+']';}
+    if(c.host_header.empty()&&upgrade){if((c.security=="tls"||c.security=="xtls"||c.security=="reality")&&!c.tls_name.empty())host=c.tls_name;if(host.find(':')!=std::string::npos)host='['+host+']';}
     else if(c.host_header.empty()){if(host.find(':')!=std::string::npos)host='['+host+']';if(c.port!=(c.security=="tls"?443:80))host+=':'+std::to_string(c.port);}
     check_http_value(host);if(host.find(' ')!=std::string::npos)throw std::runtime_error("PARSE_INVALID: invalid HTTP authority");return host;}
 inline unsigned http_status(const std::string& line){if(line.size()<12||(line.substr(0,9)!="HTTP/1.1 "&&line.substr(0,9)!="HTTP/1.0 ")||line[9]<'1'||line[9]>'5'||line[10]<'0'||line[10]>'9'||line[11]<'0'||line[11]>'9'||(line.size()>12&&line[12]!=' '&&line[12]!='\r'))throw Failure("TRANSPORT_FAILED: malformed HTTP status","HTTP_STATUS_INVALID");return unsigned(line[9]-'0')*100+unsigned(line[10]-'0')*10+unsigned(line[11]-'0');}

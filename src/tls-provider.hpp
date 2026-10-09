@@ -31,6 +31,7 @@ class ProviderTls {
     Bytes drain(int kind){Bytes out;char data[65536];for(;;){int n=api_.read(id_,kind,data,sizeof(data));if(n<0)throw Failure("TLS_FAILED: TLS provider read","TLS_PROVIDER_READ");if(!n)break;out.insert(out.end(),reinterpret_cast<uint8_t*>(data),reinterpret_cast<uint8_t*>(data)+n);if(out.size()>1048576)throw Failure("TLS_FAILED: TLS provider output limit","TLS_PROVIDER_LIMIT");}return out;}
 public:
     ProviderTls()=default;ProviderTls(const ProviderTls&)=delete;ProviderTls& operator=(const ProviderTls&)=delete;~ProviderTls(){if(id_)api_.free(id_);}
+    void verify_state(){check();}
     void handshake(Socket& socket,const Config& c,Clock::time_point deadline){Json settings=provider_settings(c);recordwise_=c.flow=="xtls-rprx-vision"||c.flow=="xtls-rprx-vision-udp443"||c.security=="xtls";
         auto text=json_dump(settings);id_=api_.create(text.data(),int(text.size()));if(!id_)throw Failure("TLS_FAILED: provider initialization","TLS_PROVIDER_CREATE");
         for(;;){check_cancelled();auto wire=take_control();send_all(socket,wire.data(),wire.size(),deadline);check();if(api_.state(id_)!=0)break;if(Clock::now()>=deadline)throw Failure("TLS_FAILED: TLS provider timeout","TLS_PROVIDER_TIMEOUT");fd_set read;FD_ZERO(&read);FD_SET(socket.get(),&read);timeval timeout{0,1000};int r=select(int(socket.get()+1),&read,nullptr,nullptr,&timeout);if(r<0){auto error=socket_error();
@@ -57,6 +58,7 @@ public:
     Bytes release_input(){if(!recordwise_||!api_.ready_input(id_))throw Failure("PROTOCOL_FAILED: TLS record boundary required for Vision","VISION_TLS_BOUNDARY");return std::exchange(input_,{});}
     Bytes take_control(){return drain(0);}
     bool closed()const{return api_.state(id_)==2;}
+    bool write_open()const{auto state=api_.state(id_);return state==1||(state==2&&version_=="TLS1.3");}
     bool negotiating()const{return api_.state(id_)==0;}
     size_t pending_bytes()const{return input_.size()+size_t(!api_.ready_input(id_));}
     Bytes close_notify(){if(api_.shutdown(id_)<0){check();throw Failure("TLS_FAILED: provider shutdown","TLS_PROVIDER_SHUTDOWN");}return drain(0);}
