@@ -1,5 +1,7 @@
 name: Build Selected Core Target
 on:
+  push:
+    branches: [feature/windows-native-tun-stage1]
   workflow_dispatch:
     inputs:
       target:
@@ -23,7 +25,7 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 jobs:
   linux:
-    if: inputs.target == 'all' || inputs.target == 'linux'
+    if: github.event_name == 'push' || inputs.target == 'all' || inputs.target == 'linux'
     name: Linux amd64 production core
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -44,6 +46,8 @@ jobs:
           ./bin/native_tun_packet_probe
           g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror tests/native_tun_udp_probe.cpp -o bin/native_tun_udp_probe
           ./bin/native_tun_udp_probe
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror tests/native_tun_tcp_probe.cpp -o bin/native_tun_tcp_probe
+          ./bin/native_tun_tcp_probe
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -Wno-misleading-indentation tests/native_tun_udp_protocol_probe.cpp -o bin/native_tun_udp_protocol_probe -ldl -pthread
           ./bin/native_tun_udp_protocol_probe
           python scripts/Build.py --target linux --build-tests --require-clean
@@ -61,7 +65,7 @@ jobs:
           retention-days: 1
           if-no-files-found: error
   windows:
-    if: inputs.target == 'all' || inputs.target == 'windows'
+    if: github.event_name == 'push' || inputs.target == 'all' || inputs.target == 'windows'
     name: Windows amd64 shared core API
     runs-on: windows-2022
     timeout-minutes: 30
@@ -97,6 +101,10 @@ jobs:
           if ($LASTEXITCODE) { throw 'Native TUN UDP codec compilation failed' }
           & (Join-Path 'bin' 'native_tun_udp_probe.exe')
           if ($LASTEXITCODE) { throw 'Native TUN UDP codec smoke failed' }
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror tests/native_tun_tcp_probe.cpp -o bin/native_tun_tcp_probe.exe
+          if ($LASTEXITCODE) { throw 'Native TUN TCP segment probe build failed' }
+          & (Join-Path 'bin' 'native_tun_tcp_probe.exe')
+          if ($LASTEXITCODE) { throw 'Native TUN TCP segment probe failed' }
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -Wno-misleading-indentation -D_WIN32_WINNT=0x0A00 tests/native_tun_udp_protocol_probe.cpp -o bin/native_tun_udp_protocol_probe.exe -lws2_32 -lsecur32 -lcrypt32 -lbcrypt -pthread
           if ($LASTEXITCODE) { throw 'Native TUN UDP protocol bridge compilation failed' }
           & (Join-Path 'bin' 'native_tun_udp_protocol_probe.exe')
@@ -121,7 +129,7 @@ jobs:
           retention-days: 1
           if-no-files-found: error
   android:
-    if: inputs.target == 'all' || inputs.target == 'android'
+    if: github.event_name != 'push' && (inputs.target == 'all' || inputs.target == 'android')
     name: Android ${{ matrix.abi }} libraries
     runs-on: ubuntu-24.04
     timeout-minutes: 40
@@ -153,7 +161,7 @@ jobs:
           retention-days: 1
           if-no-files-found: error
   android_windows:
-    if: inputs.verify_android_windows && (inputs.target == 'all' || inputs.target == 'android')
+    if: github.event_name != 'push' && inputs.verify_android_windows && (inputs.target == 'all' || inputs.target == 'android')
     name: Android arm64 built on a Windows laptop environment
     runs-on: windows-2022
     timeout-minutes: 40
@@ -180,7 +188,7 @@ jobs:
           if-no-files-found: error
   android_package:
     needs: android
-    if: inputs.target == 'all' || inputs.target == 'android'
+    if: github.event_name != 'push' && (inputs.target == 'all' || inputs.target == 'android')
     name: Android SDK AAR with all four ABIs
     runs-on: ubuntu-24.04
     timeout-minutes: 10
