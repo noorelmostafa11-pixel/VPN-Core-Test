@@ -1,0 +1,114 @@
+name: In-process Packet Stack Compatibility
+on:
+  push:
+    branches: [feature/windows-native-tun-stage1]
+    paths:
+      - 'src/netstack-*.hpp'
+      - 'tls-provider/netstack*'
+      - 'tls-provider/go.*'
+      - 'tls-provider/vendor/**'
+      - 'tests/netstack*'
+      - 'scripts/Build.py'
+      - 'scripts/Test-Netstack-Compatibility.py'
+      - '.github/workflows/netstack-compatibility.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: packet-compatibility-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  desktop:
+    name: ${{ matrix.target }} actual TCP and UDP
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {target: linux, runner: ubuntu-24.04}
+          - {target: windows, runner: windows-2022}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.27.1', cache-dependency-path: tls-provider/go.sum}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: msys2/setup-msys2@v2
+        if: matrix.target == 'windows'
+        id: msys
+        with: {msystem: MINGW64, update: true, install: mingw-w64-x86_64-gcc, path-type: inherit}
+      - name: Linux build and real protocol transfers
+        if: matrix.target == 'linux'
+        run: |
+          python scripts/Build.py --target linux --experimental-netstack --build-tests --require-clean
+          python scripts/Test-Netstack-Compatibility.py --build build/linux-amd64 --output evidence/linux
+      - name: Windows build and real protocol transfers
+        if: matrix.target == 'windows'
+        shell: pwsh
+        env:
+          MSYS_LOCATION: ${{ steps.msys.outputs.msys2-location }}
+        run: |
+          $env:PATH=(Join-Path $env:MSYS_LOCATION 'mingw64\bin')+';'+$env:PATH
+          python scripts/Build.py --target windows --experimental-netstack --require-clean
+          if ($LASTEXITCODE) { throw 'Windows experimental build failed' }
+          python scripts/Test-Netstack-Compatibility.py --build build/windows-amd64 --output evidence/windows
+          if ($LASTEXITCODE) { throw 'Windows actual TCP/UDP proof failed' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: packet-compatibility-${{ matrix.target }}-${{ github.sha }}
+          path: |
+            evidence/
+            build/*/build-provenance.json
+          if-no-files-found: error
+          retention-days: 7
+  android:
+    name: Android build and actual emulator TCP and UDP
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.27.1', cache-dependency-path: tls-provider/go.sum}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - name: Install pinned NDK and build ARM64 and x86_64
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;30.0.16248370"
+          python scripts/Build.py --target android --abi arm64-v8a --ndk "$ANDROID_HOME/ndk/30.0.16248370" --experimental-netstack --build-tests --require-clean
+          python scripts/Build.py --target android --abi x86_64 --ndk "$ANDROID_HOME/ndk/30.0.16248370" --experimental-netstack --build-tests --require-clean
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run actual Android TCP and UDP
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: default
+          disable-animations: true
+          script: |
+            mkdir -p evidence/android
+            adb shell mkdir -p /data/local/tmp/vpn-netstack
+            adb push build/android-x86_64/netstack-core-probe build/android-x86_64/libvpn-tls.so /data/local/tmp/vpn-netstack/
+            adb shell chmod 755 /data/local/tmp/vpn-netstack/netstack-core-probe
+            adb shell 'cd /data/local/tmp/vpn-netstack && ./netstack-core-probe' > evidence/android/probe.log
+            python -c "import json,pathlib; p=pathlib.Path('evidence/android/probe.log'); r=[json.loads(x) for x in p.read_text().splitlines() if x.startswith('{')]; required={'TCP_IPV4','TCP_IPV6','UDP_IPV4','UDP_IPV6','CPP_GO_COPY','IN_PROCESS_EXISTING_CPP_ENGINE'}; assert required.issubset({x.get('test') for x in r}); assert all(x.get('status')=='PASS' for x in r); pathlib.Path('evidence/android/report.json').write_text(json.dumps({'status':'PASS','runtime':'Android API 35 x86_64 emulator','tests':r},indent=2))"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: packet-compatibility-android-${{ github.sha }}
+          path: |
+            evidence/
+            build/android-*/build-provenance.json
+            build/android-*/netstack-core-probe
+            build/android-*/libvpn-tls.so
+          if-no-files-found: error
+          retention-days: 7

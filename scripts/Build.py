@@ -105,7 +105,8 @@ def build(a):
         provider = 'vpn-tls.dll' if target == 'windows' else 'libvpn-tls.so'
         ldflags = '-s'
         if target == 'android': ldflags += ' -extldflags=-Wl,-z,max-page-size=16384'
-        call([go, 'build', '-mod=vendor', '-buildvcs=false', '-buildmode=c-shared', '-trimpath',
+        packet_tags = ['-tags=netstack'] if a.experimental_netstack else []
+        call([go, 'build', *packet_tags, '-mod=vendor', '-buildvcs=false', '-buildmode=c-shared', '-trimpath',
               '-ldflags=' + ldflags, '-o', stage / provider, '.'], cwd=ROOT / 'tls-provider', env=env)
         flags = [*target_flags, '-std=c++17', '-O2', '-Wall', '-Wextra', '-Wpedantic', '-Werror',
                  '-Wno-misleading-indentation']
@@ -124,6 +125,10 @@ def build(a):
         entry_flags = ['-municode'] if target == 'windows' else ['-pie']
         call([cxx, *flags, *entry_flags, ROOT / 'src/main.cpp', '-o', stage / binary, *libraries])
         call([cxx, *flags, '-DVPN_CORE_SHARED', '-shared', ROOT / 'src/main.cpp', '-o', stage / shared, *libraries])
+        if a.experimental_netstack:
+            probe = 'netstack-core-probe.exe' if target == 'windows' else 'netstack-core-probe'
+            call([cxx, *flags, *(['-pie'] if target != 'windows' else []),
+                  ROOT / 'tests/netstack_core_probe.cpp', '-o', stage / probe, *libraries])
         if target == 'android':
             notice = ndk / 'NOTICE'
             if not notice.is_file(): raise RuntimeError('Pinned NDK is missing its NOTICE file.')
@@ -155,6 +160,8 @@ def build(a):
                       'runtime_checks': checks, 'files': files,
                       'interface': 'SOCKS5 TCP CONNECT + UDP ASSOCIATE; C ABI 2 network hooks; Android JNI/AAR; application-owned TUN',
                       'core_abi': 2, 'source_files_sha256': source_hash.hexdigest()}
+        provenance['experimental_netstack'] = a.experimental_netstack
+        provenance['packet_abi'] = 1 if a.experimental_netstack else None
         (stage / 'build-provenance.json').write_text(json.dumps(provenance, indent=2) + '\n')
         destination.mkdir(parents=True, exist_ok=True)
         for f in stage.iterdir(): shutil.copy2(f, destination / f.name)
@@ -172,6 +179,7 @@ def main():
     p.add_argument('--cc'); p.add_argument('--cxx'); p.add_argument('--output'); p.add_argument('--javac')
     p.add_argument('--require-clean', action='store_true', help='Reject dirty or unverified release source.')
     p.add_argument('--build-tests', action='store_true', help='Also build the target shared-library smoke executable.')
+    p.add_argument('--experimental-netstack', action='store_true', help='Opt-in compatibility proof; adds packet ABI to the existing provider and a direct C++ transport probe. Does not activate TUN routes.')
     a = p.parse_args()
     try: build(a)
     except (OSError, RuntimeError, subprocess.CalledProcessError) as e:
