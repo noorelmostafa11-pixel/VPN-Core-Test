@@ -5,8 +5,9 @@
 #include "core-api.h"
 #include "core-events.hpp"
 #include "udp-relay.hpp"
+#include "native-tun-udp-protocol.hpp"
 #ifdef _WIN32
-#include "native-wintun-session.hpp"
+#include "native-tun-udp-pump.hpp"
 #endif
 #include <atomic>
 #include <csignal>
