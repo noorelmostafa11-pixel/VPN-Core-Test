@@ -9,6 +9,7 @@
 #include <array>
 #include <map>
 #include <mutex>
+#include <tuple>
 #include <stdexcept>
 #include <utility>
 #include <vector>
