@@ -1,0 +1,119 @@
+name: Native TUN Integration
+on:
+  push:
+    branches: [feature/windows-native-tun-stage1]
+    paths: ['src/**', 'tls-provider/**', 'sdk/**', 'tests/**', 'scripts/**', '.github/workflows/native-tun-runtime.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency:
+  group: native-tun-runtime-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  desktop:
+    name: ${{ matrix.target }} native device and encrypted paths
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {target: linux, runner: ubuntu-24.04}
+          - {target: windows, runner: windows-2022}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.27.1', cache-dependency-path: tls-provider/go.sum}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: msys2/setup-msys2@v2
+        if: matrix.target == 'windows'
+        id: msys
+        with: {msystem: MINGW64, update: true, install: mingw-w64-x86_64-gcc, path-type: inherit}
+      - name: Install independent peer dependencies
+        run: python -m pip install -r tests/requirements.txt
+      - name: Linux build and independent encrypted cases
+        if: matrix.target == 'linux'
+        env: {PYTHONPATH: tests, VPN_NATIVE_BUILD: build/linux-amd64}
+        run: |
+          python scripts/Build.py --target linux --experimental-netstack --build-tests --require-clean
+          python scripts/Test-Netstack-Compatibility.py --build build/linux-amd64 --output evidence/linux/packet
+          python -m unittest -v test_native_tun_encrypted test_native_tun_runtime
+          sudo apt-get update -qq
+          sudo apt-get install -y nftables iproute2
+          sudo mkdir -p /dev/net
+          test -e /dev/net/tun || sudo mknod /dev/net/tun c 10 200
+          sudo ip netns add vpncoreci
+          sudo ip netns exec vpncoreci "$(command -v python)" scripts/Test-Native-Tun-Device.py --build build/linux-amd64 --output evidence/linux/device --isolated-linux
+          sudo ip netns delete vpncoreci
+      - name: Windows build and independent encrypted cases
+        if: matrix.target == 'windows'
+        shell: pwsh
+        env:
+          MSYS_LOCATION: ${{ steps.msys.outputs.msys2-location }}
+          PYTHONPATH: tests
+          VPN_NATIVE_BUILD: build/windows-amd64
+        run: |
+          $env:PATH=(Join-Path $env:MSYS_LOCATION 'mingw64\bin')+';'+$env:PATH
+          python scripts/Build.py --target windows --experimental-netstack --require-clean
+          if ($LASTEXITCODE) { throw 'Windows native TUN build failed' }
+          python scripts/Get-Wintun.py --build build/windows-amd64
+          if ($LASTEXITCODE) { throw 'Pinned Wintun download failed' }
+          python scripts/Test-Netstack-Compatibility.py --build build/windows-amd64 --output evidence/windows/packet
+          if ($LASTEXITCODE) { throw 'Packet transfers failed' }
+          python -m unittest -v test_native_tun_encrypted
+          if ($LASTEXITCODE) { throw 'Encrypted packet paths failed' }
+          python scripts/Test-Native-Tun-Device.py --build build/windows-amd64 --output evidence/windows/device
+          if ($LASTEXITCODE) { throw 'Actual Wintun transfer/lifecycle failed' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-tun-${{ matrix.target }}-${{ github.sha }}
+          path: |
+            evidence/
+            build/*/
+          if-no-files-found: error
+          retention-days: 14
+  android:
+    name: Android four ABIs and actual VpnService emulator
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.27.1', cache-dependency-path: tls-provider/go.sum}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - name: Build all existing Android ABIs and experiment host
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;30.0.16248370" "platforms;android-35" "build-tools;35.0.0"
+          python -m pip install -r tests/requirements.txt
+          for abi in arm64-v8a armeabi-v7a x86_64 x86; do
+            python scripts/Build.py --target android --abi "$abi" --ndk "$ANDROID_HOME/ndk/30.0.16248370" --experimental-netstack --require-clean
+          done
+          python scripts/Build-Android-Experiment.py --build build/android-arm64-v8a --build build/android-armeabi-v7a --build build/android-x86_64 --build build/android-x86 --output dist/vpn-core-native-tun-experiment.apk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: default
+          disable-animations: true
+          script: python scripts/Test-Android-Native-Tun.py --build build/android-x86_64 --output evidence/android
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-tun-android-${{ github.sha }}
+          path: |
+            evidence/
+            build/android-*/
+            dist/
+          if-no-files-found: error
+          retention-days: 14

@@ -37,7 +37,7 @@ int resolve(const char* host,char* output,int capacity,void* user){
 }
 }
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* machine,void*){vm=machine;return JNI_VERSION_1_6;}
-extern "C" JNIEXPORT jint JNICALL Java_com_noorelmostafa_vpncore_NativeCore_nativeRun(JNIEnv* env,jclass,jbyteArray path,jobject object){
+static jint runNative(JNIEnv* env,jbyteArray path,jobject object,jint fd){
     std::unique_lock<std::mutex> lock(run_mutex,std::try_to_lock);if(!lock.owns_lock())return 2;
     if(!path)return 1;auto size=env->GetArrayLength(path);if(size<1||size>32768)return 1;
     std::string file(size_t(size),'\0');env->GetByteArrayRegion(path,0,size,reinterpret_cast<jbyte*>(file.data()));
@@ -46,9 +46,14 @@ extern "C" JNIEXPORT jint JNICALL Java_com_noorelmostafa_vpncore_NativeCore_nati
     if(object){hooks.object=env->NewGlobalRef(object);auto type=env->GetObjectClass(object);
         hooks.protect=env->GetMethodID(type,"protect","(I)Z");hooks.resolve=env->GetMethodID(type,"resolve","(Ljava/lang/String;)[Ljava/lang/String;");env->DeleteLocalRef(type);
         if(env->ExceptionCheck()||!hooks.object||!hooks.protect||!hooks.resolve){if(hooks.object)env->DeleteGlobalRef(hooks.object);return 1;}}
-    int result=vpn_core_run_config(file.c_str(),object?protect:nullptr,object?resolve:nullptr,&hooks);
+    vpn_core_tun_options options{};options.size=sizeof(options);options.abi=1;options.fd=fd;options.kind=VPN_CORE_TUN_FD;options.mtu=1500;options.maximum_flows=64;
+    int result=fd>=0?vpn_core_run_tun(file.c_str(),&options,object?protect:nullptr,object?resolve:nullptr,&hooks):vpn_core_run_config(file.c_str(),object?protect:nullptr,object?resolve:nullptr,&hooks);
     if(hooks.object)env->DeleteGlobalRef(hooks.object);return result;
 }
+extern "C" JNIEXPORT jint JNICALL Java_com_noorelmostafa_vpncore_NativeCore_nativeRun(JNIEnv* env,jclass,jbyteArray path,jobject object){return runNative(env,path,object,-1);}
+extern "C" JNIEXPORT jint JNICALL Java_com_noorelmostafa_vpncore_NativeCore_nativeRunTun(JNIEnv* env,jclass,jbyteArray path,jint fd,jobject object){if(fd<0||!object)return 1;return runNative(env,path,object,fd);}
+extern "C" JNIEXPORT jint JNICALL Java_com_noorelmostafa_vpncore_NativeCore_tunAbiVersion(JNIEnv*,jclass){return vpn_core_tun_abi_version();}
+extern "C" JNIEXPORT jboolean JNICALL Java_com_noorelmostafa_vpncore_NativeCore_tunReady(JNIEnv*,jclass){return vpn_core_tun_ready()?JNI_TRUE:JNI_FALSE;}
 extern "C" JNIEXPORT void JNICALL Java_com_noorelmostafa_vpncore_NativeCore_stop(JNIEnv*,jclass){vpn_core_stop();}
 extern "C" JNIEXPORT jstring JNICALL Java_com_noorelmostafa_vpncore_NativeCore_version(JNIEnv* env,jclass){return env->NewStringUTF(vpn_core_version());}
 extern "C" JNIEXPORT jint JNICALL Java_com_noorelmostafa_vpncore_NativeCore_abiVersion(JNIEnv*,jclass){return jint(vpn_core_abi_version());}

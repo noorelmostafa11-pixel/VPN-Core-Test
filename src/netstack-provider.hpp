@@ -2,6 +2,7 @@
 #pragma once
 #include "provider-module.hpp"
 #include <cstdint>
+#include <mutex>
 namespace vpn {
 struct NetstackFlow {
     uint64_t id=0;
@@ -40,6 +41,7 @@ public:
 };
 class NetstackPackets {
     NetstackAPI api_;
+    std::mutex calls_;
     uint64_t id_=0;
 public:
     explicit NetstackPackets(int mtu=1500,int flows=64):id_(api_.create(mtu,flows)) {
@@ -49,10 +51,11 @@ public:
     NetstackPackets(const NetstackPackets&)=delete;
     NetstackPackets& operator=(const NetstackPackets&)=delete;
     uint64_t id()const noexcept{return id_;}
+    std::mutex& calls()noexcept{return calls_;}
     NetstackAPI& api()noexcept{return api_;}
-    void inject(const Bytes& p){if(api_.inject(id_,p.data(),int(p.size()))!=int(p.size()))throw Failure("PROTOCOL_FAILED: packet rejected","NETSTACK_PACKET_INPUT");}
-    bool packet(Bytes& p){p.resize(65535);int n=api_.packet(id_,p.data(),int(p.size()));if(n==-2){p.clear();return false;}if(n<0)throw Failure("PROTOCOL_FAILED: packet output","NETSTACK_PACKET_OUTPUT");p.resize(size_t(n));return true;}
-    Json metrics(){uint8_t b[4096];int n=api_.metrics(id_,b,sizeof(b));if(n<0)throw Failure("PROTOCOL_FAILED: stack metrics","NETSTACK_METRICS");return json_parse(std::string(reinterpret_cast<char*>(b),size_t(n)));}
+    void inject(const Bytes& p){std::lock_guard<std::mutex> lock(calls_);if(api_.inject(id_,p.data(),int(p.size()))!=int(p.size()))throw Failure("PROTOCOL_FAILED: packet rejected","NETSTACK_PACKET_INPUT");}
+    bool packet(Bytes& p){std::lock_guard<std::mutex> lock(calls_);p.resize(65535);int n=api_.packet(id_,p.data(),int(p.size()));if(n==-2){p.clear();return false;}if(n<0)throw Failure("PROTOCOL_FAILED: packet output","NETSTACK_PACKET_OUTPUT");p.resize(size_t(n));return true;}
+    Json metrics(){std::lock_guard<std::mutex> lock(calls_);uint8_t b[4096];int n=api_.metrics(id_,b,sizeof(b));if(n<0)throw Failure("PROTOCOL_FAILED: stack metrics","NETSTACK_METRICS");return json_parse(std::string(reinterpret_cast<char*>(b),size_t(n)));}
 };
 inline Bytes netstack_destination(const NetstackFlow& f) {
     if((f.address_size!=4&&f.address_size!=16)||!f.port)throw Failure("PROTOCOL_FAILED: flow destination","NETSTACK_DESTINATION");

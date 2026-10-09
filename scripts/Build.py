@@ -122,6 +122,7 @@ def build(a):
             shared = 'libvpn-core.so'
             if target == 'android':
                 flags += ['-Wl,-z,max-page-size=16384', '-Wl,-z,common-page-size=16384', '-static-libstdc++']
+        if a.experimental_netstack: flags += ['-DVPN_CORE_NETSTACK']
         entry_flags = ['-municode'] if target == 'windows' else ['-pie']
         call([cxx, *flags, *entry_flags, ROOT / 'src/main.cpp', '-o', stage / binary, *libraries])
         call([cxx, *flags, '-DVPN_CORE_SHARED', '-shared', ROOT / 'src/main.cpp', '-o', stage / shared, *libraries])
@@ -129,6 +130,8 @@ def build(a):
             probe = 'netstack-core-probe.exe' if target == 'windows' else 'netstack-core-probe'
             call([cxx, *flags, *(['-pie'] if target != 'windows' else []),
                   ROOT / 'tests/netstack_core_probe.cpp', '-o', stage / probe, *libraries])
+        if a.experimental_netstack and target == 'windows':
+            call([cxx, *flags, '-municode', ROOT / 'src/native-windows-launcher.cpp', '-o', stage / 'vpn-native-tun.exe', *libraries, '-liphlpapi', '-lfwpuclnt', '-lrpcrt4'])
         if target == 'android':
             notice = ndk / 'NOTICE'
             if not notice.is_file(): raise RuntimeError('Pinned NDK is missing its NOTICE file.')
@@ -179,7 +182,7 @@ def main():
     p.add_argument('--cc'); p.add_argument('--cxx'); p.add_argument('--output'); p.add_argument('--javac')
     p.add_argument('--require-clean', action='store_true', help='Reject dirty or unverified release source.')
     p.add_argument('--build-tests', action='store_true', help='Also build the target shared-library smoke executable.')
-    p.add_argument('--experimental-netstack', action='store_true', help='Opt-in compatibility proof; adds packet ABI to the existing provider and a direct C++ transport probe. Does not activate TUN routes.')
+    p.add_argument('--experimental-netstack', action='store_true', help='Opt-in Native TUN device/packet runtime and direct C++ transport probes; route policy remains an embedding responsibility.')
     a = p.parse_args()
     try: build(a)
     except (OSError, RuntimeError, subprocess.CalledProcessError) as e:

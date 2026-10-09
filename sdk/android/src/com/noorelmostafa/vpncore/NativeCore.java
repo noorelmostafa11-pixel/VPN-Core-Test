@@ -32,6 +32,19 @@ public final class NativeCore {
         if (value.isEmpty() || value.indexOf('\0') >= 0) throw new IllegalArgumentException("configPath");
         return value.getBytes(StandardCharsets.UTF_8);
     }
+    /** Borrow an established VpnService descriptor for the duration of this call.
+     * Native code duplicates it, performs sole packet I/O, and closes its copy.
+     * Keep ParcelFileDescriptor open until this worker is joined after stop().
+     * On failure retain the service/descriptor to fail closed before reconnect.
+     */
+    public static int runTun(String configPath, int tunFd, NetworkHooks hooks) {
+        if (tunFd < 0) throw new IllegalArgumentException("tunFd");
+        Objects.requireNonNull(hooks, "VPN network hooks");
+        return nativeRunTun(path(configPath), tunFd, hooks);
+    }
+    private static native int nativeRunTun(byte[] configPath, int tunFd, NetworkHooks hooks);
+    public static native int tunAbiVersion();
+    public static native boolean tunReady();
     private static native int nativeRun(byte[] configPath, NetworkHooks hooks);
     public static native void stop();
     public static native String version();

@@ -47,6 +47,29 @@ typedef int (*vpn_core_resolver)(const char* hostname, char* output, int capacit
 // Null hooks preserve standalone behavior. Failed hooks never bypass the VPN.
 VPN_CORE_API int vpn_core_run_config(const char* config_path,
     vpn_core_socket_protector protect, vpn_core_resolver resolve, void* user);
+// Additive experimental TUN ABI 1. Existing core ABI 2 is unchanged.
+// Callers own route/DNS/firewall transactions and protected bootstrap hooks.
+// FD mode duplicates fd; caller retains its original and must do no I/O until
+// run returns. Nonblocking flags affect the shared open-file description.
+// Never close a supplied FD to Stop: call vpn_core_stop(), then join.
+enum vpn_core_tun_kind { VPN_CORE_TUN_FD=0, VPN_CORE_TUN_LINUX=1, VPN_CORE_TUN_WINTUN=2 };
+typedef struct vpn_core_tun_options {
+    uint32_t size, abi;
+    int64_t fd;
+    uint32_t kind, mtu, maximum_flows, reserved;
+    const char* interface_name;
+    const char* wintun_path;
+} vpn_core_tun_options;
+// 1 when built with --experimental-netstack, otherwise 0.
+VPN_CORE_API uint32_t vpn_core_tun_abi_version(void);
+// Blocking. Returns 0 stopped, 1 failed, 2 busy, -5 feature not built.
+// Non-null protection and resolver callbacks are mandatory (fail closed).
+VPN_CORE_API int vpn_core_run_tun(const char* config_path,
+    const vpn_core_tun_options* options, vpn_core_socket_protector protect,
+    vpn_core_resolver resolve, void* user);
+// Readiness is device+packet engine ready, not proof of node connectivity.
+// Listen port stays zero in TUN mode. Interface/metrics are UTF-8 JSON events.
+VPN_CORE_API int vpn_core_tun_ready(void);
 #ifdef __cplusplus
 }
 #endif

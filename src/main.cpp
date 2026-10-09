@@ -8,6 +8,9 @@
 #include "native-tun-udp-protocol.hpp"
 #include "native-tun-tcp-reliable.hpp"
 #include "native-tun-tcp-socks.hpp"
+#ifdef VPN_CORE_NETSTACK
+#include "native-tun-device.hpp"
+#endif
 #ifdef _WIN32
 #include "native-tun-udp-pump.hpp"
 #include "native-tun-ip-pump.hpp"
@@ -120,14 +123,15 @@ void connection(Socket client,const Config& config,uint64_t id) {
 }
 
 }
-int run(int argc,char** argv,const vpn::NetworkHooks* hooks=nullptr) {
+static std::atomic<bool> tun_ready{false};
+int run(int argc,char** argv,const vpn::NetworkHooks* hooks=nullptr,const vpn_core_tun_options* tun=nullptr) {
     using namespace vpn;
     static std::mutex run_mutex;
     std::unique_lock<std::mutex> active(run_mutex,std::try_to_lock);
     if(!active.owns_lock())return 2;
     reset_events();stopping.store(false,std::memory_order_relaxed);
     core_state.store(VPN_CORE_STARTING);bool configured_hooks=false;std::unique_ptr<NetworkRuntime> runtime;
-    struct Cleanup {bool& configured;~Cleanup(){core_listen_port.store(0);if(configured)try{stopping.store(true);core_state.store(VPN_CORE_STOPPING);cancel_provider_network();configure_network_hooks({});}catch(...){}core_state.store(VPN_CORE_STOPPED);if(configured)log_line("Stopped");}} cleanup{configured_hooks};
+    struct Cleanup {bool& configured;~Cleanup(){tun_ready=false;core_listen_port.store(0);if(configured)try{stopping.store(true);core_state.store(VPN_CORE_STOPPING);cancel_provider_network();configure_network_hooks({});}catch(...){}core_state.store(VPN_CORE_STOPPED);if(configured)log_line("Stopped");}} cleanup{configured_hooks};
     try {
         validate_xhttp_build=validate_xhttp_configuration;
         std::string config_path,list_path,native_tun_check_path;bool check=false,inspect=false;
@@ -168,7 +172,30 @@ int run(int argc,char** argv,const vpn::NetworkHooks* hooks=nullptr) {
         network_dns_timeout.store(config.connect_ms);configured_hooks=true;configure_network_hooks(hooks?*hooks:NetworkHooks{},true);
         // Declared before Cleanup so Windows WSA lifetime extends through the
         // callback drain, including host resolvers that return after Stop.
-        runtime=std::make_unique<NetworkRuntime>();Socket listener=listen_local(config.listen_port);
+        runtime=std::make_unique<NetworkRuntime>();
+        if(tun) {
+#ifdef VPN_CORE_NETSTACK
+            if(tun->size!=sizeof(*tun)||tun->abi!=1||tun->reserved||tun->mtu<1280||tun->mtu>65535||tun->maximum_flows<1||tun->maximum_flows>256||!hooks||!hooks->protect||!hooks->resolve)
+                throw Failure("STARTUP_FAILED: TUN options/hooks","TUN_ARGUMENT");
+            NativeTunDevice device(*tun);NetstackPackets packets(int(tun->mtu),int(tun->maximum_flows));
+            NetstackCoreBridge bridge(config,packets,tun->maximum_flows,[](uint64_t id,const std::string& reason){Json event=Json::obj();diagnostic_identity(event,id);event["event"]=Json("tun_flow_failure");event["reason_code"]=Json(reason);publish_event(event);});
+            struct StopTunBeforeJoin {~StopTunBeforeJoin(){tun_ready=false;stopping=true;core_state.store(VPN_CORE_STOPPING);try{cancel_provider_network();}catch(...){}}} stop_tun;
+            tun_ready=true;core_state.store(VPN_CORE_RUNNING);Json ready=Json::obj();ready["event"]=Json("tun_ready");ready["interface"]=Json(device.name());ready["luid"]=Json::integer(device.luid());ready["mtu"]=Json::integer(tun->mtu);publish_event(ready);
+            Bytes input,pending;auto report_at=Clock::now();
+            try {while(!stopping) {
+                // One bounded pending output packet plus the netstack link ring.
+                // No protocol/TLS creation runs on this packet I/O owner.
+                for(unsigned i=0;i<32;++i){if(pending.empty()&&!packets.packet(pending))break;if(!device.write(pending))break;pending.clear();}
+                for(unsigned i=0;i<32;++i){if(!device.read(input,i?0:2))break;packets.inject(input);}
+                bridge.poll();
+                if(Clock::now()-report_at>=std::chrono::seconds(1)){Json event=bridge.metrics();event["event"]=Json("tun_metrics");publish_event(event);report_at=Clock::now();}
+            }}catch(const Failure& e){if(e.code!="CANCELLED"||!stopping)throw;}
+            return 0;
+#else
+            return -5;
+#endif
+        }
+        Socket listener=listen_local(config.listen_port);
         sockaddr_in actual{};SockLen actual_size=sizeof(actual);if(getsockname(listener.get(),reinterpret_cast<sockaddr*>(&actual),&actual_size))throw Failure("STARTUP_FAILED: listener address","LISTENER_ADDRESS");config.listen_port=ntohs(actual.sin_port);core_listen_port.store(config.listen_port);
         core_state.store(stopping?VPN_CORE_STOPPING:VPN_CORE_RUNNING);
 #ifndef VPN_CORE_SHARED
@@ -219,6 +246,22 @@ extern "C" VPN_CORE_API int vpn_core_get_state(){return vpn::core_state.load();}
 extern "C" VPN_CORE_API uint16_t vpn_core_get_listen_port(){return vpn::core_listen_port.load();}
 extern "C" VPN_CORE_API int vpn_core_read_event(char* output,uint32_t capacity){return vpn::read_event(output,capacity);}
 extern "C" VPN_CORE_API uint32_t vpn_core_pending_callbacks(){std::lock_guard<std::mutex> lock(vpn::network_hooks_mutex);return vpn::network_hooks_active;}
+extern "C" VPN_CORE_API uint32_t vpn_core_tun_abi_version(){
+#ifdef VPN_CORE_NETSTACK
+return 1;
+#else
+return 0;
+#endif
+}
+extern "C" VPN_CORE_API int vpn_core_tun_ready(){return tun_ready.load()?1:0;}
+extern "C" VPN_CORE_API int vpn_core_run_tun(const char* path,const vpn_core_tun_options* options,vpn_core_socket_protector protect,vpn_core_resolver resolve,void* user){
+#ifndef VPN_CORE_NETSTACK
+(void)path;(void)options;(void)protect;(void)resolve;(void)user;return -5;
+#else
+if(!path||!*path||!options||options->size!=sizeof(*options)||options->abi!=1||!protect||!resolve)return 1;
+char name[]="vpn-core",option[]="--config";char* args[]{name,option,const_cast<char*>(path)};vpn::NetworkHooks hooks{protect,resolve,user};return run(3,args,&hooks,options);
+#endif
+}
 extern "C" VPN_CORE_API int vpn_core_run_config(const char* path,vpn_core_socket_protector protect,vpn_core_resolver resolve,void* user){if(!path||!*path)return 1;char name[]="vpn-core",option[]="--config";char* args[]{name,option,const_cast<char*>(path)};vpn::NetworkHooks hooks{protect,resolve,user};return run(3,args,&hooks);}
 #elif defined(_WIN32)
 int wmain(int argc,wchar_t** argv) {

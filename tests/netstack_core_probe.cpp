@@ -48,7 +48,7 @@ struct TestEndpoint {
 };
 static std::atomic<unsigned> protected_count{0};
 static int protector(int64_t,void*){++protected_count;return 1;}
-static int resolver(const char* name,char* out,int capacity,void*){std::string value=std::string(name)=="fixture.invalid"?"127.0.0.1\n":"";if(value.empty()||capacity<=int(value.size()))return -1;std::memcpy(out,value.data(),value.size());return int(value.size());}
+static int resolver(const char* name,char* out,int capacity,void*){std::string value=std::string(name)=="fixture.invalid"?"127.0.0.1\n":std::string(name)=="127.0.0.1"?"127.0.0.1\n":"";if(value.empty()||capacity<=int(value.size()))return -1;std::memcpy(out,value.data(),value.size());return int(value.size());}
 static Bytes trailer(){return to_bytes("AFTER-CLIENT-FIN");}
 class VlessPeer {
     Socket listener_;
@@ -90,8 +90,9 @@ template<class Pump,class Done>static void wait_until(Pump pump,Done done,const 
     auto deadline=Clock::now()+std::chrono::seconds(10);
     while(!done()){require(Clock::now()<deadline,message);pump();std::this_thread::sleep_for(std::chrono::milliseconds(1));}
 }
+static const Config* external_config=nullptr;
 static Json tcp_transfer(bool ipv6) {
-    TestEndpoint endpoint(ipv6);VlessPeer peer(endpoint,false);auto config=fixture_config(peer.port);NetstackPackets stack;NetstackCoreBridge bridge(config,stack);
+    TestEndpoint endpoint(ipv6);std::unique_ptr<VlessPeer> peer;if(!external_config)peer=std::make_unique<VlessPeer>(endpoint,false);auto config=external_config?*external_config:fixture_config(peer->port);NetstackPackets stack;NetstackCoreBridge bridge(config,stack);
     uint32_t seq=1001,ack=0;bool established=false,fin=false;Bytes received;
     auto pump=[&] {
         bridge.poll();Bytes p;
@@ -103,20 +104,21 @@ static Json tcp_transfer(bool ipv6) {
         }
     };
     stack.inject(endpoint.packet(6,{},1000,0,2));wait_until(pump,[&]{return established;},"TCP handshake timeout");
-    Bytes expected;auto start=Clock::now();
+    Bytes expected;if(external_config){expected=to_bytes("SERVER-FIRST: independent peer\n");wait_until(pump,[&]{return received.size()>=expected.size();},"peer greeting timeout");require(received==expected,"peer greeting mismatch");}auto start=Clock::now();
     for(unsigned chunk=0;chunk<64;++chunk){Bytes data(1000);for(size_t i=0;i<data.size();++i)data[i]=uint8_t(i+chunk*7);append(expected,data);stack.inject(endpoint.packet(6,data,seq,ack,0x18));seq+=uint32_t(data.size());wait_until(pump,[&]{return received.size()>=expected.size();},"TCP transfer timeout");require(received==expected,"TCP payload mismatch");}
-    stack.inject(endpoint.packet(6,{},seq,ack,0x11));++seq;append(expected,trailer());
-    wait_until(pump,[&]{return fin;},"TCP half-close timeout");require(received==expected,"TCP trailing data after FIN lost");peer.finish();
+    if(external_config){auto result=stack.metrics();result["test"]=Json(ipv6?"TCP_IPV6":"TCP_IPV4");result["status"]=Json("PASS");result["payload_bytes"]=Json::integer(received.size());result["encrypted_transport"]=Json::boolean(config.security!="none");return result;}
+    stack.inject(endpoint.packet(6,{},seq,ack,0x11));++seq;if(!external_config)append(expected,trailer());
+    wait_until(pump,[&]{return fin;},"TCP half-close timeout");require(received==expected,"TCP trailing data after FIN lost");if(peer)peer->finish();
     Json result=stack.metrics();result["test"]=Json(ipv6?"TCP_IPV6":"TCP_IPV4");result["status"]=Json("PASS");result["payload_bytes"]=Json::integer(received.size());result["elapsed_us"]=Json::integer(uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(Clock::now()-start).count()));result["half_close_trailing_data"]=Json::boolean(true);return result;
 }
 static Json udp_transfer(bool ipv6) {
-    TestEndpoint endpoint(ipv6);VlessPeer peer(endpoint,true);auto config=fixture_config(peer.port);NetstackPackets stack;NetstackCoreBridge bridge(config,stack);
+    TestEndpoint endpoint(ipv6);std::unique_ptr<VlessPeer> peer;if(!external_config)peer=std::make_unique<VlessPeer>(endpoint,true);auto config=external_config?*external_config:fixture_config(peer->port);NetstackPackets stack;NetstackCoreBridge bridge(config,stack);
     size_t packets=0;Bytes received;bool delivered=false;auto start=Clock::now();
     auto pump=[&]{bridge.poll();Bytes p;while(stack.packet(p)){auto r=endpoint.parse(p);require(r.protocol==17,"non-UDP response");received=r.data;++packets;delivered=true;}};
     for(size_t size:{size_t(0),size_t(1),size_t(512),size_t(1200)}) {
         Bytes data(size);for(size_t i=0;i<size;++i)data[i]=uint8_t(i*17+size);delivered=false;stack.inject(endpoint.packet(17,data));wait_until(pump,[&]{return delivered;},"UDP transfer timeout");require(received==data,"UDP payload/boundary mismatch");
     }
-    require(packets==4,"UDP duplicated/lost datagrams");peer.finish();auto result=stack.metrics();result["test"]=Json(ipv6?"UDP_IPV6":"UDP_IPV4");result["status"]=Json("PASS");result["datagrams"]=Json::integer(packets);result["empty_datagram"]=Json::boolean(true);result["elapsed_us"]=Json::integer(uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(Clock::now()-start).count()));return result;
+    require(packets==4,"UDP duplicated/lost datagrams");if(peer)peer->finish();auto result=stack.metrics();result["test"]=Json(ipv6?"UDP_IPV6":"UDP_IPV4");result["status"]=Json("PASS");result["datagrams"]=Json::integer(packets);result["empty_datagram"]=Json::boolean(true);result["elapsed_us"]=Json::integer(uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(Clock::now()-start).count()));return result;
 }
 static Json copy_benchmark(size_t size) {
     NetstackPackets metrics_stack;auto& api=metrics_stack.api();Bytes input(size,0x79),output(size),middle(size);constexpr unsigned repetitions=2000;
@@ -152,9 +154,14 @@ static Json resource_probe() {
     for(unsigned i=0;i<32;++i){cleanup_cycle();auto n=resource_count();Json row=Json::obj();row["test"]=Json("RESOURCE_CYCLE");row["cycle"]=Json::integer(i);row["resources"]=Json::integer(n);row["baseline"]=Json::integer(baseline);row["status"]=Json(n<=baseline?"PASS":"FAIL");std::cout<<json_dump(row)<<'\n';require(n<=baseline,"packet stack resource count increased after stable warmup");}
     Json result=Json::obj();result["test"]=Json("RESOURCE_CLEANUP");result["cycles"]=Json::integer(32);result["baseline"]=Json::integer(baseline);result["status"]=Json("PASS");return result;
 }
-int main() {
+int main(int argc,char** argv) {
     try {
         [[maybe_unused]] NetworkRuntime runtime;stopping=false;configure_network_hooks({protector,resolver,nullptr});
+        if(argc==4&&std::string(argv[1])=="--config") {
+            auto config=read_config(argv[2]);external_config=&config;
+            auto mode=std::string(argv[3]);Json result=mode=="tcp4"?tcp_transfer(false):mode=="tcp6"?tcp_transfer(true):mode=="udp4"?udp_transfer(false):mode=="udp6"?udp_transfer(true):throw std::runtime_error("test mode");
+            std::cout<<json_dump(result)<<'\n';configure_network_hooks({});return 0;
+        }
         std::cout<<json_dump(tcp_transfer(false))<<'\n'<<json_dump(tcp_transfer(true))<<'\n';
         std::cout<<json_dump(udp_transfer(false))<<'\n'<<json_dump(udp_transfer(true))<<'\n';
         for(size_t size:{size_t(64),size_t(512),size_t(1500),size_t(16384),size_t(65535)})std::cout<<json_dump(copy_benchmark(size))<<'\n';

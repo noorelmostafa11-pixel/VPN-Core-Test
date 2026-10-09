@@ -1,13 +1,18 @@
 // Experimental direct packet -> existing C++ protocol engine bridge.
 // No SOCKS listener/handshake, alternate VPN engine, subprocess or OS routes.
-// Caller owns one serialized worker; connect/poll can wait for the existing
-// provider, so this proof is not yet a production packet-loop scheduler.
+// Packet dispatch never waits for protocol connection creation. A bounded
+// set of joinable flow workers owns protocol state; short ABI calls serialize
+// packet/endpoint access. Stop joins workers before the stack or hooks retire.
 #pragma once
 #include "transport.hpp"
 #include "netstack-provider.hpp"
 #include "udp-relay.hpp"
 #include <map>
 #include <memory>
+#include <thread>
+#include <deque>
+#include <condition_variable>
+#include <functional>
 
 namespace vpn {
 class PacketProtocolStream {
@@ -97,63 +102,112 @@ public:
 class NetstackCoreBridge {
     struct Session {
         NetstackFlow flow;
-        Bytes destination,upload,download;
-        std::unique_ptr<PacketProtocolStream> stream;
-        std::unique_ptr<UdpTunnel> udp;
-        std::unique_ptr<ShadowsocksUdp> shadowsocks;
-        Socket socket;
-        bool input_eof=false,output_eof=false;
-        Clock::time_point last=Clock::now();
+        std::thread worker;
+        std::atomic<bool> stop{false},done{false};
+        std::mutex wait_mutex;
+        std::condition_variable wake;
+        ~Session(){stop=true;wake.notify_all();if(worker.joinable())worker.join();}
     };
     const Config& config_;
     NetstackPackets& packets_;
+    size_t maximum_;
     std::map<uint64_t,std::unique_ptr<Session>> sessions_;
+    std::function<void(uint64_t,const std::string&)> diagnostic_;
+    std::atomic<uint64_t> upload_{0},download_{0},udp_dropped_{0},failures_{0};
+    template<class F>auto call(F f){std::lock_guard<std::mutex> lock(packets_.calls());return f(packets_.api(),packets_.id());}
+    void worker(Session& s)noexcept {
+        bool graceful=false;
+        try {
+            auto destination=netstack_destination(s.flow);
+            std::unique_ptr<PacketProtocolStream> stream;
+            std::unique_ptr<UdpTunnel> udp;
+            std::unique_ptr<ShadowsocksUdp> ss;
+            Socket socket;
+            if(s.flow.protocol==6)stream=std::make_unique<PacketProtocolStream>(config_,destination);
+            else if(s.flow.protocol==17){if(config_.protocol=="ss"){socket=connect_udp_server(config_);ss=std::make_unique<ShadowsocksUdp>(config_);}else udp=std::make_unique<UdpTunnel>(config_,destination);}
+            else throw Failure("PROTOCOL_FAILED: flow protocol","NETSTACK_FLOW_PROTOCOL");
+            Bytes upload,ss_wire;bool upload_present=false,input_eof=false,output_eof=false;
+            std::deque<Bytes> replies;size_t reply_bytes=0;auto last=Clock::now();
+            while(!s.stop&&!stopping) {
+                check_cancelled();bool progress=false;
+                if(Clock::now()-last>std::chrono::milliseconds(config_.idle_ms))throw Failure("RELAY_FAILED: flow idle timeout","NETSTACK_IDLE_TIMEOUT");
+                // TCP stops consuming its endpoint when the carrier applies
+                // backpressure. UDP records (including zero bytes) stay distinct.
+                if(!upload_present&&!input_eof&&(!udp||udp->pending_bytes()<524288-131072)) {
+                    uint8_t b[65535];int n=call([&](NetstackAPI& a,uint64_t id){return a.read(id,s.flow.id,b,sizeof(b));});
+                    if(n==-4){input_eof=true;if(stream)stream->finish_upload();progress=true;}
+                    else if(n>=0){upload.assign(b,b+n);upload_present=true;progress=true;}
+                    else if(n!=-2)throw Failure("RELAY_FAILED: flow read","NETSTACK_FLOW_READ");
+                }
+                if(stream) {
+                    if(upload_present&&stream->write(upload)){upload_+=upload.size();upload.clear();upload_present=false;progress=true;}
+                    stream->poll();const auto& data=stream->received();
+                    if(!data.empty()) {
+                        int n=call([&](NetstackAPI& a,uint64_t id){return a.write(id,s.flow.id,data.data(),int(std::min(data.size(),size_t(65507))));});
+                        if(n>0){stream->consume(size_t(n));download_+=uint64_t(n);progress=true;}
+                        else if(n!=-2&&n!=0)throw Failure("RELAY_FAILED: flow write","NETSTACK_FLOW_WRITE");
+                    }
+                    if(stream->eof()&&stream->received().empty()&&!output_eof){if(call([&](NetstackAPI& a,uint64_t id){return a.shutdown_write(id,s.flow.id);}))throw Failure("RELAY_FAILED: half-close","NETSTACK_HALF_CLOSE");output_eof=true;progress=true;}
+                    if(input_eof&&output_eof){graceful=true;break;}
+                } else {
+                    if(upload_present) {
+                        if(ss) {
+                            if(ss_wire.empty())ss_wire=ss->encode(Datagram{destination,upload});
+                            int n=socket.send(ss_wire.data(),ss_wire.size());
+                            if(n==int(ss_wire.size())){ss_wire.clear();upload_+=upload.size();upload.clear();upload_present=false;progress=true;}
+                            else if(n!=-2)throw Failure("RELAY_FAILED: UDP send","NETSTACK_UDP_SEND");
+                        }else{udp->send(upload);upload_+=upload.size();upload.clear();upload_present=false;progress=true;}
+                    }
+                    std::vector<Datagram> incoming;
+                    if(ss){uint8_t b[65535];int n=socket.receive(b,sizeof(b));if(n>=0)incoming.push_back(ss->decode(Bytes(b,b+n)));}
+                    else incoming=udp->poll();
+                    for(auto& d:incoming) {
+                        if(d.address!=destination)throw Failure("PROTOCOL_FAILED: wrong UDP endpoint","NETSTACK_UDP_ENDPOINT");
+                        // UDP cannot backpressure its remote sender. Drop newest
+                        // on overflow, account it, and never truncate/concatenate.
+                        if(d.payload.size()>65507||replies.size()>=32||reply_bytes+d.payload.size()>524288){++udp_dropped_;continue;}
+                        reply_bytes+=d.payload.size();replies.push_back(std::move(d.payload));progress=true;
+                    }
+                    for(unsigned i=0;i<16&&!replies.empty();++i) {
+                        const auto& p=replies.front();int n=call([&](NetstackAPI& a,uint64_t id){return a.write(id,s.flow.id,p.data(),int(p.size()));});
+                        if(n==-2)break;if(n!=int(p.size()))throw Failure("RELAY_FAILED: UDP output","NETSTACK_UDP_OUTPUT");
+                        download_+=p.size();reply_bytes-=p.size();replies.pop_front();progress=true;
+                    }
+                }
+                if(progress)last=Clock::now();
+                std::unique_lock<std::mutex> wait(s.wait_mutex);
+                s.wake.wait_for(wait,std::chrono::milliseconds(progress?1:5),[&]{return s.stop.load()||stopping.load();});
+            }
+        }catch(const std::exception& e){++failures_;auto f=dynamic_cast<const Failure*>(&e);if(diagnostic_)try{diagnostic_(s.flow.id,f?f->code:"NETSTACK_CARRIER_FAILED");}catch(...){} }
+        catch(...){++failures_;if(diagnostic_)try{diagnostic_(s.flow.id,"NETSTACK_WORKER_FAILED");}catch(...){} }
+        try{call([&](NetstackAPI& a,uint64_t id){if(graceful)a.release(id,s.flow.id);else a.drop(id,s.flow.id);return 0;});}catch(...){}
+        s.done=true;
+    }
 public:
-    NetstackCoreBridge(const Config& config,NetstackPackets& packets):config_(config),packets_(packets){require_supported(config_);}
-    ~NetstackCoreBridge(){for(const auto& s:sessions_)packets_.api().drop(packets_.id(),s.first);}
+    NetstackCoreBridge(const Config& config,NetstackPackets& packets,size_t maximum=64,
+        std::function<void(uint64_t,const std::string&)> diagnostic={})
+        :config_(config),packets_(packets),maximum_(std::min(maximum,size_t(config.max_connections))),diagnostic_(std::move(diagnostic)) {
+        require_supported(config_);if(maximum_<1||maximum_>256)throw Failure("STARTUP_FAILED: flow limit","NETSTACK_FLOW_LIMIT");
+        std::lock_guard<std::mutex> lock(network_hooks_mutex);
+        if(!network_hooks.protect||!network_hooks.resolve)throw Failure("STARTUP_FAILED: packet engine hooks required","NETSTACK_NETWORK_HOOKS_REQUIRED");
+    }
+    ~NetstackCoreBridge(){stop();}
+    void stop()noexcept {
+        for(auto& pair:sessions_){pair.second->stop=true;pair.second->wake.notify_all();}
+        sessions_.clear(); // joins before packets_ is destroyed
+    }
     size_t active_sessions()const noexcept{return sessions_.size();}
+    Json metrics(){Json j=packets_.metrics();j["cpp_uploaded_bytes"]=Json::integer(upload_.load());j["cpp_downloaded_bytes"]=Json::integer(download_.load());j["udp_queue_dropped_records"]=Json::integer(udp_dropped_.load());j["flow_failures"]=Json::integer(failures_.load());j["maximum_workers"]=Json::integer(maximum_);return j;}
     void poll() {
         check_cancelled();
-        // A real TUN deployment must supply OS protector/bootstrap hooks.
-        {std::lock_guard<std::mutex> lock(network_hooks_mutex);if(!network_hooks.protect||!network_hooks.resolve)throw Failure("CONNECT_FAILED: packet engine hooks required","NETSTACK_NETWORK_HOOKS_REQUIRED");}
-        auto& api=packets_.api();const auto id=packets_.id();NetstackFlow flow;
+        for(auto it=sessions_.begin();it!=sessions_.end();)if(it->second->done){it=sessions_.erase(it);}else ++it;
         for(unsigned i=0;i<16;++i) {
-            int code=api.accept(id,&flow);if(code==-2)break;if(code!=1)throw Failure("PROTOCOL_FAILED: accept flow","NETSTACK_ACCEPT");
-            auto s=std::make_unique<Session>();s->flow=flow;s->destination=netstack_destination(flow);
-            try {
-                if(flow.protocol==6)s->stream=std::make_unique<PacketProtocolStream>(config_,s->destination);
-                else if(flow.protocol==17){if(config_.protocol=="ss"){s->socket=connect_udp_server(config_);s->shadowsocks=std::make_unique<ShadowsocksUdp>(config_);}else s->udp=std::make_unique<UdpTunnel>(config_,s->destination);}
-                else throw Failure("PROTOCOL_FAILED: flow protocol","NETSTACK_FLOW_PROTOCOL");
-                sessions_.emplace(flow.id,std::move(s));
-            }catch(...){api.drop(id,flow.id);throw;}
-        }
-        for(auto it=sessions_.begin();it!=sessions_.end();) {
-            auto& s=*it->second;
-            if(Clock::now()-s.last>std::chrono::milliseconds(config_.idle_ms)){api.drop(id,it->first);it=sessions_.erase(it);continue;}
-            if(s.upload.empty()&&!s.input_eof) {
-                uint8_t b[65535];int n=api.read(id,it->first,b,sizeof(b));
-                if(n==-4){s.input_eof=true;if(s.stream)s.stream->finish_upload();}
-                else if(n>=0){s.upload.assign(b,b+n);s.last=Clock::now();
-                    // Empty UDP datagrams must be sent once, not mistaken for EOF.
-                    if(s.flow.protocol==17){if(s.shadowsocks){auto wire=s.shadowsocks->encode(Datagram{s.destination,s.upload});int sent=s.socket.send(wire.data(),wire.size());if(sent!=int(wire.size()))throw Failure("RELAY_FAILED: UDP send","NETSTACK_UDP_SEND");}else s.udp->send(s.upload);s.upload.clear();}}
-                else if(n!=-2)throw Failure("RELAY_FAILED: flow read","NETSTACK_FLOW_READ");
-            }
-            if(s.stream) {
-                if(!s.upload.empty()&&s.stream->write(s.upload))s.upload.clear();
-                s.stream->poll();auto& data=s.stream->received();
-                if(!data.empty()){int n=api.write(id,it->first,data.data(),int(std::min(data.size(),size_t(65507))));if(n>=0){s.stream->consume(size_t(n));s.last=Clock::now();}else if(n!=-2)throw Failure("RELAY_FAILED: flow write","NETSTACK_FLOW_WRITE");}
-                if(s.stream->eof()&&s.stream->received().empty()&&!s.output_eof){if(api.shutdown_write(id,it->first))throw Failure("RELAY_FAILED: half-close","NETSTACK_HALF_CLOSE");s.output_eof=true;}
-                if(s.input_eof&&s.output_eof){api.release(id,it->first);it=sessions_.erase(it);continue;}
-            } else {
-                if(s.download.empty()) {
-                    std::vector<Datagram> replies;
-                    if(s.shadowsocks){uint8_t b[65535];int n=s.socket.receive(b,sizeof(b));if(n>=0)replies.push_back(s.shadowsocks->decode(Bytes(b,b+n)));}
-                    else replies=s.udp->poll();
-                    // Keep all datagrams bounded; no concatenation across records.
-                    for(const auto& d:replies){if(d.address!=s.destination)throw Failure("PROTOCOL_FAILED: wrong UDP endpoint","NETSTACK_UDP_ENDPOINT");int n=api.write(id,it->first,d.payload.data(),int(d.payload.size()));if(n!=int(d.payload.size()))throw Failure("RELAY_FAILED: UDP output backpressure","NETSTACK_UDP_OUTPUT");s.last=Clock::now();}
-                }
-            }
-            ++it;
+            NetstackFlow flow;int n=call([&](NetstackAPI& a,uint64_t id){return a.accept(id,&flow);});
+            if(n==-2)break;if(n!=1)throw Failure("PROTOCOL_FAILED: accept flow","NETSTACK_ACCEPT");
+            if(sessions_.size()>=maximum_){call([&](NetstackAPI& a,uint64_t id){a.drop(id,flow.id);return 0;});continue;}
+            auto s=std::make_unique<Session>();s->flow=flow;auto* state=s.get();
+            try{state->worker=std::thread([this,state]{worker(*state);});sessions_.emplace(flow.id,std::move(s));}
+            catch(...){call([&](NetstackAPI& a,uint64_t id){a.drop(id,flow.id);return 0;});throw;}
         }
     }
 };
