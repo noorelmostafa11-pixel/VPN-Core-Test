@@ -18,6 +18,8 @@ namespace vpn {
 enum class NativeTunReadStatus { empty, accepted, dropped, stopped };
 
 class NativeWintunSession final {
+    // Only the in-core single-reader pump may inject constructed TCP control/data.
+    friend class NativeTunIpPump;
     NativeWintunApi& api_;
     NativeWintunApi::Adapter adapter_=nullptr;
     NativeWintunApi::Session session_=nullptr;
