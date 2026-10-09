@@ -185,9 +185,10 @@ int run(int argc,char** argv,const vpn::NetworkHooks* hooks=nullptr,const vpn_co
             try {while(!stopping) {
                 // One bounded pending output packet plus the netstack link ring.
                 // No protocol/TLS creation runs on this packet I/O owner.
-                for(unsigned i=0;i<32;++i){if(pending.empty()&&!packets.packet(pending))break;if(!device.write(pending))break;pending.clear();}
-                for(unsigned i=0;i<32;++i){if(!device.read(input,i?0:2))break;packets.inject(input);}
-                bridge.poll();
+                bool output_progress=false,input_progress=false;
+                for(unsigned i=0;i<64;++i){if(pending.empty()&&!packets.packet(pending))break;if(!device.write(pending))break;pending.clear();output_progress=true;}
+                for(unsigned i=0;i<32;++i){if(!device.read(input,(i||output_progress)?0:2))break;packets.inject(input);input_progress=true;}
+                bridge.poll();if(input_progress)bridge.notify_packets();
                 if(Clock::now()-report_at>=std::chrono::seconds(1)){Json event=bridge.metrics();event["event"]=Json("tun_metrics");publish_event(event);report_at=Clock::now();}
             }}catch(const Failure& e){if(e.code!="CANCELLED"||!stopping)throw;}
             Json final_metrics=bridge.metrics();final_metrics["event"]=Json("tun_metrics");final_metrics["final"]=Json::boolean(true);publish_event(final_metrics);

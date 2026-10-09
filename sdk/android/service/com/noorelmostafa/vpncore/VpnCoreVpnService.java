@@ -32,7 +32,7 @@ public class VpnCoreVpnService extends VpnService {
         super.onCreate();connectivity=(ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);
         callback=new ConnectivityManager.NetworkCallback(){
             @Override public void onAvailable(Network network){
-                lifecycle.execute(()->{if(disconnected)return;NetworkCapabilities c=connectivity.getNetworkCapabilities(network);if(c==null||c.hasTransport(NetworkCapabilities.TRANSPORT_VPN))return;if(network.equals(underlying)&&worker!=null&&worker.isAlive())return;underlying=network;setUnderlyingNetworks(new Network[]{network});retry=0;restart();});
+                lifecycle.execute(()->{if(disconnected)return;Network selected=chooseNetwork();if(selected==null||selected.equals(underlying))return;underlying=selected;setUnderlyingNetworks(new Network[]{selected});retry=0;restart();});
             }
             @Override public void onLost(Network network){
                 lifecycle.execute(()->{if(network.equals(underlying)){underlying=null;stopWorker();underlying=chooseNetwork();if(underlying!=null){setUnderlyingNetworks(new Network[]{underlying});restart();}/* Keep TUN/routes closed while offline. */}});
@@ -57,7 +57,13 @@ public class VpnCoreVpnService extends VpnService {
     }
     protected void report(String event,int result){android.util.Log.i("VpnCoreService",event+" result="+result);}
     private Network chooseNetwork(){
-        for(Network network:connectivity.getAllNetworks()){NetworkCapabilities c=connectivity.getNetworkCapabilities(network);if(c!=null&&c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)&&!c.hasTransport(NetworkCapabilities.TRANSPORT_VPN))return network;}return null;
+        Network active=connectivity.getActiveNetwork();if(usable(active,false))return active;
+        for(Network network:connectivity.getAllNetworks())if(usable(network,true))return network;
+        for(Network network:connectivity.getAllNetworks())if(usable(network,false))return network;return null;
+    }
+    private boolean usable(Network network,boolean validated){
+        if(network==null)return false;NetworkCapabilities c=connectivity.getNetworkCapabilities(network);
+        return c!=null&&c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)&&c.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)&&!c.hasTransport(NetworkCapabilities.TRANSPORT_VPN)&&(!validated||c.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED));
     }
     private void connect(String path)throws IOException {
         if(path==null||!new File(path).isFile())throw new IOException("configPath");
@@ -81,8 +87,8 @@ public class VpnCoreVpnService extends VpnService {
         final Network selected=underlying;final int fd=tun.getFd();final String path=config;final long token=++generation;
         NativeCore.NetworkHooks hooks=new NativeCore.NetworkHooks(){
             @Override public boolean protect(int socketFd){
-                if(!VpnCoreVpnService.this.protect(socketFd))return false;
-                try(ParcelFileDescriptor borrowed=ParcelFileDescriptor.fromFd(socketFd)){selected.bindSocket(borrowed.getFileDescriptor());return true;}catch(IOException e){return false;}
+                if(!VpnCoreVpnService.this.protect(socketFd)){report("SOCKET_PROTECT_DENIED",1);return false;}
+                try(ParcelFileDescriptor borrowed=ParcelFileDescriptor.fromFd(socketFd)){selected.bindSocket(borrowed.getFileDescriptor());return true;}catch(IOException e){android.util.Log.i("VpnCoreService","SOCKET_BIND_FAILED "+e.getClass().getSimpleName()+": "+e.getMessage());return false;}
             }
             @Override public String[] resolve(String host){try{InetAddress[] list=selected.getAllByName(host);String[] ips=new String[list.length];for(int i=0;i<list.length;i++)ips[i]=list[i].getHostAddress();return ips;}catch(UnknownHostException e){return new String[0];}}
         };

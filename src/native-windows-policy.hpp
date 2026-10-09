@@ -31,7 +31,7 @@ class NativeWindowsPolicy {
             FWP_V4_ADDR_AND_MASK v4{};FWP_V6_ADDR_AND_MASK v6mask{};
             if(v6){std::copy(base.begin(),base.end(),v6mask.addr);v6mask.prefixLength=uint8_t(prefix);remote.conditionValue.type=FWP_V6_ADDR_MASK;remote.conditionValue.v6AddrMask=&v6mask;}
             else{v4.addr=uint32_t(base[0])<<24|uint32_t(base[1])<<16|uint32_t(base[2])<<8|base[3];v4.mask=prefix?0xffffffffu<<(32-prefix):0;remote.conditionValue.type=FWP_V4_ADDR_MASK;remote.conditionValue.v4AddrMask=&v4;}
-            std::vector<FWPM_FILTER_CONDITION0> conditions{iface,loop,remote};add(v6?tun_fwpm_layer_outbound_transport_v6:tun_fwpm_layer_outbound_transport_v4,conditions);return;
+            std::vector<FWPM_FILTER_CONDITION0> conditions{iface,loop,remote};add(v6?tun_fwpm_layer_outbound_transport_v6:tun_fwpm_layer_outbound_transport_v4,conditions);add(v6?tun_fwpm_layer_ale_auth_connect_v6:tun_fwpm_layer_ale_auth_connect_v4,conditions);return;
         }
         if(prefix==bits)return;
         for(unsigned side=0;side<2;++side){auto next=base;next[prefix/8]|=uint8_t(side<<(7-prefix%8));std::vector<std::array<uint8_t,16>> ips;for(const auto& ip:excluded)if(bit(ip,prefix)==bool(side))ips.push_back(ip);complement(v6,next,prefix+1,ips,luid);}
@@ -57,7 +57,7 @@ public:
                 FWPM_FILTER_CONDITION0 port{};port.fieldKey=tun_fwpm_condition_ip_remote_port;port.matchType=FWP_MATCH_NOT_EQUAL;port.conditionValue.type=FWP_UINT16;port.conditionValue.uint16=node_port;
                 FWPM_FILTER_CONDITION0 iface{};iface.fieldKey=tun_fwpm_condition_ip_local_interface;iface.matchType=FWP_MATCH_NOT_EQUAL;iface.conditionValue.type=FWP_UINT64;iface.conditionValue.uint64=&tun_luid;
                 FWPM_FILTER_CONDITION0 loop{};loop.fieldKey=tun_fwpm_condition_flags;loop.matchType=FWP_MATCH_FLAGS_NONE_SET;loop.conditionValue.type=FWP_UINT32;loop.conditionValue.uint32=FWP_CONDITION_FLAG_IS_LOOPBACK;
-                std::vector<FWPM_FILTER_CONDITION0> c{remote,port,iface,loop};add(v6?tun_fwpm_layer_outbound_transport_v6:tun_fwpm_layer_outbound_transport_v4,c);
+                std::vector<FWPM_FILTER_CONDITION0> c{remote,port,iface,loop};add(v6?tun_fwpm_layer_outbound_transport_v6:tun_fwpm_layer_outbound_transport_v4,c);add(v6?tun_fwpm_layer_ale_auth_connect_v6:tun_fwpm_layer_ale_auth_connect_v4,c);
                 FWPM_FILTER_CONDITION0 process{};process.fieldKey=tun_fwpm_condition_ale_app_id;process.matchType=FWP_MATCH_NOT_EQUAL;process.conditionValue.type=FWP_BYTE_BLOB_TYPE;process.conditionValue.byteBlob=identity;
                 c={remote,process,iface,loop};add(v6?tun_fwpm_layer_ale_auth_connect_v6:tun_fwpm_layer_ale_auth_connect_v4,c);
             }

@@ -80,6 +80,12 @@ jobs:
         if: matrix.target == 'linux'
         run: |
           python stable-source/scripts/Build.py --target linux --require-clean
+          python scripts/Compare-Inventory.py --baseline stable-source/build/linux-amd64/vpn-core --candidate build/linux-amd64/vpn-core --baseline-version 0.4.11 --output evidence/linux/stable-parser-comparison.json
+          PYTHONPATH=tests VPN_CORE_TEST_BINARY="$PWD/build/linux-amd64/vpn-core" python -m unittest -v test_udp_sdk
+          cd tls-provider
+          go test -race -tags netstack ./...
+          cd ..
+
           sudo ip netns add vpnbench
           sudo ip netns exec vpnbench "$(command -v python)" scripts/Benchmark-Native-Tun.py --stable stable-source/build/linux-amd64 --candidate build/linux-amd64 --output evidence/linux/performance --isolated-linux
           sudo ip netns delete vpnbench
@@ -92,6 +98,10 @@ jobs:
           $env:PATH=(Join-Path $env:MSYS_LOCATION 'mingw64\bin')+';'+$env:PATH
           python stable-source/scripts/Build.py --target windows --require-clean
           if ($LASTEXITCODE) { throw 'Stable reference build failed' }
+          $env:VPN_CORE_TEST_BINARY=(Resolve-Path build/windows-amd64/vpn-core.exe).Path
+          $env:PYTHONPATH='tests'
+          python -m unittest -v test_udp_sdk
+          if ($LASTEXITCODE) { throw 'Legacy UDP or SDK regression' }
           python scripts/Benchmark-Native-Tun.py --stable stable-source/build/windows-amd64 --candidate build/windows-amd64 --output evidence/windows/performance
           if ($LASTEXITCODE) { throw 'Equivalent Windows load comparison failed' }
       - uses: actions/upload-artifact@v4
@@ -156,3 +166,24 @@ jobs:
             dist/
           if-no-files-found: error
           retention-days: 14
+  trial-packages:
+    name: Verified experiment packages
+    needs: [desktop, android]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-tun-*-${{ github.sha }}
+          path: staged
+      - name: Assemble matching binaries, source, SDK and evidence
+        run: python scripts/Package-Native-Tun-Trials.py --artifacts staged --output trial-packages
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-tun-trials-${{ github.sha }}
+          path: trial-packages/
+          if-no-files-found: error
+          retention-days: 30

@@ -104,6 +104,7 @@ class NetstackCoreBridge {
         NetstackFlow flow;
         std::thread worker;
         std::atomic<bool> stop{false},done{false};
+        std::atomic<uint64_t> packet_wakes{0};
         std::mutex wait_mutex;
         std::condition_variable wake;
         ~Session(){stop=true;wake.notify_all();if(worker.joinable())worker.join();}
@@ -129,7 +130,7 @@ class NetstackCoreBridge {
             Bytes upload,ss_wire;bool upload_present=false,input_eof=false,output_eof=false;
             std::deque<Bytes> replies;size_t reply_bytes=0;auto last=Clock::now();
             while(!s.stop&&!stopping) {
-                check_cancelled();bool progress=false;
+                check_cancelled();bool progress=false;const auto wake_at=s.packet_wakes.load();
                 if(Clock::now()-last>std::chrono::milliseconds(config_.idle_ms))throw Failure("RELAY_FAILED: flow idle timeout","NETSTACK_IDLE_TIMEOUT");
                 // TCP stops consuming its endpoint when the carrier applies
                 // backpressure. UDP records (including zero bytes) stay distinct.
@@ -174,9 +175,9 @@ class NetstackCoreBridge {
                         download_+=p.size();reply_bytes-=p.size();replies.pop_front();progress=true;
                     }
                 }
-                if(progress)last=Clock::now();
+                if(progress){last=Clock::now();continue;}
                 std::unique_lock<std::mutex> wait(s.wait_mutex);
-                s.wake.wait_for(wait,std::chrono::milliseconds(progress?1:5),[&]{return s.stop.load()||stopping.load();});
+                s.wake.wait_for(wait,std::chrono::milliseconds(1),[&]{return s.stop.load()||stopping.load()||s.packet_wakes.load()!=wake_at;});
             }
         }catch(const std::exception& e){++failures_;auto f=dynamic_cast<const Failure*>(&e);if(diagnostic_)try{diagnostic_(s.flow.id,f?f->code:"NETSTACK_CARRIER_FAILED");}catch(...){} }
         catch(...){++failures_;if(diagnostic_)try{diagnostic_(s.flow.id,"NETSTACK_WORKER_FAILED");}catch(...){} }
@@ -195,6 +196,10 @@ public:
     void stop()noexcept {
         for(auto& pair:sessions_){pair.second->stop=true;pair.second->wake.notify_all();}
         sessions_.clear(); // joins before packets_ is destroyed
+    }
+    // Called only by the packet owner after a bounded injection batch.
+    void notify_packets()noexcept {
+        for(auto& pair:sessions_){++pair.second->packet_wakes;pair.second->wake.notify_one();}
     }
     size_t active_sessions()const noexcept{return sessions_.size();}
     Json metrics(){Json j=packets_.metrics();j["cpp_uploaded_bytes"]=Json::integer(upload_.load());j["cpp_downloaded_bytes"]=Json::integer(download_.load());j["udp_queue_dropped_records"]=Json::integer(udp_dropped_.load());j["flow_failures"]=Json::integer(failures_.load());j["maximum_workers"]=Json::integer(maximum_);return j;}
