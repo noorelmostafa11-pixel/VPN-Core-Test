@@ -45,7 +45,7 @@ public:
                 if(mapped) {
                     try {
                         if(!bridge_.submit(*mapped))diagnostic(mapped->flow_id,"UDP_SUBMIT_REJECTED");
-                    } catch(const std::exception& ex) {
+                    } catch(const std::exception&) {
                         // Do not log packet contents or proxy credentials.
                         diagnostic(mapped->flow_id,"UDP_SUBMIT_FAILED");
                     }
