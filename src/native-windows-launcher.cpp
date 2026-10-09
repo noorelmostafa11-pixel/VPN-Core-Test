@@ -28,7 +28,7 @@ struct OwnedRoutes {
     void route(uint64_t luid,const char* prefix,bool v6,unsigned length) {
         MIB_IPFORWARD_ROW2 row{};InitializeIpForwardEntry(&row);row.InterfaceLuid.Value=luid;row.DestinationPrefix.Prefix.si_family=v6?AF_INET6:AF_INET;row.NextHop.si_family=v6?AF_INET6:AF_INET;
         InetPtonA(v6?AF_INET6:AF_INET,prefix,v6?static_cast<void*>(&row.DestinationPrefix.Prefix.Ipv6.sin6_addr):static_cast<void*>(&row.DestinationPrefix.Prefix.Ipv4.sin_addr));
-        row.DestinationPrefix.PrefixLength=UINT8(length);row.Metric=5;row.Protocol=MIB_IPPROTO_NETMGMT;
+        row.DestinationPrefix.PrefixLength=UINT8(length);row.Metric=5;row.Protocol=NL_ROUTE_PROTOCOL(MIB_IPPROTO_NETMGMT);
         auto e=CreateIpForwardEntry2(&row);if(e)throw Failure("STARTUP_FAILED: owned TUN route","TUN_ROUTE",e);routes.push_back(row);
     }
     void dns(uint64_t luid) {

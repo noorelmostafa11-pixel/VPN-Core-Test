@@ -7,7 +7,7 @@ package main
 
 /*
 #include <stdint.h>
-typedef struct {
+typedef struct __attribute__((aligned(8))) {
     uint64_t id;
     uint32_t protocol;
     uint32_t address_size;
@@ -15,6 +15,7 @@ typedef struct {
     uint16_t port;
     uint16_t reserved;
 } vpn_tun_flow;
+_Static_assert(sizeof(vpn_tun_flow)==40,"packet flow ABI requires 40 bytes");
 */
 import "C"
 

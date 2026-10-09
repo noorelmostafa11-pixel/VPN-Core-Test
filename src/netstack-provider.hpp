@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <mutex>
 namespace vpn {
-struct NetstackFlow {
+struct alignas(8) NetstackFlow {
     uint64_t id=0;
     uint32_t protocol=0,address_size=0;
     uint8_t address[16]{};
