@@ -90,7 +90,9 @@ public:
             shutdown(server_.get(),SHUT_WR);
 #endif
         }
-        if(!eof_&&down_.size()<524288-65536)for(unsigned i=0;i<16;++i) {
+        // Re-check capacity before EVERY socket read in this bounded batch.
+        // A fast peer can fill the queue before all 16 reads are consumed.
+        if(!eof_)for(unsigned i=0;i<16&&down_.size()<524288-65536;++i) {
             uint8_t b[16384];int n=server_.receive(b,sizeof(b));if(n==-2)break;
             if(n==0){eof_=true;if(tls_.secure()&&!tls_.direct_receive()&&!tls_.closed())throw Failure("TLS_FAILED: truncated stream","TLS_TRUNCATED");break;}
             decode(tls_.feed(b,size_t(n)));

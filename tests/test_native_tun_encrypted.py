@@ -4,6 +4,7 @@ from urllib.parse import quote
 import test_core as core
 import test_expanded as peers
 import test_reality as reality
+import test_xhttp_modes as xhttp
 from test_udp_sdk import UdpStreamPeer,ShadowsocksUdpPeer
 BUILD=pathlib.Path(os.environ.get('VPN_NATIVE_BUILD',core.ROOT/'build/linux-amd64'))
 PROBE=BUILD/('netstack-core-probe.exe' if os.name=='nt' else 'netstack-core-probe')
@@ -11,6 +12,8 @@ class EncryptedPacketTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         core.CoreTests.setUpClass();cls.context=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        fixture=core.ROOT/('bin/xhttp-peer.exe' if os.name=='nt' else 'bin/xhttp-peer');fixture.parent.mkdir(exist_ok=True)
+        subprocess.run(['go','build','-mod=vendor','-o',str(fixture.resolve()),'../tests/xhttp_peer.go'],cwd=core.ROOT/'tls-provider',check=True,timeout=120)
         cls.context.load_cert_chain(core.CoreTests.cert,core.CoreTests.key);cls.context.set_alpn_protocols(['h2','http/1.1'])
     @classmethod
     def tearDownClass(cls):core.CoreTests.tearDownClass()
@@ -47,6 +50,22 @@ class EncryptedPacketTests(unittest.TestCase):
                 peer=peers.Peer('vless',tls_context=self.context)
                 try:self.probe(self.uri('vless',peer.port,'raw').replace('sni=localhost','sni=wrong.invalid') if bad_name else self.uri('vless',peer.port,'raw'),mode,success=False,ca=bad_name)
                 finally:peer.close()
+    def test_xhttp_encrypted_modes_and_separate_download(self):
+        fixture=xhttp.XHttpTests();fixture.directory=core.CoreTests.directory
+        for mode in ('stream-one','stream-up','packet-up'):
+            for h2 in (False,True):
+                for family in (4,6):
+                    with self.subTest(mode=mode,h2=h2,ip=family):
+                        with fixture.peer('vless','',mode,tls=True,h2=h2) as (uri,peer,log):
+                            self.probe(uri,f'tcp{family}');self.assertEqual(peer.errors,[])
+        for mode in ('stream-up','packet-up'):
+            for h2 in (False,True):
+                with self.subTest(separate=True,mode=mode,h2=h2):
+                    with fixture.peer('vless','',mode,tls=True,h2=h2,extra={'_separate':True}) as (uri,peer,log):
+                        self.probe(uri,'tcp4');self.assertEqual(peer.errors,[])
+    def test_xhttp_bad_certificate_rejected(self):
+        fixture=xhttp.XHttpTests();fixture.directory=core.CoreTests.directory
+        with fixture.peer('vless','','stream-one',tls=True,h2=True) as (uri,peer,log):self.probe(uri,'tcp4',success=False,ca=False)
     def test_shadowsocks_authenticated_udp_both_families(self):
         for method in ('aes-128-gcm','aes-256-gcm','chacha20-ietf-poly1305','2022-blake3-aes-128-gcm','2022-blake3-aes-256-gcm'):
             for family in (4,6):

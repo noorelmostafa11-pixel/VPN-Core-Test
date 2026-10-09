@@ -6,14 +6,14 @@
 #include <future>
 namespace {
 using namespace vpn;
-struct Context {std::string host;std::vector<std::string> addresses;ULONG uplink=0;};
+struct Context {std::map<std::string,std::vector<std::string>> addresses;std::vector<std::pair<std::string,uint16_t>> endpoints;ULONG uplink=0;};
 int protect_node(int64_t handle,void* user){
     auto& context=*static_cast<Context*>(user);WSAPROTOCOL_INFOA info{};int size=sizeof(info);
     if(getsockopt(SOCKET(handle),SOL_SOCKET,SO_PROTOCOL_INFOA,reinterpret_cast<char*>(&info),&size))return 0;
     DWORD index=info.iAddressFamily==AF_INET?htonl(context.uplink):context.uplink;
     return setsockopt(SOCKET(handle),info.iAddressFamily==AF_INET?IPPROTO_IP:IPPROTO_IPV6,info.iAddressFamily==AF_INET?IP_UNICAST_IF:IPV6_UNICAST_IF,reinterpret_cast<const char*>(&index),sizeof(index))==0?1:0;
 }
-int resolve_node(const char* host,char* output,int capacity,void* user){auto& c=*static_cast<Context*>(user);if(c.host!=host)return -1;std::string s;for(const auto& a:c.addresses)s+=a+'\n';if(s.size()>=size_t(capacity))return -1;std::memcpy(output,s.data(),s.size());return int(s.size());}
+int resolve_node(const char* host,char* output,int capacity,void* user){auto& c=*static_cast<Context*>(user);auto found=c.addresses.find(host);if(found==c.addresses.end())return -1;std::string s;for(const auto& a:found->second)s+=a+'\n';if(s.size()>=size_t(capacity))return -1;std::memcpy(output,s.data(),s.size());return int(s.size());}
 BOOL WINAPI console_stop(DWORD reason){if(reason<=CTRL_SHUTDOWN_EVENT){vpn_core_stop();return TRUE;}return FALSE;}
 struct OwnedRoutes {
     std::vector<MIB_IPFORWARD_ROW2> routes;
@@ -60,13 +60,13 @@ int wmain(int argc,wchar_t** argv) {
         for(int i=1;i<argc;++i){std::wstring a=argv[i];if(a==L"--recover-network")recover=true;else if(a==L"--test-routes")test=true;else if(a==L"--test-policy"){test=true;policy_test=true;}else if((a==L"--config"||a==L"--wintun"||a==L"--name"||a==L"--uplink-index")&&i+1<argc){auto s=argument(argv[++i]);if(a==L"--config")config_path=s;else if(a==L"--wintun")dll_path=s;else if(a==L"--name")name=s;else context.uplink=ULONG(number(s,1,0xffffffffu));}else throw Failure("STARTUP_FAILED: unknown argument","TUN_ARGUMENT");}
         NativeWindowsPolicy policy;if(recover){policy.recover();std::cout<<"Owned WFP policy recovered\n";return 0;}
         if(config_path.empty()||dll_path.empty()||context.uplink==0)throw Failure("STARTUP_FAILED: required arguments","TUN_ARGUMENT");
-        auto config=read_config(config_path);require_supported(config);context.host=config.server;stopping=false;context.addresses=node_addresses(config.server,Clock::now()+std::chrono::milliseconds(config.connect_ms));
+        auto config=read_config(config_path);require_supported(config);stopping=false;for(const auto& target:native_bootstrap_targets(config)){auto found=context.addresses.find(target.host);if(found==context.addresses.end())found=context.addresses.emplace(target.host,node_addresses(target.host,Clock::now()+std::chrono::milliseconds(config.connect_ms))).first;for(const auto& ip:found->second)context.endpoints.emplace_back(ip,target.port);}
         vpn_core_tun_options options{sizeof(options),1,-1,VPN_CORE_TUN_WINTUN,1500,64,0,name.c_str(),dll_path.c_str()};SetConsoleCtrlHandler(console_stop,TRUE);
         auto worker=std::async(std::launch::async,[&]{return vpn_core_run_tun(config_path.c_str(),&options,protect_node,resolve_node,&context);});
         struct StopJoin{~StopJoin(){vpn_core_stop();}} stop_join;
         uint64_t luid=0;auto deadline=Clock::now()+std::chrono::seconds(15);
         while(!luid){char data[8192];int n=vpn_core_read_event(data,sizeof(data));if(n>0){auto e=json_parse(std::string(data,size_t(n)));if(e.at("event").scalar()=="tun_ready")luid=uint64_t(std::stoull(e.at("luid").scalar()));}if(worker.wait_for(std::chrono::milliseconds(0))==std::future_status::ready)throw Failure("STARTUP_FAILED: TUN worker failed","TUN_STARTUP");if(Clock::now()>=deadline)throw Failure("STARTUP_FAILED: readiness timeout","TUN_STARTUP_TIMEOUT");std::this_thread::sleep_for(std::chrono::milliseconds(5));}
-        if(!test||policy_test)policy.acquire(luid,context.addresses,config.port);
+        if(!test||policy_test)policy.acquire(luid,context.endpoints);
         OwnedRoutes routes;routes.configure(luid,test);if(policy_test)routes.dns(luid);
         NET_LUID interface_luid{};interface_luid.Value=luid;NET_IFINDEX index=0;ConvertInterfaceLuidToIndex(&interface_luid,&index);
         std::cout<<"{\"event\":\"native_tun_network_ready\",\"interface_index\":"<<index<<",\"test_routes\":"<<(test?"true":"false")<<"}"<<std::endl;

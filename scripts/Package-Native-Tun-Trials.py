@@ -7,7 +7,7 @@ def zip_tree(folder,out):
             if path.is_file():z.write(path,str(path.relative_to(folder.parent)))
 def verify(build,sha):
     meta=json.loads((build/'build-provenance.json').read_text())
-    if meta['source_commit']!=sha or meta['source_dirty']:raise RuntimeError('Package requires exact clean CI source')
+    if meta['source_commit']!=sha or meta['source_tree_dirty']:raise RuntimeError('Package requires exact clean CI source')
     for entry in json.loads((build/'build-hashes.json').read_text()):
         path=build/entry['file']
         if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest()!=entry['sha256']:raise RuntimeError('Build integrity mismatch')

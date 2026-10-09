@@ -67,6 +67,12 @@ VPN_CORE_API uint32_t vpn_core_tun_abi_version(void);
 VPN_CORE_API int vpn_core_run_tun(const char* config_path,
     const vpn_core_tun_options* options, vpn_core_socket_protector protect,
     vpn_core_resolver resolve, void* user);
+// Additive opt-in metadata: original parsed node + separate download/ECH endpoints.
+// No DNS/network I/O and no credentials. Hosts must pre-resolve ALL entries before
+// routes and allow only protected own sockets to these numeric IP+port pairs.
+// Returns UTF-8 JSON bytes, negative required capacity incl NUL, -1 invalid, -5
+// feature not built. Output query with capacity=0 is supported.
+VPN_CORE_API int vpn_core_bootstrap_targets(const char* config_path,char* output,uint32_t capacity);
 // Readiness is device+packet engine ready, not proof of node connectivity.
 // Listen port stays zero in TUN mode. Interface/metrics are UTF-8 JSON events.
 VPN_CORE_API int vpn_core_tun_ready(void);

@@ -91,6 +91,9 @@ def main():
                                     process.stdin.write('stop\n');process.stdin.flush()
                                     try:process.wait(15)
                                     except subprocess.TimeoutExpired:process.kill();process.wait();raise RuntimeError('Benchmark stop failed')
+                                    snapshot=a.output/f'{transport}-{repetition}-{label}.log'
+                                    snapshot.write_text(log.read_text())
+                                    if sys.exc_info()[0]:print('BENCHMARK HOST FAILURE '+snapshot.name+'\n'+log.read_text()[-8192:],flush=True)
                                 if mode=='tun':
                                     result['native_abi_metrics_including_warmup']=json.loads(ready.with_suffix('.metrics.json').read_text())
                 finally:peer.close()

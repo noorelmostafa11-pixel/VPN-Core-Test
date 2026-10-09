@@ -13,9 +13,10 @@ TABLE='vpncore_native_v1';MARK=0x56504e;COMMENT='vpn-core-native-tun-owned-v1'
 def command(*argv,input=None):
     return subprocess.run(list(argv),input=input,text=True,capture_output=True,check=True).stdout
 class LinuxPolicy:
-    def __init__(self,name,addresses,port,dns=('9.9.9.9','2620:fe::fe')):
+    def __init__(self,name,addresses,port,dns=('9.9.9.9','2620:fe::fe'),endpoints=None):
         if not name.isalnum() or len(name)>15:raise ValueError('Use a unique alphanumeric interface name')
-        self.name=name;self.addresses=tuple(ipaddress.ip_address(a) for a in addresses);self.port=int(port);self.dns=dns;self.acquired=False
+        self.name=name;self.addresses=tuple(ipaddress.ip_address(a) for a in addresses);self.port=int(port);self.endpoints=tuple((ipaddress.ip_address(ip),int(p)) for ip,p in (endpoints or [(ip,self.port) for ip in self.addresses]));self.dns=dns;self.acquired=False
+        if any(not 1<=p<=65535 for _,p in self.endpoints):raise ValueError("Invalid bootstrap port")
     @staticmethod
     def recover():
         result=subprocess.run(['nft','-j','list','table','inet',TABLE],capture_output=True,text=True)
@@ -26,9 +27,9 @@ class LinuxPolicy:
         old=subprocess.run(['nft','list','table','inet',TABLE],capture_output=True)
         if old.returncode==0:raise RuntimeError('Previous fail-closed policy remains; inspect then use --recover')
         allow=[]
-        for ip in self.addresses:
+        for ip,port in self.endpoints:
             family='ip6' if ip.version==6 else 'ip'
-            allow.append(f'{family} daddr {ip} meta mark {MARK} meta l4proto {{ tcp, udp }} th dport {self.port} accept')
+            allow.append(f'{family} daddr {ip} meta mark {MARK} meta l4proto {{ tcp, udp }} th dport {port} accept')
         # Atomic nft batch: no transient accept-all chain or flush of other rules.
         text=f'''table inet {TABLE} {{
  comment "{COMMENT}"
@@ -64,15 +65,22 @@ def main():
     if a.recover:LinuxPolicy.recover();return
     if not all((a.build,a.config,a.node_host,a.node_port,a.uplink)):p.error('--build --config --node-host --node-port --uplink required')
     socket.if_nametoindex(a.uplink)
-    addresses=sorted({r[4][0] for r in socket.getaddrinfo(a.node_host,a.node_port,type=socket.SOCK_STREAM)})
+    addresses={};endpoints=[]
     def protect(fd):
         with socket.socket(fileno=os.dup(fd)) as s:
             s.setsockopt(socket.SOL_SOCKET,socket.SO_BINDTODEVICE,a.uplink.encode()+b'\0');s.setsockopt(socket.SOL_SOCKET,socket.SO_MARK,MARK)
         return True
     def resolve(host):
-        if host!=a.node_host:raise RuntimeError('Bootstrap hostname was not pinned before routing')
-        return addresses
-    policy=LinuxPolicy(a.name,addresses,a.node_port,tuple(a.dns));host=TunHost(a.build,a.config,name=a.name,protect=protect,resolve=resolve)
+        if host not in addresses:raise RuntimeError('Bootstrap hostname was not pinned before routing')
+        return addresses[host]
+    host=TunHost(a.build,a.config,name=a.name,protect=protect,resolve=resolve)
+    targets=host.bootstrap_targets()
+    if not targets or targets[0]!={'host':a.node_host,'port':a.node_port}:p.error('Primary host/port must match the original parsed node')
+    for target in targets:
+        name=target['host'];port=target['port']
+        if name not in addresses:addresses[name]=sorted({r[4][0] for r in socket.getaddrinfo(name,port,type=socket.SOCK_STREAM)})
+        endpoints.extend((ip,port) for ip in addresses[name])
+    policy=LinuxPolicy(a.name,addresses[a.node_host],a.node_port,tuple(a.dns),endpoints=endpoints)
     def stop(signum,frame):host.request_stop()
     signal.signal(signal.SIGINT,stop);signal.signal(signal.SIGTERM,stop)
     normal=False

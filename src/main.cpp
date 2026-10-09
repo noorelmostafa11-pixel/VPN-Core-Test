@@ -10,6 +10,7 @@
 #include "native-tun-tcp-socks.hpp"
 #ifdef VPN_CORE_NETSTACK
 #include "native-tun-device.hpp"
+#include "native-tun-bootstrap.hpp"
 #endif
 #ifdef _WIN32
 #include "native-tun-udp-pump.hpp"
@@ -253,6 +254,13 @@ extern "C" VPN_CORE_API uint32_t vpn_core_tun_abi_version(){
 return 1;
 #else
 return 0;
+#endif
+}
+extern "C" VPN_CORE_API int vpn_core_bootstrap_targets(const char* path,char* output,uint32_t capacity){
+#ifndef VPN_CORE_NETSTACK
+(void)path;(void)output;(void)capacity;return -5;
+#else
+try{if(!path||!*path)return -1;auto text=vpn::native_bootstrap_json(vpn::read_config(path));if(capacity<=text.size())return -int(text.size()+1);if(!output)return -1;std::memcpy(output,text.c_str(),text.size()+1);return int(text.size());}catch(...){return -1;}
 #endif
 }
 extern "C" VPN_CORE_API int vpn_core_tun_ready(){return tun_ready.load()?1:0;}

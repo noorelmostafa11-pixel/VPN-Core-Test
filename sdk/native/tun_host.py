@@ -41,6 +41,14 @@ class TunHost:
             except Exception:return -1
         self.protect_callback=Protect(p);self.resolve_callback=Resolve(r)
         self.thread=threading.Thread(target=self._run,name='vpn-native-tun')
+    def bootstrap_targets(self):
+        self.core.vpn_core_bootstrap_targets.argtypes=[c.c_char_p,c.c_void_p,c.c_uint32]
+        size=self.core.vpn_core_bootstrap_targets(self.config,None,0)
+        if size>=-1 or size==-5:raise RuntimeError('Bootstrap metadata unavailable')
+        data=c.create_string_buffer(-size)
+        n=self.core.vpn_core_bootstrap_targets(self.config,data,len(data))
+        if n<=0:raise RuntimeError('Invalid bootstrap metadata')
+        return json.loads(data.raw[:n])
     def _run(self):self.result=self.core.vpn_core_run_tun(self.config,c.byref(self.options),self.protect_callback,self.resolve_callback,None)
     def drain(self):
         while True:

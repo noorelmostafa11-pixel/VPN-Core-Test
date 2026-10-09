@@ -7,6 +7,8 @@
 #include <vector>
 #include <array>
 #include <algorithm>
+#include <map>
+#include <set>
 namespace vpn {
 // Fixed owner IDs let recovery enumerate precisely our filters after a crash.
 inline const GUID tun_policy_owner={0x56504e01,0x7617,0x4e6a,{0xa7,0x19,0x61,0x0d,0x39,0x4a,0x6b,0x10}};
@@ -40,7 +42,7 @@ public:
     NativeWindowsPolicy(){checked(FwpmEngineOpen0(nullptr,RPC_C_AUTHN_WINNT,nullptr,nullptr,&engine_));}
     ~NativeWindowsPolicy(){if(engine_)FwpmEngineClose0(engine_);}
     // Persistent by design: destruction/crash does not silently open networking.
-    void acquire(uint64_t tun_luid,const std::vector<std::string>& nodes,uint16_t node_port) {
+    void acquire(uint64_t tun_luid,const std::vector<std::pair<std::string,uint16_t>>& endpoints) {
         checked(FwpmTransactionBegin0(engine_,0));
         try {
             FWPM_PROVIDER0 owner{};owner.providerKey=tun_policy_owner;owner.flags=tun_wfp_persistent;owner.displayData.name=const_cast<wchar_t*>(L"VpnCore Native TUN owned policy v1");
@@ -49,15 +51,20 @@ public:
             wchar_t executable[32768]{};if(!GetModuleFileNameW(nullptr,executable,32768))throw Failure("STARTUP_FAILED: process identity","TUN_POLICY_PROCESS");
             FWP_BYTE_BLOB* identity=nullptr;checked(FwpmGetAppIdFromFileName0(executable,&identity));
             struct ReleaseIdentity {FWP_BYTE_BLOB*& p;~ReleaseIdentity(){FwpmFreeMemory0(reinterpret_cast<void**>(&p));}} release{identity};
-            std::vector<std::array<uint8_t,16>> ipv4,ipv6;
-            for(const auto& node:nodes){std::array<uint8_t,16> ip{};bool v6=node.find(':')!=std::string::npos;if(InetPtonA(v6?AF_INET6:AF_INET,node.c_str(),ip.data())!=1)throw Failure("STARTUP_FAILED: node IP","TUN_POLICY_ADDRESS");(v6?ipv6:ipv4).push_back(ip);
-                // Node exemptions are only its configured port, never DNS/other ports.
+            std::vector<std::array<uint8_t,16>> ipv4,ipv6;std::map<std::string,std::set<uint16_t>> nodes;
+            for(const auto& endpoint:endpoints)nodes[endpoint.first].insert(endpoint.second);
+            for(const auto& entry:nodes){const auto& node=entry.first;std::array<uint8_t,16> ip{};bool v6=node.find(':')!=std::string::npos;if(InetPtonA(v6?AF_INET6:AF_INET,node.c_str(),ip.data())!=1)throw Failure("STARTUP_FAILED: node IP","TUN_POLICY_ADDRESS");(v6?ipv6:ipv4).push_back(ip);
+                // Exact protected bootstrap ports only, including separate download/ECH.
                 FWPM_FILTER_CONDITION0 remote{};remote.fieldKey=tun_fwpm_condition_ip_remote_address;remote.matchType=FWP_MATCH_EQUAL;FWP_BYTE_ARRAY16 array{};uint32_t v4=uint32_t(ip[0])<<24|uint32_t(ip[1])<<16|uint32_t(ip[2])<<8|ip[3];
                 if(v6){std::copy(ip.begin(),ip.end(),array.byteArray16);remote.conditionValue.type=FWP_BYTE_ARRAY16_TYPE;remote.conditionValue.byteArray16=&array;}else{remote.conditionValue.type=FWP_UINT32;remote.conditionValue.uint32=v4;}
-                FWPM_FILTER_CONDITION0 port{};port.fieldKey=tun_fwpm_condition_ip_remote_port;port.matchType=FWP_MATCH_NOT_EQUAL;port.conditionValue.type=FWP_UINT16;port.conditionValue.uint16=node_port;
+                FWPM_FILTER_CONDITION0 port{};port.fieldKey=tun_fwpm_condition_ip_remote_port;port.matchType=FWP_MATCH_RANGE;port.conditionValue.type=FWP_RANGE_TYPE;
                 FWPM_FILTER_CONDITION0 iface{};iface.fieldKey=tun_fwpm_condition_ip_local_interface;iface.matchType=FWP_MATCH_NOT_EQUAL;iface.conditionValue.type=FWP_UINT64;iface.conditionValue.uint64=&tun_luid;
                 FWPM_FILTER_CONDITION0 loop{};loop.fieldKey=tun_fwpm_condition_flags;loop.matchType=FWP_MATCH_FLAGS_NONE_SET;loop.conditionValue.type=FWP_UINT32;loop.conditionValue.uint32=FWP_CONDITION_FLAG_IS_LOOPBACK;
-                std::vector<FWPM_FILTER_CONDITION0> c{remote,port,iface,loop};add(v6?tun_fwpm_layer_outbound_transport_v6:tun_fwpm_layer_outbound_transport_v4,c);add(v6?tun_fwpm_layer_ale_auth_connect_v6:tun_fwpm_layer_ale_auth_connect_v4,c);
+                // Complement the union of ports, not separate NOT_EQUAL conditions.
+                // Multiple ports on the same IP must not block one another.
+                std::vector<FWPM_FILTER_CONDITION0> c;
+                auto deny_ports=[&](unsigned low,unsigned high){if(low>high)return;FWP_RANGE0 range{};range.valueLow.type=range.valueHigh.type=FWP_UINT16;range.valueLow.uint16=uint16_t(low);range.valueHigh.uint16=uint16_t(high);port.conditionValue.rangeValue=&range;c={remote,port,iface,loop};add(v6?tun_fwpm_layer_outbound_transport_v6:tun_fwpm_layer_outbound_transport_v4,c);add(v6?tun_fwpm_layer_ale_auth_connect_v6:tun_fwpm_layer_ale_auth_connect_v4,c);};
+                unsigned next=0;for(auto allowed:entry.second){if(next<unsigned(allowed))deny_ports(next,unsigned(allowed)-1);next=unsigned(allowed)+1;}if(next<=65535)deny_ports(next,65535);
                 FWPM_FILTER_CONDITION0 process{};process.fieldKey=tun_fwpm_condition_ale_app_id;process.matchType=FWP_MATCH_NOT_EQUAL;process.conditionValue.type=FWP_BYTE_BLOB_TYPE;process.conditionValue.byteBlob=identity;
                 c={remote,process,iface,loop};add(v6?tun_fwpm_layer_ale_auth_connect_v6:tun_fwpm_layer_ale_auth_connect_v4,c);
             }

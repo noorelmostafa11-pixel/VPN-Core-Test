@@ -17,7 +17,10 @@ owned application worker, retain hooks/config/options until it returns, call
 the supplied FD and closes its copy. Nonblocking flags are shared, so callers
 must perform no competing I/O. `vpn_core_tun_ready` means packet/device ready;
 protocol connections authenticate independently per flow. SOCKS listen port is
-zero in this mode. The one-run lock is shared with all existing core entries.
+zero in this mode. `vpn_core_bootstrap_targets` supplies JSON host/port metadata
+without DNS I/O or credentials for desktop policy setup. Resolve every entry
+before routing, include exact endpoint ports, and keep resolver/protection hooks
+alive until the run has joined. The one-run lock is shared with all existing core entries.
 
 Packet I/O does not establish protocol connections. Bounded joinable flow
 workers own C++ protocol/TLS state. Serialized short packet ABI calls never
@@ -34,6 +37,8 @@ The standalone `vpn-native-tun.exe` embeds the same core in its own process.
 Run elevated with `--config`, absolute `--wintun`, and physical
 `--uplink-index`. Original parser determines node host/port; DNS is resolved
 before route activation, and protected sockets bind to the underlying interface.
+Bootstrap metadata includes separate XHTTP download and configured ECH resolver
+endpoints. The policy allows their exact IP/port union for this process only.
 The persistent, owned WFP guard precedes full-tunnel routes/DNS. Adapter DNS is
 link-scoped, never a global physical-adapter replacement. Ctrl+C requests stop
 and joins before disconnect. On fatal error/crash the guard remains fail closed;
@@ -48,7 +53,9 @@ bootstrap host/port and physical interface describe the original node; it does
 not rewrite the node URI. Route/DNS state belongs to an ephemeral `/dev/net/tun`
 interface; no global resolver/default route is overwritten. The atomic owned
 nftables table allows loopback, TUN, and marked node sockets at the configured
-endpoint. The table remains after a crash; `--recover` removes only its marker.
+endpoint. Separate XHTTP download and ECH resolver endpoints are derived from
+the same parsed configuration, pre-resolved, and admitted only for marked sockets.
+The table remains after a crash; `--recover` removes only its marker.
 
 ## Android
 
