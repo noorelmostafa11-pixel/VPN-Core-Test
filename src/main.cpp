@@ -10,6 +10,7 @@
 #include "native-tun-tcp-socks.hpp"
 #ifdef _WIN32
 #include "native-tun-udp-pump.hpp"
+#include "native-tun-ip-pump.hpp"
 #endif
 #include <atomic>
 #include <csignal>
