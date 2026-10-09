@@ -12,15 +12,18 @@ Source branch: `feature/windows-native-tun-stage1`. Stable `main` remains unchan
 - Windows `vpn-core.exe --check-native-tun <absolute-dll-path>` performs a read-only Wintun loader/export check and exits without creating an adapter, opening a Wintun session or modifying routes/DNS.
 - The Windows loader probe also includes the session header to check it compiles. These checks do not exercise a live driver or establish a functioning VPN.
 - The existing manually triggered `build-targets.yml` workflow now compiles and runs the probes when the corresponding Linux/Windows target is selected.
+- `src/native-tun-udp.hpp` implements a 256-flow, 60-second IPv4 UDP request/response mapper. It validates IPv4 and nonzero UDP checksums, rejects UDP/443, IPv6 and fragments, exposes RFC 1928 IPv4 destination bytes, checks authenticated response endpoint identity and builds return IPv4/UDP packets with checksums.
+- `src/native-wintun-session.hpp` now exposes `map_udp_request` and `inject_udp_response`; raw packet injection is private. The mapper does **not** connect to `UdpTunnel`, open sockets, or send traffic on its own.
+- `tests/native_tun_udp_probe.cpp` covers valid request/reply, checksums, mismatched source/port, capacity, flow expiry, invalid UDP length, fragment and IPv6 rejection. The probe passed on local Linux GCC 14.2.0 with release flags and ASan/UBSan; Windows workflow coverage is wired but unrun.
 
 ## Not yet implemented — do not activate as a VPN
 
 - No application-driven live adapter/session lifecycle or deployed packet read/write loop. The experimental RAII session class is implemented but is not invoked by the VPN core run path.
-- No TCP/IP stack, UDP NAT/session mapping, TCP stream reconstruction, end-to-end checksums or response generation. Raw packet injection in the wrapper alone is NOT a VPN response path.
+- No TCP stack, TCP stream reconstruction, live UDP protocol relay, or end-to-end tunnel validation. UDP flow mapping/response packet construction exists but is not yet connected to core protocol transport; a valid UDP checksum does not prove an authenticated proxy response.
 - No VPN outbound endpoint bypass / route pinning / DNS leak safeguards / protected bootstrap inside a native path.
 - No full-tunnel Windows route, DNS and IPv6 transaction with audited rollback and fail-closed kill switch.
 - No active native TUN integration into `vpn_core_run_config`, no new SDK API, no replacement of the external tun2socks process. The Windows CLI has a separate read-only DLL check.
-- No Windows build or live tunnel smoke test has yet been completed for this stage. A local GCC 14.2 reproduction of the packet-policy probe passed with AddressSanitizer and UndefinedBehaviorSanitizer; it is not an end-to-end production build or a Windows driver test.
+- No Windows build or live tunnel smoke test has yet been completed for this stage. Local packet policy and UDP codec probes passed on Linux GCC 14.2, including UDP AddressSanitizer/UndefinedBehaviorSanitizer; this is not an end-to-end production build or Windows driver test.
 
 ## Safety gates before enabling any real tunnel
 
@@ -35,4 +38,4 @@ Source branch: `feature/windows-native-tun-stage1`. Stable `main` remains unchan
 
 Choose **Build Selected Core Target** on this branch with target `windows` and/or `linux`. No workflow runs automatically on commit.
 
-The tests exercise packet classification and loader validation only; passing them does **not** establish that native TUN works, that traffic is encrypted, or that network routing is safe.
+The tests exercise packet classification, local UDP packet/flow conversion and loader validation only; passing them does **not** establish that native TUN works, that traffic is encrypted, or that network routing is safe.
