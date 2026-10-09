@@ -5,6 +5,9 @@
 #include "core-api.h"
 #include "core-events.hpp"
 #include "udp-relay.hpp"
+#ifdef _WIN32
+#include "native-wintun-session.hpp"
+#endif
 #include <atomic>
 #include <csignal>
 #include <future>
@@ -123,7 +126,7 @@ int run(int argc,char** argv,const vpn::NetworkHooks* hooks=nullptr) {
     struct Cleanup {bool& configured;~Cleanup(){core_listen_port.store(0);if(configured)try{stopping.store(true);core_state.store(VPN_CORE_STOPPING);cancel_provider_network();configure_network_hooks({});}catch(...){}core_state.store(VPN_CORE_STOPPED);if(configured)log_line("Stopped");}} cleanup{configured_hooks};
     try {
         validate_xhttp_build=validate_xhttp_configuration;
-        std::string config_path,list_path;bool check=false,inspect=false;
+        std::string config_path,list_path,native_tun_check_path;bool check=false,inspect=false;
         for(int i=1;i<argc;++i) {
             std::string a=argv[i];
             if(a=="--version"){std::cout<<"vpn-core " VPN_CORE_VERSION "-expanded; project-owned protocols; SOCKS5 CONNECT + UDP ASSOCIATE\n";return 0;}
@@ -132,11 +135,27 @@ int run(int argc,char** argv,const vpn::NetworkHooks* hooks=nullptr) {
             if(a=="--check-config")check=true;
             else if(a=="--inspect-config")inspect=true;
             else if(a=="--inspect-list"&&i+1<argc)list_path=argv[++i];
+            else if(a=="--check-native-tun"&&i+1<argc)native_tun_check_path=argv[++i];
             else if(a=="--config"&&i+1<argc)config_path=argv[++i];
-            else if(a=="--help"){std::cout<<"vpn-core --config node.ini [--check-config | --inspect-config]\nvpn-core --inspect-list nodes.txt\nvpn-core --self-test\nvpn-core --version\n";return 0;}
+            else if(a=="--help"){std::cout<<"vpn-core --config node.ini [--check-config | --inspect-config]\nvpn-core --inspect-list nodes.txt\nvpn-core --self-test\nvpn-core --version\nvpn-core --check-native-tun <absolute-wintun-dll-path> (Windows only)\n";return 0;}
             else throw std::runtime_error("Unknown or incomplete command-line option");
         }
         if(!list_path.empty()){(void)TlsProviderAPI::instance();(void)VlessEncryptionAPI::instance();(void)XHttpAPI::instance();std::ifstream list(std::filesystem::u8path(list_path),std::ios::binary);if(!list)throw std::runtime_error("PARSE_INVALID: cannot open node list");std::string uri;uint64_t line=0;while(std::getline(list,uri)){++line;uri=trim(uri);if(uri.empty()||uri[0]=='#')continue;Json row=Json::obj();Config c;bool uri_parsed=false;try{parse_uri(c,uri);uri_parsed=true;row=inspection_fields(c);row=inspection(c);row["parsed"]=Json::boolean(true);}catch(const std::exception& e){row["parsed"]=Json::boolean(false);row["uri_parsed"]=Json::boolean(uri_parsed);row["config_valid"]=Json::boolean(false);row["connectable_by_this_build"]=Json::boolean(false);auto f=dynamic_cast<const Failure*>(&e);row["reason_code"]=Json(f?f->code:uri_parsed?"CONFIG_VALIDATION_INVALID":"URI_PARSE_INVALID");row["native_status"]=Json::integer(f?f->native_status:0);row["error"]=Json(e.what());}row["line"]=Json::integer(line);row["node_id"]=Json(hex_bytes(digest("sha256",to_bytes(uri))).substr(0,20));std::cout<<json_dump(row)<<'\n';}return 0;}
+        if(!native_tun_check_path.empty()) {
+#ifdef _WIN32
+            const int size=MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,native_tun_check_path.c_str(),-1,nullptr,0);
+            if(size<=1)throw std::runtime_error("Native TUN DLL path has invalid UTF-8");
+            std::wstring wide(size,L'\0');
+            if(!MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,native_tun_check_path.c_str(),-1,wide.data(),size))
+                throw std::runtime_error("Native TUN DLL path conversion failed");
+            wide.pop_back();
+            NativeWintunApi driver(wide);
+            std::cout<<"PASS: Wintun API available; no adapter created or routes modified\\n";
+            return 0;
+#else
+            throw std::runtime_error("Native TUN is only available on Windows");
+#endif
+        }
         if(config_path.empty())throw std::runtime_error("Use --config node.ini; --help lists options");
         auto config=read_config(config_path);
         if(inspect){std::cout<<json_dump(inspection(config))<<'\n';return 0;}
