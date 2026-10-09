@@ -80,7 +80,7 @@ int main() {
         assert(bridge.write(key,reinterpret_cast<const uint8_t*>("ping"),4,3000));
         bool got_reply=false;
         for(unsigned i=0;i<100&&!got_reply;++i) {
-            bridge.poll([](const tun_tcp::Key&){return true;},
+            bridge.poll([](const tun_tcp::Key&){return size_t(536);},
                 [&](const tun_tcp::Key& got,const uint8_t* data,size_t n){
                     assert(!(got<key)&&!(key<got));
                     got_reply=n==4&&std::equal(data,data+n,"pong");},
