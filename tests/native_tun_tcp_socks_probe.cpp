@@ -19,7 +19,7 @@ static int bootstrap(const char*,char* out,int capacity,void*) {
     return int(sizeof(address)-1);
 }
 int main() {
-    NetworkRuntime winsock;
+    [[maybe_unused]] NetworkRuntime winsock;
     NativeTcpSocksBridge bridge;
     const tun_tcp::Key key{{198,18,0,2},{8,8,8,8},43128,80};
     // Without both network protection callbacks, the bridge cannot start.
