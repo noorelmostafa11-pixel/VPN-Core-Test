@@ -150,7 +150,7 @@ static void cleanup_cycle() {
     stack.inject(endpoint.packet(6,{},42,0,2));Bytes p;
     wait_until([&]{},[&]{return stack.packet(p);},"pending TCP cleanup handshake");
 }
-static uint64_t metric_integer(const Json& row,const char* key){return std::stoull(row.at(key).scalar());}
+static uint64_t metric_integer(const Json& row,const std::string& key){return std::stoull(row.at(key).scalar());}
 static Json resource_snapshot() {
     NetstackAPI api;uint8_t buffer[2048];int n=api.resource_probe(buffer,sizeof(buffer));
     require(n>0,"Go resource collection barrier");Json result=json_parse(std::string(reinterpret_cast<char*>(buffer),size_t(n)));
@@ -164,8 +164,8 @@ static Json resource_snapshot() {
     while((status=PssWalkSnapshot(snapshot,PSS_WALK_HANDLES,marker,&entry,sizeof(entry)))==ERROR_SUCCESS) {
         std::string type="object_type_"+std::to_string(unsigned(entry.ObjectType));
         if(entry.ObjectType==PSS_OBJECT_TYPE_EVENT)type="Event";else if(entry.ObjectType==PSS_OBJECT_TYPE_THREAD)type="Thread";else if(entry.ObjectType==PSS_OBJECT_TYPE_MUTANT)type="Mutant";else if(entry.ObjectType==PSS_OBJECT_TYPE_SEMAPHORE)type="Semaphore";else if(entry.ObjectType==PSS_OBJECT_TYPE_SECTION)type="Section";else if(entry.ObjectType==PSS_OBJECT_TYPE_PROCESS)type="Process";
-        if(entry.TypeName&&entry.TypeNameLength){type.clear();for(size_t i=0;i<entry.TypeNameLength/sizeof(wchar_t);++i)type.push_back(entry.TypeName[i]<128?char(entry.TypeName[i]):'?');}
-        auto count=types.has(type)?metric_integer(types,type.c_str()):0;types[type]=Json::integer(count+1);
+        if(entry.TypeName&&entry.TypeNameLength){type.clear();for(size_t i=0;i<entry.TypeNameLength/sizeof(wchar_t)&&entry.TypeName[i];++i)type.push_back(entry.TypeName[i]<128?char(entry.TypeName[i]):'?');}
+        auto count=types.has(type)?metric_integer(types,type):0;types[type]=Json::integer(count+1);
     }
     PSS_THREAD_INFORMATION threads{};DWORD thread_status=PssQuerySnapshot(snapshot,PSS_QUERY_THREAD_INFORMATION,&threads,sizeof(threads));
     PssWalkMarkerFree(marker);PssFreeSnapshot(GetCurrentProcess(),snapshot);
