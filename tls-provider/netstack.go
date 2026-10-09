@@ -64,6 +64,7 @@ type tunStack struct {
     copiedIn atomic.Uint64
     copiedOut atomic.Uint64
     calls atomic.Uint64
+    totalCalls atomic.Uint64
 }
 var tunRegistry = struct {
     sync.Mutex
@@ -172,6 +173,7 @@ func vpn_tun_close(id C.uint64_t) {
 func vpn_tun_inject(id C.uint64_t, data *C.uint8_t, size C.int) C.int {
     t:=tunLookup(id)
     if t==nil || data==nil || size<20 || size>65535 {return -1}
+    t.totalCalls.Add(1)
     // Never hold t.mu across synchronous transport handlers.
     p:=C.GoBytes(unsafe.Pointer(data),size)
     protocol:=header.IPv4ProtocolNumber
@@ -187,6 +189,7 @@ func vpn_tun_inject(id C.uint64_t, data *C.uint8_t, size C.int) C.int {
 func vpn_tun_packet(id C.uint64_t, out *C.uint8_t, capacity C.int) C.int {
     t:=tunLookup(id)
     if t==nil || out==nil || capacity<1 {return -1}
+    t.totalCalls.Add(1)
     t.mu.Lock();defer t.mu.Unlock()
     if t.closed{return -1}
     if len(t.packet)==0 {
@@ -201,6 +204,7 @@ func vpn_tun_packet(id C.uint64_t, out *C.uint8_t, capacity C.int) C.int {
 //export vpn_tun_accept
 func vpn_tun_accept(id C.uint64_t, out *C.vpn_tun_flow) C.int {
     t:=tunLookup(id);if t==nil || out==nil{return -1}
+    t.totalCalls.Add(1)
     t.mu.Lock();defer t.mu.Unlock()
     if t.closed{return -1}
     for len(t.pending)>0 {
@@ -218,6 +222,7 @@ func vpn_tun_accept(id C.uint64_t, out *C.vpn_tun_flow) C.int {
 //export vpn_tun_read
 func vpn_tun_read(id C.uint64_t, flow C.uint64_t, out *C.uint8_t, capacity C.int) C.int {
     t:=tunLookup(id);if t==nil || out==nil || capacity<1 || capacity>65535{return -1}
+    t.totalCalls.Add(1)
     t.mu.Lock();defer t.mu.Unlock()
     f:=t.flows[uint64(flow)];if f==nil{return -1}
     // A fixed-size Go-owned buffer bounds copying and does not expose C memory
@@ -243,6 +248,7 @@ func vpn_tun_read(id C.uint64_t, flow C.uint64_t, out *C.uint8_t, capacity C.int
 //export vpn_tun_write
 func vpn_tun_write(id C.uint64_t, flow C.uint64_t, data *C.uint8_t, size C.int) C.int {
     t:=tunLookup(id);if t==nil || (data==nil && size>0) || size<0 || size>65507{return -1}
+    t.totalCalls.Add(1)
     t.mu.Lock();defer t.mu.Unlock()
     f:=t.flows[uint64(flow)];if f==nil{return -1}
     p:=C.GoBytes(unsafe.Pointer(data),size)
@@ -255,6 +261,7 @@ func vpn_tun_write(id C.uint64_t, flow C.uint64_t, data *C.uint8_t, size C.int) 
 //export vpn_tun_shutdown_write
 func vpn_tun_shutdown_write(id C.uint64_t, flow C.uint64_t) C.int {
     t:=tunLookup(id);if t==nil{return -1}
+    t.totalCalls.Add(1)
     t.mu.Lock();defer t.mu.Unlock()
     f:=t.flows[uint64(flow)];if f==nil{return -1}
     if f.endpoint.Shutdown(tcpip.ShutdownWrite)!=nil{return -1};return 0
@@ -280,7 +287,7 @@ func vpn_tun_metrics(id C.uint64_t, out *C.uint8_t, capacity C.int) C.int {
     t:=tunLookup(id);if t==nil || out==nil || capacity<1{return -1}
     var memory runtime.MemStats;runtime.ReadMemStats(&memory)
     t.mu.Lock();active:=len(t.flows);reserved:=t.reserved;t.mu.Unlock()
-    b,_:=json.Marshal(map[string]uint64{"abi_calls":t.calls.Load(),"copied_to_go_bytes":t.copiedIn.Load(),"copied_to_cpp_bytes":t.copiedOut.Load(),"active_flows":uint64(active),"pending_handshakes":uint64(reserved),"go_heap_alloc_bytes":memory.HeapAlloc,"go_heap_sys_bytes":memory.HeapSys,"go_total_alloc_bytes":memory.TotalAlloc,"go_goroutines":uint64(runtime.NumGoroutine()),"go_gc_count":uint64(memory.NumGC)})
+    b,_:=json.Marshal(map[string]uint64{"abi_calls":t.calls.Load(),"abi_total_calls":t.totalCalls.Load(),"copied_to_go_bytes":t.copiedIn.Load(),"copied_to_cpp_bytes":t.copiedOut.Load(),"active_flows":uint64(active),"pending_handshakes":uint64(reserved),"go_heap_alloc_bytes":memory.HeapAlloc,"go_heap_sys_bytes":memory.HeapSys,"go_total_alloc_bytes":memory.TotalAlloc,"go_goroutines":uint64(runtime.NumGoroutine()),"go_gc_count":uint64(memory.NumGC)})
     if len(b)>int(capacity){return -3}
     return C.int(copy(unsafe.Slice((*byte)(unsafe.Pointer(out)),int(capacity)),b))
 }

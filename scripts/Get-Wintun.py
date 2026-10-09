@@ -8,4 +8,13 @@ a.build.mkdir(parents=True,exist_ok=True)
 with zipfile.ZipFile(io.BytesIO(data)) as z:
     (a.build/'wintun.dll').write_bytes(z.read('wintun/bin/amd64/wintun.dll'))
     (a.build/'WINTUN-LICENSE.txt').write_bytes(z.read('wintun/LICENSE.txt'))
+import json
+provenance=a.build/'build-provenance.json'
+if provenance.exists():
+    meta=json.loads(provenance.read_text());manifest=list(meta['files'])
+    for name in ('wintun.dll','WINTUN-LICENSE.txt'):
+        path=a.build/name;entry={'file':name,'bytes':path.stat().st_size,'sha256':hashlib.sha256(path.read_bytes()).hexdigest()}
+        manifest=[e for e in manifest if e['file']!=name]+[entry]
+    meta['files']=sorted(manifest,key=lambda x:x['file']);meta['wintun']={'version':'0.14.1','upstream_zip_sha256':expected}
+    (a.build/'build-hashes.json').write_text(json.dumps(meta['files'],indent=2)+'\n');provenance.write_text(json.dumps(meta,indent=2)+'\n')
 print('HASH_VERIFIED: signed upstream Wintun 0.14.1 ZIP')

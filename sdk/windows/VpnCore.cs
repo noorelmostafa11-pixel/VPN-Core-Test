@@ -58,4 +58,32 @@ public static class VpnCore
         try { return vpn_core_run_config(config,p,r,IntPtr.Zero); }
         finally { GC.KeepAlive(p); GC.KeepAlive(r); }
     }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct TunOptions {
+        public uint Size,Abi; public long Fd;
+        public uint Kind,Mtu,MaximumFlows,Reserved;
+        public IntPtr Name,Wintun;
+    }
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate int TunFunction([MarshalAs(UnmanagedType.LPUTF8Str)] string config,
+        ref TunOptions options,ProtectCallback protect,ResolveCallback resolve,IntPtr user);
+    public static uint TunAbiVersion => Export<AbiFunction>("vpn_core_tun_abi_version")();
+    public static bool TunReady => Export<StateFunction>("vpn_core_tun_ready")()!=0;
+    // Caller owns elevated network policy (see native-windows-launcher.cpp).
+    // Acquire guard before routes/DNS. Retain all callbacks/options until join.
+    public static int RunTun(string config,string wintunPath,string adapterName,
+        Func<long,bool> protect,Func<string,IEnumerable<IPAddress>> resolve)
+    {
+        if(TunAbiVersion!=1) return -5;
+        if(string.IsNullOrEmpty(config)||config.Contains('\0'))throw new ArgumentException("config");
+        if(!Path.IsPathFullyQualified(wintunPath))throw new ArgumentException("wintunPath");
+        if(protect is null||resolve is null)throw new ArgumentNullException("network hooks");
+        var options=new TunOptions { Size=(uint)Marshal.SizeOf<TunOptions>(),Abi=1,Fd=-1,Kind=2,Mtu=1500,MaximumFlows=64,
+            Name=Marshal.StringToCoTaskMemUTF8(adapterName),Wintun=Marshal.StringToCoTaskMemUTF8(wintunPath) };
+        ProtectCallback p=(socket,_)=>{try{return protect(socket)?1:0;}catch{return 0;}};
+        ResolveCallback r=(host,output,capacity,_)=>{try{var bytes=Encoding.UTF8.GetBytes(string.Join("\n",resolve(Marshal.PtrToStringUTF8(host)!))+"\n");if(bytes.Length>=capacity)return -1;Marshal.Copy(bytes,0,output,bytes.Length);return bytes.Length;}catch{return -1;}};
+        try{return Export<TunFunction>("vpn_core_run_tun")(config,ref options,p,r,IntPtr.Zero);}
+        finally{GC.KeepAlive(p);GC.KeepAlive(r);Marshal.FreeCoTaskMem(options.Name);Marshal.FreeCoTaskMem(options.Wintun);}
+    }
+
 }

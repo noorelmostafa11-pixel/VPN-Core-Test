@@ -45,6 +45,7 @@ jobs:
           test -e /dev/net/tun || sudo mknod /dev/net/tun c 10 200
           sudo ip netns add vpncoreci
           sudo ip netns exec vpncoreci "$(command -v python)" scripts/Test-Native-Tun-Device.py --build build/linux-amd64 --output evidence/linux/device --isolated-linux
+          sudo ip netns exec vpncoreci "$(command -v python)" scripts/Test-Native-Tun-Policy.py --build build/linux-amd64 --output evidence/linux/policy --isolated-linux
           sudo ip netns delete vpncoreci
       - name: Windows build and independent encrypted cases
         if: matrix.target == 'windows'
@@ -59,12 +60,40 @@ jobs:
           if ($LASTEXITCODE) { throw 'Windows native TUN build failed' }
           python scripts/Get-Wintun.py --build build/windows-amd64
           if ($LASTEXITCODE) { throw 'Pinned Wintun download failed' }
+          python scripts/Verify-Windows-Imports.py --build build/windows-amd64
+          if ($LASTEXITCODE) { throw 'Unbundled runtime dependency' }
           python scripts/Test-Netstack-Compatibility.py --build build/windows-amd64 --output evidence/windows/packet
           if ($LASTEXITCODE) { throw 'Packet transfers failed' }
           python -m unittest -v test_native_tun_encrypted
           if ($LASTEXITCODE) { throw 'Encrypted packet paths failed' }
           python scripts/Test-Native-Tun-Device.py --build build/windows-amd64 --output evidence/windows/device
           if ($LASTEXITCODE) { throw 'Actual Wintun transfer/lifecycle failed' }
+          python scripts/Test-Native-Tun-Policy.py --build build/windows-amd64 --output evidence/windows/policy
+          if ($LASTEXITCODE) { throw 'Owned WFP policy or DNS failed' }
+      - name: Checkout pinned stable reference
+        uses: actions/checkout@v4
+        with:
+          ref: 90a1853114de3e4bcb3deed6747801c10bc5b370
+          path: stable-source
+          persist-credentials: false
+      - name: Build stable and compare equivalent Linux loads
+        if: matrix.target == 'linux'
+        run: |
+          python stable-source/scripts/Build.py --target linux --require-clean
+          sudo ip netns add vpnbench
+          sudo ip netns exec vpnbench "$(command -v python)" scripts/Benchmark-Native-Tun.py --stable stable-source/build/linux-amd64 --candidate build/linux-amd64 --output evidence/linux/performance --isolated-linux
+          sudo ip netns delete vpnbench
+      - name: Build stable and compare equivalent Windows loads
+        if: matrix.target == 'windows'
+        shell: pwsh
+        env:
+          MSYS_LOCATION: ${{ steps.msys.outputs.msys2-location }}
+        run: |
+          $env:PATH=(Join-Path $env:MSYS_LOCATION 'mingw64\bin')+';'+$env:PATH
+          python stable-source/scripts/Build.py --target windows --require-clean
+          if ($LASTEXITCODE) { throw 'Stable reference build failed' }
+          python scripts/Benchmark-Native-Tun.py --stable stable-source/build/windows-amd64 --candidate build/windows-amd64 --output evidence/windows/performance
+          if ($LASTEXITCODE) { throw 'Equivalent Windows load comparison failed' }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

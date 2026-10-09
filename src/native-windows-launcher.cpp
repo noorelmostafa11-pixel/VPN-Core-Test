@@ -40,7 +40,7 @@ struct OwnedRoutes {
         for(unsigned v6=0;v6<2;++v6){Settings settings{};settings.version=1;settings.flags=0x2|0x8|0x80|(v6?1:0);settings.name_server=const_cast<wchar_t*>(v6?L"2620:fe::fe":L"9.9.9.9");code=setter(guid,&settings);if(code)throw Failure("STARTUP_FAILED: owned interface DNS","TUN_DNS",code);}
     }
     void configure(uint64_t luid,bool test) {
-        for(ADDRESS_FAMILY family:{ADDRESS_FAMILY(AF_INET),ADDRESS_FAMILY(AF_INET6)}){MIB_IPINTERFACE_ROW row{};InitializeIpInterfaceEntry(&row);row.Family=family;row.InterfaceLuid.Value=luid;auto e=GetIpInterfaceEntry(&row);if(e)throw Failure("STARTUP_FAILED: TUN interface","TUN_INTERFACE",e);row.NlMtu=1500;row.UseAutomaticMetric=FALSE;row.Metric=5;row.DadTransmits=0;if((e=SetIpInterfaceEntry(&row)))throw Failure("STARTUP_FAILED: TUN MTU","TUN_MTU",e);}
+        for(ADDRESS_FAMILY family:{ADDRESS_FAMILY(AF_INET),ADDRESS_FAMILY(AF_INET6)}){MIB_IPINTERFACE_ROW row{};InitializeIpInterfaceEntry(&row);row.Family=family;row.InterfaceLuid.Value=luid;auto e=GetIpInterfaceEntry(&row);if(e)throw Failure("STARTUP_FAILED: TUN interface","TUN_INTERFACE",e);if(family==AF_INET)row.SitePrefixLength=0;row.NlMtu=1500;row.UseAutomaticMetric=FALSE;row.Metric=5;row.DadTransmits=0;if((e=SetIpInterfaceEntry(&row)))throw Failure("STARTUP_FAILED: TUN MTU","TUN_MTU",e);}
         address(luid,"198.18.0.2",false,30);address(luid,"fd71:5650::2",true,126);
         if(!test)dns(luid);
         if(test){route(luid,"203.0.113.0",false,24);route(luid,"2001:db8::",true,32);}
@@ -54,10 +54,10 @@ int wmain(int argc,wchar_t** argv) {
     HANDLE owner=CreateMutexW(nullptr,FALSE,L"Global\\VpnCoreNativeTunOwnerV1");
     if(!owner||GetLastError()==ERROR_ALREADY_EXISTS){if(owner)CloseHandle(owner);std::cerr<<"Native TUN is already active\n";return 2;}
     struct CloseOwner{HANDLE h;~CloseOwner(){CloseHandle(h);}} close_owner{owner};
-    bool recover=false,test=false;std::string config_path,dll_path,name="VpnCore-TUN";Context context;
+    bool recover=false,test=false,policy_test=false;std::string config_path,dll_path,name="VpnCore-TUN";Context context;
     try {
         NetworkRuntime network;
-        for(int i=1;i<argc;++i){std::wstring a=argv[i];if(a==L"--recover-network")recover=true;else if(a==L"--test-routes")test=true;else if((a==L"--config"||a==L"--wintun"||a==L"--name"||a==L"--uplink-index")&&i+1<argc){auto s=argument(argv[++i]);if(a==L"--config")config_path=s;else if(a==L"--wintun")dll_path=s;else if(a==L"--name")name=s;else context.uplink=ULONG(number(s,1,0xffffffffu));}else throw Failure("STARTUP_FAILED: unknown argument","TUN_ARGUMENT");}
+        for(int i=1;i<argc;++i){std::wstring a=argv[i];if(a==L"--recover-network")recover=true;else if(a==L"--test-routes")test=true;else if(a==L"--test-policy"){test=true;policy_test=true;}else if((a==L"--config"||a==L"--wintun"||a==L"--name"||a==L"--uplink-index")&&i+1<argc){auto s=argument(argv[++i]);if(a==L"--config")config_path=s;else if(a==L"--wintun")dll_path=s;else if(a==L"--name")name=s;else context.uplink=ULONG(number(s,1,0xffffffffu));}else throw Failure("STARTUP_FAILED: unknown argument","TUN_ARGUMENT");}
         NativeWindowsPolicy policy;if(recover){policy.recover();std::cout<<"Owned WFP policy recovered\n";return 0;}
         if(config_path.empty()||dll_path.empty()||context.uplink==0)throw Failure("STARTUP_FAILED: required arguments","TUN_ARGUMENT");
         auto config=read_config(config_path);require_supported(config);context.host=config.server;stopping=false;context.addresses=node_addresses(config.server,Clock::now()+std::chrono::milliseconds(config.connect_ms));
@@ -66,12 +66,12 @@ int wmain(int argc,wchar_t** argv) {
         struct StopJoin{~StopJoin(){vpn_core_stop();}} stop_join;
         uint64_t luid=0;auto deadline=Clock::now()+std::chrono::seconds(15);
         while(!luid){char data[8192];int n=vpn_core_read_event(data,sizeof(data));if(n>0){auto e=json_parse(std::string(data,size_t(n)));if(e.at("event").scalar()=="tun_ready")luid=uint64_t(std::stoull(e.at("luid").scalar()));}if(worker.wait_for(std::chrono::milliseconds(0))==std::future_status::ready)throw Failure("STARTUP_FAILED: TUN worker failed","TUN_STARTUP");if(Clock::now()>=deadline)throw Failure("STARTUP_FAILED: readiness timeout","TUN_STARTUP_TIMEOUT");std::this_thread::sleep_for(std::chrono::milliseconds(5));}
-        if(!test)policy.acquire(luid,context.addresses,config.port);
-        OwnedRoutes routes;routes.configure(luid,test);
+        if(!test||policy_test)policy.acquire(luid,context.addresses,config.port);
+        OwnedRoutes routes;routes.configure(luid,test);if(policy_test)routes.dns(luid);
         NET_LUID interface_luid{};interface_luid.Value=luid;NET_IFINDEX index=0;ConvertInterfaceLuidToIndex(&interface_luid,&index);
         std::cout<<"{\"event\":\"native_tun_network_ready\",\"interface_index\":"<<index<<",\"test_routes\":"<<(test?"true":"false")<<"}"<<std::endl;
         while(worker.wait_for(std::chrono::milliseconds(50))!=std::future_status::ready){char data[8192];int n=vpn_core_read_event(data,sizeof(data));if(n>0)std::cout<<std::string(data,size_t(n))<<std::endl;}
-        int result=worker.get();if(!test&&result==0)policy.recover();else if(!test)std::cerr<<"Core failed: kill switch retained. Use --recover-network to disconnect.\n";
+        int result=worker.get();if((!test||policy_test)&&result==0)policy.recover();else if(!test||policy_test)std::cerr<<"Core failed: kill switch retained. Use --recover-network to disconnect.\n";
         return result;
     }catch(const std::exception& e){auto f=dynamic_cast<const Failure*>(&e);vpn_core_stop();std::cerr<<"Native TUN failed: "<<(f?f->code:"TUN_STARTUP")<<" status="<<(f?f->native_status:0)<<"\n";return 1;}
 }
