@@ -4,9 +4,12 @@
 #pragma once
 #ifdef _WIN32
 #include "native-tun-packet.hpp"
+#include "native-tun-udp.hpp"
 #include "native-wintun.hpp"
 #include <atomic>
 #include <cstring>
+#include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -20,6 +23,8 @@ class NativeWintunSession final {
     NativeWintunApi::Session session_=nullptr;
     std::atomic<bool> stopped_{false};
     uint64_t accepted_=0, dropped_=0;
+    tun_udp::Flows udp_flows_;
+    std::mutex udp_mutex_;
 
     void close() noexcept {
         if(session_) {api_.end_session(session_); session_=nullptr;}
@@ -92,9 +97,31 @@ public:
         return NativeTunReadStatus::accepted;
     }
 
-    // Single-writer contract. Use ONLY with authenticated traffic from the
-    // future VPN protocol path. Calling this with arbitrary packets is unsafe.
-    bool inject(const uint8_t* packet,size_t size) {
+    // Convert Wintun IPv4/UDP bytes to a bounded core datagram flow.
+    // A caller must send the result exclusively through the encrypted protocol
+    // path; this function NEVER sends a network packet by itself.
+    std::optional<tun_udp::Outbound> map_udp_request(const std::vector<uint8_t>& packet) {
+        if(stopped_.load(std::memory_order_relaxed))return std::nullopt;
+        std::lock_guard<std::mutex> lock(udp_mutex_);
+        return udp_flows_.accept(packet.data(),packet.size());
+    }
+
+    // Remote address and port must be taken from the authenticated core UDP
+    // response. Mismatched/expired flow identifiers can never inject packets.
+    bool inject_udp_response(uint64_t flow_id,const tun_udp::IPv4& remote_address,
+            uint16_t remote_port,const uint8_t* payload,size_t payload_size) {
+        if(stopped_.load(std::memory_order_relaxed))return false;
+        std::optional<std::vector<uint8_t>> reply;
+        {
+            std::lock_guard<std::mutex> lock(udp_mutex_);
+            reply=udp_flows_.response(flow_id,remote_address,remote_port,payload,payload_size);
+        }
+        return reply.has_value()&&inject_authenticated(reply->data(),reply->size());
+    }
+
+private:
+    // Never expose unvalidated raw packet injection to VPN application callers.
+    bool inject_authenticated(const uint8_t* packet,size_t size) {
         if(stopped_.load(std::memory_order_relaxed))return false;
         const auto inspected=inspect_native_tun_packet(packet,size);
         if(inspected.verdict!=NativeTunVerdict::tcp&&
