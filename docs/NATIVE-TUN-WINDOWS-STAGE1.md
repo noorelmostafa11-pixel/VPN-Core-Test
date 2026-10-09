@@ -8,16 +8,19 @@ Source branch: `feature/windows-native-tun-stage1`. Stable `main` remains unchan
 - `src/native-wintun.hpp` loads Wintun exports from an explicit local absolute DLL path. Constructing the loader does not create an adapter or modify Windows network configuration. The caller must keep the loader alive while using any of its function pointers.
 - `tests/native_tun_packet_probe.cpp` checks ordinary TCP, UDP/53, forbidden UDP/443 and invalid input.
 - `tests/native_wintun_loader_probe.cpp` checks rejection of a relative DLL path without attempting to create an adapter.
+- `src/native-wintun-session.hpp` adds an opt-in RAII wrapper for Wintun adapter creation, 4 MiB ring sessions, bounded reads, explicit packet injection, policy-drop counters and cooperative stop. Merely loading the core DOES NOT instantiate this wrapper.
+- Windows `vpn-core.exe --check-native-tun <absolute-dll-path>` performs a read-only Wintun loader/export check and exits without creating an adapter, opening a Wintun session or modifying routes/DNS.
+- The Windows loader probe also includes the session header to check it compiles. These checks do not exercise a live driver or establish a functioning VPN.
 - The existing manually triggered `build-targets.yml` workflow now compiles and runs the probes when the corresponding Linux/Windows target is selected.
 
 ## Not yet implemented — do not activate as a VPN
 
-- No live Wintun adapter/session creation, packet read/write loop or adapter ownership lifecycle.
-- No TCP/IP stack, UDP NAT/session mapping, TCP stream reconstruction, checksums or reply injection.
+- No application-driven live adapter/session lifecycle or deployed packet read/write loop. The experimental RAII session class is implemented but is not invoked by the VPN core run path.
+- No TCP/IP stack, UDP NAT/session mapping, TCP stream reconstruction, end-to-end checksums or response generation. Raw packet injection in the wrapper alone is NOT a VPN response path.
 - No VPN outbound endpoint bypass / route pinning / DNS leak safeguards / protected bootstrap inside a native path.
 - No full-tunnel Windows route, DNS and IPv6 transaction with audited rollback and fail-closed kill switch.
-- No integration into `vpn_core_run_config`, no new SDK API, no replacement of the external tun2socks process.
-- No Windows build or live tunnel smoke test has yet been completed for this stage.
+- No active native TUN integration into `vpn_core_run_config`, no new SDK API, no replacement of the external tun2socks process. The Windows CLI has a separate read-only DLL check.
+- No Windows build or live tunnel smoke test has yet been completed for this stage. A local GCC 14.2 reproduction of the packet-policy probe passed with AddressSanitizer and UndefinedBehaviorSanitizer; it is not an end-to-end production build or a Windows driver test.
 
 ## Safety gates before enabling any real tunnel
 
