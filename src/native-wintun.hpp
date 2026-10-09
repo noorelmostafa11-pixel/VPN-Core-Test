@@ -8,6 +8,7 @@
 #endif
 #include <windows.h>
 #include <cstdint>
+#include <cstring>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -18,7 +19,10 @@ class NativeWintunApi final {
     template<typename T> T symbol(const char* name) {
         auto p=GetProcAddress(module_,name);
         if(!p)throw std::runtime_error(std::string("Wintun export missing: ")+name);
-        return reinterpret_cast<T>(p);
+        static_assert(sizeof(T)==sizeof(p), "Wintun function pointer size mismatch");
+        T typed{};
+        std::memcpy(&typed,&p,sizeof(typed));
+        return typed;
     }
 public:
     using Adapter=void*;
