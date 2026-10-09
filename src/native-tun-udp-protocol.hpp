@@ -3,6 +3,8 @@
 // One caller-owned worker must call submit/poll/clear serially.
 // Every flow gets its own protocol session to prevent reply cross-talk.
 #pragma once
+#include "transport.hpp"
+#include "xhttp-provider.hpp"
 #include "native-tun-udp.hpp"
 #include "udp-relay.hpp"
 #include <array>
