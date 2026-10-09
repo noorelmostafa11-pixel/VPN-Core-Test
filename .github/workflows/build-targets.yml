@@ -113,6 +113,10 @@ jobs:
           if ($LASTEXITCODE) { throw 'Native Wintun loader compilation failed' }
           & (Join-Path 'bin' 'native_wintun_loader_probe.exe')
           if ($LASTEXITCODE) { throw 'Native Wintun loader smoke failed' }
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -D_WIN32_WINNT=0x0A00 tests/native_windows_network_snapshot_probe.cpp -o bin/native_windows_network_snapshot_probe.exe -liphlpapi -lws2_32
+          if ($LASTEXITCODE) { throw 'Windows native network snapshot compilation failed' }
+          & (Join-Path 'bin' 'native_windows_network_snapshot_probe.exe')
+          if ($LASTEXITCODE) { throw 'Windows native network snapshot check failed' }
           python scripts/Build.py --target windows --require-clean
           if ($LASTEXITCODE) { throw 'Windows build failed' }
           python -m pip install -r tests/requirements.txt
