@@ -5,9 +5,10 @@ provider's Go runtime and the current C++ protocol engine. No packet forwarding
 subprocess or alternate VPN engine is used. The stable core ABI 2 and proxy
 entry points remain available. Only `--experimental-netstack` enables TUN ABI 1.
 
-**Development checkpoint: OS device, policy, integration and performance gates
-are running. Do not describe this checkout as production approved or a finished
-device-test package until the corresponding CI/device reports are recorded.**
+**Trial packages are emitted only after all three OS integration jobs pass and
+their exact clean source/binary hashes and evidence are verified. Use the
+included report to assess coverage and measured costs. Physical-device
+acceptance and production security/performance approval remain pending.**
 
 ## C / C++ embedding
 
@@ -21,11 +22,18 @@ zero in this mode. `vpn_core_bootstrap_targets` supplies JSON host/port metadata
 without DNS I/O or credentials for desktop policy setup. Resolve every entry
 before routing, include exact endpoint ports, and keep resolver/protection hooks
 alive until the run has joined. The one-run lock is shared with all existing core entries.
+Stop applies to an entered run, not a future scheduled one: serialize startup
+and cancellation, or repeat Stop while joining the owned worker. The supplied
+Python host and Android service handle cancellation raced with native startup.
 
 Packet I/O does not establish protocol connections. Bounded joinable flow
 workers own C++ protocol/TLS state. Serialized short packet ABI calls never
 retain Go or C++ pointers. TCP applies bounded stream backpressure; UDP retains
 record boundaries and counts newest-record drops on bounded queue overflow.
+Packet-facing UDP bounds follow the IP family (65,507 IPv4 / 65,527 IPv6 payload
+bytes). Controlled VLESS/TLS tests exercise OS fragmentation/reassembly with
+empty and maximum records. Existing protocol-specific limits and the legacy
+SOCKS IPv4-carrier bound remain enforced.
 Failures abort only the affected flow, preserve the original causal reason,
 and retain the TUN instead of falling back to unencrypted networking.
 
@@ -64,11 +72,16 @@ protection/bootstrap hooks. The integration source is in
 `sdk/android/service/.../VpnCoreVpnService.java`. It adds both family defaults,
 link DNS and addresses, pins socket/DNS operations to a non-VPN underlying
 Network, and keeps the TUN across core failure or network loss. Reconnect joins
-old core work before creating new sessions. Explicit Disconnect closes the FD.
+old core work before creating new sessions. Configuration replacement also
+retains the original TUN FD/routes/DNS; capability changes re-evaluate the
+physical uplink. Explicit Disconnect closes the FD.
 Android's always-on **Block connections without VPN** must be enabled by the
 user/system policy for fail-closed behavior across process death; an app alone
 cannot impose this system setting. The experiment APK is a separate host and
 its debug signature is unsuitable for production updates.
+Controlled stable/candidate comparisons share one ephemeral debug signing key
+and use package updates to retain the same application UID and permissions.
+No debug keystore is included in the trial package or evidence artifacts.
 
 ## Compatibility and evidence
 

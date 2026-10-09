@@ -17,12 +17,17 @@ inline size_t socks_address_size(const Bytes& b,size_t p=0){
 }
 struct Datagram {Bytes address,payload;};
 class UdpStreamCodec {
-    const Config& config_;Bytes address_,input_;
+    const Config& config_;Bytes address_,input_;size_t maximum_payload_;
 public:
-    UdpStreamCodec(const Config& config,Bytes address):config_(config),address_(std::move(address)){}
+    // Legacy SOCKS keeps its IPv4-carrier bound by default. Native IPv6
+    // endpoints explicitly select their standard payload limit; wire framing,
+    // protocol authentication and the old path's validation remain identical.
+    UdpStreamCodec(const Config& config,Bytes address,size_t maximum_payload=65507):config_(config),address_(std::move(address)),maximum_payload_(maximum_payload){
+        if((maximum_payload_!=65507&&maximum_payload_!=65527)||(maximum_payload_==65527&&(address_.empty()||address_[0]!=4)))throw Failure("PROTOCOL_FAILED: UDP family limit","UDP_DATAGRAM_LENGTH");
+    }
     Bytes encode(Protocol& protocol,const Bytes& payload){
         if(config_.protocol=="vmess"&&payload.empty())throw Failure("PROTOCOL_FAILED: VMess empty packet means EOF","VMESS_UDP_EMPTY");
-        if(payload.size()>65507)throw Failure("PROTOCOL_FAILED: UDP packet too large","UDP_DATAGRAM_LENGTH");
+        if(payload.size()>maximum_payload_)throw Failure("PROTOCOL_FAILED: UDP packet too large","UDP_DATAGRAM_LENGTH");
         if(config_.protocol=="vmess")return protocol.encode_datagram(payload);
         Bytes b;if(config_.protocol=="trojan")append(b,address_);be16(b,payload.size());
         if(config_.protocol=="trojan")append(b,Bytes{13,10});append(b,payload);return protocol.encode(b);
@@ -34,7 +39,7 @@ public:
         for(;;){size_t prefix=0;Bytes address=address_;
             if(config_.protocol=="trojan"){prefix=socks_address_size(input_);if(!prefix)break;address=Bytes(input_.begin(),input_.begin()+std::ptrdiff_t(prefix));}
             auto extra=config_.protocol=="trojan"?4u:2u;if(input_.size()<prefix+extra)break;
-            auto n=get16(input_,prefix);if(n>65507)throw Failure("PROTOCOL_FAILED: UDP response length","UDP_DATAGRAM_LENGTH");
+            auto n=get16(input_,prefix);if(n>maximum_payload_)throw Failure("PROTOCOL_FAILED: UDP response length","UDP_DATAGRAM_LENGTH");
             if(extra==4&&(input_[prefix+2]!=13||input_[prefix+3]!=10))throw Failure("PROTOCOL_FAILED: Trojan UDP delimiter","TROJAN_UDP_DELIMITER");
             if(input_.size()<prefix+extra+n)break;consume(input_,prefix+extra);out.push_back({std::move(address),consume(input_,n)});
         }return out;

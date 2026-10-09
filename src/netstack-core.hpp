@@ -158,7 +158,7 @@ class NetstackCoreBridge {
             std::unique_ptr<ShadowsocksUdp> ss;
             Socket socket;
             if(s.flow.protocol==6)stream=std::make_unique<PacketProtocolStream>(config_,destination);
-            else if(s.flow.protocol==17){if(config_.protocol=="ss"){socket=connect_udp_server(config_);ss=std::make_unique<ShadowsocksUdp>(config_);}else udp=std::make_unique<UdpTunnel>(config_,destination);}
+            else if(s.flow.protocol==17){if(config_.protocol=="ss"){socket=connect_udp_server(config_);ss=std::make_unique<ShadowsocksUdp>(config_);}else udp=std::make_unique<UdpTunnel>(config_,destination,s.flow.address_size==16?65527:65507);}
             else throw Failure("PROTOCOL_FAILED: flow protocol","NETSTACK_FLOW_PROTOCOL");
             Bytes upload,ss_wire;bool upload_present=false,input_eof=false,output_eof=false;
             std::deque<Bytes> replies;size_t reply_bytes=0;auto last=Clock::now();
@@ -199,7 +199,8 @@ class NetstackCoreBridge {
                         if(d.address!=destination)throw Failure("PROTOCOL_FAILED: wrong UDP endpoint","NETSTACK_UDP_ENDPOINT");
                         // UDP cannot backpressure its remote sender. Drop newest
                         // on overflow, account it, and never truncate/concatenate.
-                        if(d.payload.size()>65507||replies.size()>=32||reply_bytes+d.payload.size()>524288){++udp_dropped_;continue;}
+                        const size_t maximum_datagram=s.flow.address_size==16?65527:65507;
+                        if(d.payload.size()>maximum_datagram||replies.size()>=32||reply_bytes+d.payload.size()>524288){++udp_dropped_;continue;}
                         reply_bytes+=d.payload.size();replies.push_back(std::move(d.payload));progress=true;
                     }
                     for(unsigned i=0;i<16&&!replies.empty();++i) {

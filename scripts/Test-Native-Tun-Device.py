@@ -21,9 +21,10 @@ def transfers():
         rows.append({'test':'OS_TUN_TCP_IPV6' if family==socket.AF_INET6 else 'OS_TUN_TCP_IPV4','status':'PASS','elapsed_seconds':time.monotonic()-start})
         with socket.socket(family,socket.SOCK_DGRAM) as s:
             s.settimeout(8)
-            for size in (0,1,512,1200):
+            sizes=(0,1,512,1200,32768,65527 if family==socket.AF_INET6 else 65507)
+            for size in sizes:
                 payload=bytes([size%256])*size;s.sendto(payload,(address,443));reply,source=s.recvfrom(65535);assert reply==payload and source[1]==443
-        rows.append({'test':'OS_TUN_UDP_IPV6' if family==socket.AF_INET6 else 'OS_TUN_UDP_IPV4','status':'PASS'})
+        rows.append({'test':'OS_TUN_UDP_IPV6' if family==socket.AF_INET6 else 'OS_TUN_UDP_IPV4','status':'PASS','verified_datagram_sizes':list(sizes),'fragmented_roundtrip':True})
     return rows
 
 def main():

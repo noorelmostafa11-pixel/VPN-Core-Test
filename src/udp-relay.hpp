@@ -28,7 +28,7 @@ class UdpTunnel {
         if(!out.empty())last_=Clock::now();return out;
     }
 public:
-    UdpTunnel(const Config& c,const Bytes& destination):config_(c),protocol_(c,true),codec_(c,destination),transport_(c),provider_(c.transport=="xhttp"||c.transport=="http"||c.transport=="kcp"||c.transport=="quic"){
+    UdpTunnel(const Config& c,const Bytes& destination,size_t maximum_payload=65507):config_(c),protocol_(c,true),codec_(c,destination,maximum_payload),transport_(c),provider_(c.transport=="xhttp"||c.transport=="http"||c.transport=="kcp"||c.transport=="quic"){
         auto deadline=Clock::now()+std::chrono::milliseconds(c.connect_ms);
         if(provider_){xhttp_.open(c,protocol_.open(destination),deadline);return;}
         server_=connect_server(c,deadline);tls_.handshake(server_,c,deadline);Bytes header;

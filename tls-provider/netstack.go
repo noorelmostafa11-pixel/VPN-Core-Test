@@ -281,10 +281,14 @@ func vpn_tun_read(id C.uint64_t, flow C.uint64_t, out *C.uint8_t, capacity C.int
 
 //export vpn_tun_write
 func vpn_tun_write(id C.uint64_t, flow C.uint64_t, data *C.uint8_t, size C.int) C.int {
-    t:=tunLookup(id);if t==nil || (data==nil && size>0) || size<0 || size>65507{return -1}
+    t:=tunLookup(id);if t==nil || (data==nil && size>0) || size<0 || size>65535{return -1}
     t.totalCalls.Add(1)
     t.mu.Lock();defer t.mu.Unlock()
     f:=t.flows[uint64(flow)];if f==nil{return -1}
+    if f.protocol==17 {
+        maximum:=65507;if len(f.address)==16 {maximum=65527}
+        if int(size)>maximum{return -3} // complete UDP record; never truncate
+    }
     p:=C.GoBytes(unsafe.Pointer(data),size)
     n,err:=f.endpoint.Write(bytes.NewReader(p),tcpip.WriteOptions{Atomic:f.protocol==17})
     if _,ok:=err.(*tcpip.ErrWouldBlock);ok{return -2}

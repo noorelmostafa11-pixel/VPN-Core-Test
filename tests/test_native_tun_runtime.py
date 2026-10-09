@@ -90,4 +90,33 @@ class NativeRuntimeTests(unittest.TestCase):
                 release.set();timer.cancel()
                 if host.thread.is_alive():host.stop()
                 app.close();tun.close()
+    def test_ipv6_fragmented_udp_preserves_full_maximum_record(self):
+        peer=NativeTunPeer('vless',tls_context=self.context)
+        source=socket.inet_pton(socket.AF_INET6,'fd71:5650::2');target=socket.inet_pton(socket.AF_INET6,'2001:db8::9')
+        with tempfile.TemporaryDirectory() as td:
+            cfg=pathlib.Path(td)/'node.ini';cfg.write_text(f'node_uri=vless://{peers.ID}@127.0.0.1:{peer.port}?security=tls&sni=localhost&fp=chrome\ntls_ca_file={core.CoreTests.ca}\n')
+            app,tun=socket.socketpair(type=socket.SOCK_DGRAM);app.settimeout(8);host=self.host(cfg,tun.fileno(),lambda _:['127.0.0.1'])
+            try:
+                host.start()
+                for ident,size in enumerate((32768,65527),1):
+                    payload=bytes(i%251 for i in range(size));udp=struct.pack('!HHHH',32124,443,size+8,0)+payload
+                    check=checksum(source+target+struct.pack('!I3xB',len(udp),17)+udp);udp=udp[:6]+struct.pack('!H',check or 65535)+udp[8:]
+                    for offset in range(0,len(udp),1232):
+                        chunk=udp[offset:offset+1232];fragment=struct.pack('!BBHI',17,0,offset|(int(offset+len(chunk)<len(udp))),ident)+chunk
+                        app.send(struct.pack('!IHBB16s16s',6<<28,len(fragment),44,64,source,target)+fragment)
+                    chunks={};total=None
+                    while total is None or sum(map(len,chunks.values()))<total:
+                        try:reply=app.recv(65535)
+                        except TimeoutError:
+                            host.drain();self.fail(f'UDP size={size}, chunks={len(chunks)}, total={total}, peer accepted={peer.accepted}, peer errors={peer.errors}, core={list(host.events)[-3:]}')
+                        self.assertEqual(reply[0]>>4,6);self.assertEqual(reply[8:24],target);self.assertEqual(reply[24:40],source)
+                        self.assertEqual(reply[6],44);self.assertEqual(reply[40],17)
+                        bits=struct.unpack('!H',reply[42:44])[0];position=bits&0xfff8;data=reply[48:]
+                        self.assertNotIn(position,chunks);chunks[position]=data
+                        if not bits&1:total=position+len(data)
+                    record=b''.join(chunks[k] for k in sorted(chunks));self.assertEqual(len(record),size+8)
+                    self.assertEqual(struct.unpack('!HHH',record[:6]),(443,32124,size+8));self.assertEqual(record[8:],payload)
+                    self.assertEqual(checksum(target+source+struct.pack('!I3xB',len(record),17)+record),0)
+                self.assertFalse(host.errors);self.assertFalse(peer.errors)
+            finally:self.assertEqual(host.stop(),0);app.close();tun.close();peer.close()
 if __name__=='__main__':unittest.main()
