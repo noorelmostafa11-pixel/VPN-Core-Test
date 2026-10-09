@@ -2,6 +2,9 @@
 import argparse,collections,concurrent.futures,hashlib,json,math,os,pathlib,re,shutil,subprocess,tempfile,time,urllib.parse
 
 METRICS='%{http_code}|%{size_download}|%{time_total}|%{time_connect}|%{time_appconnect}|%{time_starttransfer}|%{num_connects}|%{ssl_verify_result}'
+DEFAULT_TARGETS=(('example','https://example.com/'),
+                 ('google','http://connectivitycheck.gstatic.com/generate_204'),
+                 ('microsoft','https://www.microsoft.com/robots.txt'))
 PHASES={'SOCKS_FAILED','CONNECT_FAILED','DNS_FAILED','TLS_FAILED','TRANSPORT_FAILED','PROTOCOL_FAILED','RELAY_FAILED','FEATURE_UNIMPLEMENTED','PARSE_INVALID','TIMEOUT','CANCELLED'}
 DIAGNOSTIC=re.compile(r'^\[connection ([0-9]{1,20})\] diagnostic=(\{.*\})\s*$')
 INSPECTION_SYMBOLS={
@@ -141,7 +144,7 @@ def retain_core(row,log,boundary):
     if row['status']=='RUNNER_FAILED' or row.get('runner_reason_code'):scope='RUNNER'
     elif row.get('curl_wait_reason'):scope='RUNNER_WAIT'
     elif row['phase']=='STARTUP_FAILED':scope='CORE_STARTUP'
-    elif code==0:scope='HTTPS_RESPONSE'
+    elif code==0:scope='HTTP_RESPONSE' if row.get('request_scheme')=='http' else 'HTTPS_RESPONSE'
     elif code in (60,83,90,91):scope='HTTPS_CERTIFICATE'
     elif code==77:scope='RUNNER_CONFIGURATION'
     elif code==35:scope='HTTPS_TLS_OR_TUNNEL'
@@ -161,11 +164,78 @@ def retain_core(row,log,boundary):
 class StartupFailure(Exception):pass
 
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
+
+def verification_targets(a):
+    """Keep an explicit HTTPS --url as a single-target compatibility override."""
+    url=getattr(a,'url',None)
+    if url is None:return DEFAULT_TARGETS
+    target=urllib.parse.urlsplit(url)
+    if target.scheme!='https' or not target.hostname or target.username is not None or target.password is not None or any(ord(c)<32 for c in url):
+        raise ValueError('Use an HTTPS verification URL without credentials')
+    return (('custom',url),)
+
+def probe_targets(a,curl,port,directory,targets):
+    """Try ordered targets within one deadline; never wait out a successful slot."""
+    started=time.monotonic();deadline=started+a.timeout;slot=a.timeout/len(targets)
+    attempts=[]
+    trust=['--cacert',str(a.curl_cacert)] if getattr(a,'curl_cacert',None) else []
+    for endpoint,url in targets:
+        budget=min(slot,deadline-time.monotonic())
+        if budget<=0:break
+        # Give curl a small part of its slot to flush its real exit/metrics.
+        # The Python watchdog also shares the global deadline: no extra +3s.
+        request_budget=budget-min(.05,budget*.05)
+        scheme=urllib.parse.urlsplit(url).scheme
+        attempt={'endpoint':endpoint,'request_scheme':scheme,'status':'FAIL','phase':'NETWORK',
+                 'reason_code':'CURL_NOT_STARTED','http_status':0,'curl_http_status':0,
+                 'curl_exit_code':None,'curl_reason_code':'CURL_NOT_STARTED',
+                 'curl_error_class':'NOT_STARTED','curl_tls_error_class':'NOT_APPLICABLE',
+                 'curl_output_complete':False,'curl_wait_reason':'',
+                 'budget_seconds':round(budget,6)}
+        # HTTP is available only for the built-in Google 204 target. HTTPS
+        # requests and every redirect continue to prohibit a TLS downgrade.
+        allowed='=http,https' if scheme=='http' else '=https'
+        try:
+            result=subprocess.run([curl,'--disable','--silent','--show-error','--location',
+                '--proto',allowed,'--proto-redir','=https','--noproxy','not-used.invalid',
+                '--proxy',f'socks5h://127.0.0.1:{port}',
+                '--connect-timeout',str(request_budget),'--max-time',str(request_budget),
+                '--output',str(directory/'body.bin'),'--write-out',METRICS,*trust,url],
+                capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=budget)
+            retain_curl(attempt,result.returncode,result.stdout,result.stderr)
+            status=attempt['curl_http_status']
+            attempt.update(reason_code='CURL_'+str(result.returncode),http_status=status)
+            if result.returncode==0 and 200<=status<300:
+                attempt.update(status='PASS',reason_code='HTTP_2XX',
+                               bytes=attempt['curl_bytes'],duration_ms=attempt['curl_duration_ms'])
+            elif result.returncode==0:attempt['reason_code']='HTTP_STATUS'
+        except subprocess.TimeoutExpired as error:
+            retain_curl(attempt,None,error.stdout,error.stderr,complete=False)
+            attempt.update(phase='TIMEOUT',reason_code='TIMEOUT',
+                           curl_reason_code='CURL_EXIT_UNAVAILABLE',curl_wait_reason='SUBPROCESS_TIMEOUT')
+        except OSError:
+            attempt.update(status='RUNNER_FAILED',phase='RUNNER',reason_code='RUNNER_FAILED',
+                           runner_reason_code='RUNNER_FAILED')
+        attempts.append(attempt)
+        if attempt['status'] in ('PASS','RUNNER_FAILED'):break
+    # Preserve the first request failure when all targets fail. A successful
+    # fallback owns the top-level curl fields; earlier failures stay intact.
+    if not attempts:
+        return {'status':'FAIL','phase':'TIMEOUT','reason_code':'TIMEOUT','curl_exit_code':None,
+                'curl_reason_code':'CURL_EXIT_UNAVAILABLE','curl_wait_reason':'NETWORK_BUDGET_EXHAUSTED',
+                'curl_output_complete':False,'probe_attempts':[],'selected_endpoint':'','success_endpoint':'',
+                'network_budget_seconds':a.timeout,'network_duration_ms':round((time.monotonic()-started)*1000,3)}
+    selected=next((r for r in attempts if r['status'] in ('PASS','RUNNER_FAILED')),attempts[0])
+    result={key:value for key,value in selected.items() if key not in ('endpoint','budget_seconds')}
+    result.update(probe_attempts=attempts,selected_endpoint=selected['endpoint'],
+                  success_endpoint=selected['endpoint'] if selected['status']=='PASS' else '',
+                  network_budget_seconds=a.timeout,network_duration_ms=round((time.monotonic()-started)*1000,3))
+    return result
+
 def run(a):
     core=pathlib.Path(a.core).resolve();curl=shutil.which(a.curl)
     if not curl:raise ValueError('curl is required')
-    target=urllib.parse.urlsplit(a.url)
-    if target.scheme!='https' or not target.hostname or target.username is not None or target.password is not None or any(ord(c)<32 for c in a.url):raise ValueError('Use an HTTPS verification URL without credentials')
+    targets=verification_targets(a)
     inputs=[]
     for source in sorted(pathlib.Path(a.nodes).glob('*.txt')):
         for uri in source.read_text(encoding='utf-8-sig').splitlines():
@@ -194,12 +264,15 @@ def run(a):
                    cleanup_core_failures=[],cleanup_core_failures_truncated=False,core_failure_count=0,
                    core_pre_cleanup_failure_count=0,core_cleanup_failure_count=0,
                    core_exit_code=None,core_stopped_by_runner=False,core_killed_by_runner=False,
-                   first_failure=None,failure_scope='CONFIGURATION')
+                   first_failure=None,failure_scope='CONFIGURATION',probe_attempts=[],
+                   selected_endpoint='',success_endpoint='',request_scheme='',
+                   network_budget_seconds=a.timeout,network_duration_ms=0)
         if row['node_id']!=check['node_id']:raise ValueError('Original URI identity mismatch')
         if not check.get('parsed'):return row
         with tempfile.TemporaryDirectory(prefix='vpn-node-') as directory:
             directory=pathlib.Path(directory);ready=directory/'ready.json';cfg=directory/'node.ini';log=directory/'core.log'
-            cfg.write_text(f'node_uri={uri}\nlisten_port=0\nready_file={ready}\nconnect_timeout_ms={int(a.timeout*1000)}\n',encoding='utf-8')
+            connect_ms=max(1000,int(a.timeout*1000/len(targets)))
+            cfg.write_text(f'node_uri={uri}\nlisten_port=0\nready_file={ready}\nconnect_timeout_ms={connect_ms}\n',encoding='utf-8')
             with log.open('wb') as stream:
                 process=subprocess.Popen([core,'--config',cfg],stdout=stream,stderr=subprocess.STDOUT)
                 try:
@@ -211,16 +284,7 @@ def run(a):
                     state=json.loads(ready.read_text())
                     if state['pid']!=process.pid or not 0<state['port']<65536:raise ValueError('Core readiness identity mismatch')
                     row['network_test_performed']=True
-                    # The laptop's curlrc must not inject insecure flags or a
-                    # different request. An optional pinned local CA bundle is
-                    # an explicit trust store, never a verification bypass.
-                    trust=['--cacert',str(a.curl_cacert)] if getattr(a,'curl_cacert',None) else []
-                    result=subprocess.run([curl,'--disable','--silent','--show-error','--location','--proto','=https','--proto-redir','=https','--noproxy','not-used.invalid','--proxy',f'socks5h://127.0.0.1:{state["port"]}','--connect-timeout',str(a.timeout),'--max-time',str(a.timeout),'--output',str(directory/'body.bin'),'--write-out',METRICS,*trust,a.url],capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=a.timeout+3)
-                    retain_curl(row,result.returncode,result.stdout,result.stderr)
-                    status=row['curl_http_status']
-                    row.update(phase='NETWORK',reason_code='CURL_'+str(result.returncode),http_status=status)
-                    if result.returncode==0 and 200<=status<300:row.update(status='PASS',phase='NETWORK',reason_code='HTTP_2XX',bytes=row['curl_bytes'],duration_ms=row['curl_duration_ms'])
-                    elif result.returncode==0:row['reason_code']='HTTP_STATUS'
+                    row.update(probe_targets(a,curl,state['port'],directory,targets))
                 except StartupFailure as error:row.update(phase='STARTUP_FAILED',reason_code=str(error))
                 except subprocess.TimeoutExpired as error:
                     retain_curl(row,None,error.stdout,error.stderr,complete=False)
@@ -245,6 +309,9 @@ def run(a):
     counts=collections.Counter(r['status'] for r in records)
     summary={'schema':'vpn-node-test-v3','source_commit':a.source_commit,'core_sha256':digest(core),'pre_commit':pre['commit'],'pre_manifest_sha256':digest(manifest),'shard':a.shard,'shards':a.shards,'inventory':len(selected),'total_pre_inventory':len(inputs),'selected':len(selected),'finished':len(records),'completed':len(records)==len(selected),'statuses':dict(counts),'runner_failures':counts['RUNNER_FAILED'],'reasons':dict(collections.Counter(r['reason_code'] for r in records)),
              'curl_reasons':dict(collections.Counter(r['curl_reason_code'] for r in records)),
+             'network_budget_seconds':a.timeout,'probe_endpoints':[name for name,_ in targets],
+             'success_endpoints':dict(collections.Counter(r['success_endpoint'] for r in records if r['status']=='PASS')),
+             'probe_curl_reasons':dict(collections.Counter(p['curl_reason_code'] for r in records for p in r['probe_attempts'])),
              'curl_tls_error_classes':dict(collections.Counter(r['curl_tls_error_class'] for r in records if r['curl_exit_code']==35)),
              'curl_35_groups':curl_tls_groups(records),
              'first_core_reasons':dict(collections.Counter(r['first_core_failure']['reason_code'] for r in records if r['first_core_failure'])),
@@ -255,7 +322,7 @@ def run(a):
     if counts['RUNNER_FAILED']:raise SystemExit(1)
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--core',required=True);p.add_argument('--nodes',required=True);p.add_argument('--pre-manifest',required=True);p.add_argument('--output',required=True);p.add_argument('--source-commit',required=True);p.add_argument('--curl',default='curl');p.add_argument('--url',default='https://example.com/');p.add_argument('--timeout',type=int,default=10);p.add_argument('--concurrency',type=int,default=8);p.add_argument('--shard',type=int,default=0);p.add_argument('--shards',type=int,default=15);a=p.parse_args()
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--core',required=True);p.add_argument('--nodes',required=True);p.add_argument('--pre-manifest',required=True);p.add_argument('--output',required=True);p.add_argument('--source-commit',required=True);p.add_argument('--curl',default='curl');p.add_argument('--url',default=None,help='Override the ordered default targets with one HTTPS URL');p.add_argument('--timeout',type=int,default=10,help='Total network budget shared by all verification targets');p.add_argument('--concurrency',type=int,default=8);p.add_argument('--shard',type=int,default=0);p.add_argument('--shards',type=int,default=15);a=p.parse_args()
     if not 1<=a.timeout<=120 or not 1<=a.concurrency<=32 or not 0<=a.shard<a.shards<=20:p.error('Invalid timeout, concurrency or shard')
     run(a)
 if __name__=='__main__':main()

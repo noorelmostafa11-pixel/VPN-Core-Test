@@ -4,7 +4,9 @@
 only its reporting and the network summary. The five proposed core repairs
 remain separate work. Protocol implementations, original input URI bytes,
 source/ID hashing, shard selection, timeouts, concurrency and verification URL
-are unchanged.
+are unchanged by D1. The later ordered verification policy is documented in
+`NODE-VERIFICATION-BUDGET.md`; it changes the default targets and network budget
+allocation while retaining independent curl and core diagnostics.
 
 The success condition remains **curl exit 0 and HTTP 200–299** over the existing
 HTTPS/SOCKS command. Empty 204 responses remain valid. Diagnostic failures do not
@@ -78,8 +80,10 @@ in `tests/run_validation.py`.
 `test_node_runner` exercises real curl and the actual core through independent
 local VLESS/HTTPS peers, including a deliberately invalid inner TLS endpoint.
 Linux validation does not establish Windows execution; the same validation
-workflow must check Windows. No public-node retry, endpoint fallback, TLS
-verification bypass or core repair is included in D1.
+workflow must check Windows. D1 itself introduces no public-node retry, endpoint
+fallback, TLS verification bypass or core repair. The later ordered target policy
+keeps earlier request outcomes in `probe_attempts`; its HTTP 204 target is marked
+as HTTP and is never described as proof of inner HTTPS verification.
 
 curl metrics and error reference: https://curl.se/docs/manpage.html and
 https://curl.se/libcurl/c/libcurl-errors.html.

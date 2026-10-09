@@ -10,6 +10,7 @@ names+=['test_udp_sdk.UdpSdkTests','test_udp_sdk.NetworkHookTests','test_lifecyc
 names+=['test_cng_contract.CngContractTests']
 names+=['test_dns_worker.DnsWorkerTests']
 names+=['test_node_diagnostics.DiagnosticSanitizationTests','test_node_diagnostics.NodeDiagnosticsTests']
+names+=['test_node_budget.NodeBudgetTests','test_node_budget.NodeBudgetWireTests']
 names+=['test_compat_repairs.CompatibilityRepairTests']
 names+=['test_tls_write_state.TLSWriteStateTests']
 if not args.no_batch:names+=['test_repair_batch_043.RepositoryBatchRepairTests','test_repair_batch_042.RepairBatchTests','test_batch.BatchTests','test_batch_expansion_030.ExpandedBatchTests','test_batch_exitcode.BatchExitCodeTests','test_batch_pre_expansion.PreBatchTests']
