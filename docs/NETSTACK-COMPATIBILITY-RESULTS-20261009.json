@@ -1,0 +1,1534 @@
+{
+  "schema": "vpn-netstack-compatibility-results-v1",
+  "date": "2026-10-09",
+  "branch": "feature/windows-native-tun-stage1",
+  "tested_commit": "a41605c0010c28fe735b6937bbb9646a5a8d6793",
+  "stable_version": "0.4.11",
+  "stable_commit": "90a1853114de3e4bcb3deed6747801c10bc5b370",
+  "workflow_run": 37918989534,
+  "workflow_url": "https://github.com/noorelmostafa11-pixel/VPN-Core-Test/actions/runs/37918989534",
+  "compatibility_gate": "PASS",
+  "final_stack_selection": "PENDING_EQUIVALENT_END_TO_END_PERFORMANCE_COMPARISON",
+  "platforms": {
+    "windows": {
+      "runtime": "Windows native runner",
+      "status": "PASS",
+      "tests": [
+        {
+          "abi_calls": 523,
+          "active_flows": 0,
+          "copied_to_cpp_bytes": 135860,
+          "copied_to_go_bytes": 135896,
+          "elapsed_us": 3056192,
+          "go_gc_count": 0,
+          "go_goroutines": 5,
+          "go_heap_alloc_bytes": 808912,
+          "go_heap_sys_bytes": 8126464,
+          "go_total_alloc_bytes": 808912,
+          "half_close_trailing_data": true,
+          "payload_bytes": 64016,
+          "pending_handshakes": 0,
+          "status": "PASS",
+          "test": "TCP_IPV4"
+        },
+        {
+          "abi_calls": 523,
+          "active_flows": 0,
+          "copied_to_cpp_bytes": 139780,
+          "copied_to_go_bytes": 139836,
+          "elapsed_us": 2968606,
+          "go_gc_count": 0,
+          "go_goroutines": 5,
+          "go_heap_alloc_bytes": 1236576,
+          "go_heap_sys_bytes": 8159232,
+          "go_total_alloc_bytes": 1236576,
+          "half_close_trailing_data": true,
+          "payload_bytes": 64016,
+          "pending_handshakes": 0,
+          "status": "PASS",
+          "test": "TCP_IPV6"
+        },
+        {
+          "abi_calls": 17,
+          "active_flows": 1,
+          "copied_to_cpp_bytes": 3538,
+          "copied_to_go_bytes": 3538,
+          "datagrams": 4,
+          "elapsed_us": 158340,
+          "empty_datagram": true,
+          "go_gc_count": 0,
+          "go_goroutines": 5,
+          "go_heap_alloc_bytes": 1391992,
+          "go_heap_sys_bytes": 8159232,
+          "go_total_alloc_bytes": 1391992,
+          "pending_handshakes": 0,
+          "status": "PASS",
+          "test": "UDP_IPV4"
+        },
+        {
+          "abi_calls": 17,
+          "active_flows": 1,
+          "copied_to_cpp_bytes": 3618,
+          "copied_to_go_bytes": 3618,
+          "datagrams": 4,
+          "elapsed_us": 142007,
+          "empty_datagram": true,
+          "go_gc_count": 0,
+          "go_goroutines": 5,
+          "go_heap_alloc_bytes": 1550584,
+          "go_heap_sys_bytes": 8126464,
+          "go_total_alloc_bytes": 1550584,
+          "pending_handshakes": 0,
+          "status": "PASS",
+          "test": "UDP_IPV6"
+        },
+        {
+          "bytes": 64,
+          "cpp_go_roundtrip_total_ns": 2161600,
+          "cpp_two_copies_total_ns": 50300,
+          "go_memory_after": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 0,
+            "go_goroutines": 5,
+            "go_heap_alloc_bytes": 1822872,
+            "go_heap_sys_bytes": 8126464,
+            "go_total_alloc_bytes": 1822872,
+            "pending_handshakes": 0
+          },
+          "go_memory_before": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 0,
+            "go_goroutines": 5,
+            "go_heap_alloc_bytes": 1693040,
+            "go_heap_sys_bytes": 8126464,
+            "go_total_alloc_bytes": 1693040,
+            "pending_handshakes": 0
+          },
+          "iterations": 2000,
+          "status": "PASS",
+          "test": "CPP_GO_COPY"
+        },
+        {
+          "bytes": 512,
+          "cpp_go_roundtrip_total_ns": 2608900,
+          "cpp_two_copies_total_ns": 44700,
+          "go_memory_after": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 0,
+            "go_goroutines": 5,
+            "go_heap_alloc_bytes": 2989608,
+            "go_heap_sys_bytes": 12320768,
+            "go_total_alloc_bytes": 2989608,
+            "pending_handshakes": 0
+          },
+          "go_memory_before": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 0,
+            "go_goroutines": 5,
+            "go_heap_alloc_bytes": 1963776,
+            "go_heap_sys_bytes": 8126464,
+            "go_total_alloc_bytes": 1963776,
+            "pending_handshakes": 0
+          },
+          "iterations": 2000,
+          "status": "PASS",
+          "test": "CPP_GO_COPY"
+        },
+        {
+          "bytes": 1500,
+          "cpp_go_roundtrip_total_ns": 4376700,
+          "cpp_two_copies_total_ns": 134600,
+          "go_memory_after": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 1,
+            "go_goroutines": 5,
+            "go_heap_alloc_bytes": 3256920,
+            "go_heap_sys_bytes": 12353536,
+            "go_total_alloc_bytes": 6205600,
+            "pending_handshakes": 0
+          },
+          "go_memory_before": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 0,
+            "go_goroutines": 5,
+            "go_heap_alloc_bytes": 3130512,
+            "go_heap_sys_bytes": 12320768,
+            "go_total_alloc_bytes": 3130512,
+            "pending_handshakes": 0
+          },
+          "iterations": 2000,
+          "status": "PASS",
+          "test": "CPP_GO_COPY"
+        },
+        {
+          "bytes": 16384,
+          "cpp_go_roundtrip_total_ns": 10737900,
+          "cpp_two_copies_total_ns": 1349400,
+          "go_memory_after": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 12,
+            "go_goroutines": 5,
+            "go_heap_alloc_bytes": 3238704,
+            "go_heap_sys_bytes": 12353536,
+            "go_total_alloc_bytes": 39116640,
+            "pending_handshakes": 0
+          },
+          "go_memory_before": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 1,
+            "go_goroutines": 5,
+            "go_heap_alloc_bytes": 3398984,
+            "go_heap_sys_bytes": 12320768,
+            "go_total_alloc_bytes": 6347664,
+            "pending_handshakes": 0
+          },
+          "iterations": 2000,
+          "status": "PASS",
+          "test": "CPP_GO_COPY"
+        },
+        {
+          "bytes": 65535,
+          "cpp_go_roundtrip_total_ns": 46396000,
+          "cpp_two_copies_total_ns": 10073500,
+          "go_memory_after": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 58,
+            "go_goroutines": 5,
+            "go_heap_alloc_bytes": 1993856,
+            "go_heap_sys_bytes": 12353536,
+            "go_total_alloc_bytes": 170333808,
+            "pending_handshakes": 0
+          },
+          "go_memory_before": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 13,
+            "go_goroutines": 5,
+            "go_heap_alloc_bytes": 630128,
+            "go_heap_sys_bytes": 12320768,
+            "go_total_alloc_bytes": 39260608,
+            "pending_handshakes": 0
+          },
+          "iterations": 2000,
+          "status": "PASS",
+          "test": "CPP_GO_COPY"
+        },
+        {
+          "cycle": 0,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_WARMUP"
+        },
+        {
+          "cycle": 1,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_WARMUP"
+        },
+        {
+          "cycle": 2,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_WARMUP"
+        },
+        {
+          "cycle": 3,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_WARMUP"
+        },
+        {
+          "baseline": 148,
+          "cycle": 0,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 1,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 2,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 3,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 4,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 5,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 6,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 7,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 8,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 9,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 10,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 11,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 12,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 13,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 14,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 15,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 16,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 17,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 18,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 19,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 20,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 21,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 22,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 23,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 24,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 25,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 26,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 27,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 28,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 29,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 30,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycle": 31,
+          "resources": 148,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 148,
+          "cycles": 32,
+          "status": "PASS",
+          "test": "RESOURCE_CLEANUP"
+        },
+        {
+          "test": "IN_PROCESS_EXISTING_CPP_ENGINE",
+          "status": "PASS",
+          "socks_listener": false,
+          "subprocesses": 0
+        }
+      ]
+    },
+    "linux": {
+      "runtime": "Linux native runner",
+      "status": "PASS",
+      "tests": [
+        {
+          "abi_calls": 523,
+          "active_flows": 0,
+          "copied_to_cpp_bytes": 135860,
+          "copied_to_go_bytes": 135896,
+          "elapsed_us": 213000,
+          "go_gc_count": 0,
+          "go_goroutines": 5,
+          "go_heap_alloc_bytes": 793472,
+          "go_heap_sys_bytes": 7929856,
+          "go_total_alloc_bytes": 793472,
+          "half_close_trailing_data": true,
+          "payload_bytes": 64016,
+          "pending_handshakes": 0,
+          "status": "PASS",
+          "test": "TCP_IPV4"
+        },
+        {
+          "abi_calls": 523,
+          "active_flows": 0,
+          "copied_to_cpp_bytes": 139780,
+          "copied_to_go_bytes": 139836,
+          "elapsed_us": 211756,
+          "go_gc_count": 0,
+          "go_goroutines": 5,
+          "go_heap_alloc_bytes": 1228192,
+          "go_heap_sys_bytes": 7929856,
+          "go_total_alloc_bytes": 1228192,
+          "half_close_trailing_data": true,
+          "payload_bytes": 64016,
+          "pending_handshakes": 0,
+          "status": "PASS",
+          "test": "TCP_IPV6"
+        },
+        {
+          "abi_calls": 17,
+          "active_flows": 1,
+          "copied_to_cpp_bytes": 3538,
+          "copied_to_go_bytes": 3538,
+          "datagrams": 4,
+          "elapsed_us": 130493,
+          "empty_datagram": true,
+          "go_gc_count": 0,
+          "go_goroutines": 5,
+          "go_heap_alloc_bytes": 1385944,
+          "go_heap_sys_bytes": 7962624,
+          "go_total_alloc_bytes": 1385944,
+          "pending_handshakes": 0,
+          "status": "PASS",
+          "test": "UDP_IPV4"
+        },
+        {
+          "abi_calls": 17,
+          "active_flows": 1,
+          "copied_to_cpp_bytes": 3618,
+          "copied_to_go_bytes": 3618,
+          "datagrams": 4,
+          "elapsed_us": 131485,
+          "empty_datagram": true,
+          "go_gc_count": 0,
+          "go_goroutines": 5,
+          "go_heap_alloc_bytes": 1546760,
+          "go_heap_sys_bytes": 7962624,
+          "go_total_alloc_bytes": 1546760,
+          "pending_handshakes": 0,
+          "status": "PASS",
+          "test": "UDP_IPV6"
+        },
+        {
+          "bytes": 64,
+          "cpp_go_roundtrip_total_ns": 192878,
+          "cpp_two_copies_total_ns": 28503,
+          "go_memory_after": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 0,
+            "go_goroutines": 5,
+            "go_heap_alloc_bytes": 1816528,
+            "go_heap_sys_bytes": 7962624,
+            "go_total_alloc_bytes": 1816528,
+            "pending_handshakes": 0
+          },
+          "go_memory_before": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 0,
+            "go_goroutines": 5,
+            "go_heap_alloc_bytes": 1687664,
+            "go_heap_sys_bytes": 7962624,
+            "go_total_alloc_bytes": 1687664,
+            "pending_handshakes": 0
+          },
+          "iterations": 2000,
+          "status": "PASS",
+          "test": "CPP_GO_COPY"
+        },
+        {
+          "bytes": 512,
+          "cpp_go_roundtrip_total_ns": 363746,
+          "cpp_two_copies_total_ns": 39723,
+          "go_memory_after": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 0,
+            "go_goroutines": 5,
+            "go_heap_alloc_bytes": 2983240,
+            "go_heap_sys_bytes": 7962624,
+            "go_total_alloc_bytes": 2983240,
+            "pending_handshakes": 0
+          },
+          "go_memory_before": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 0,
+            "go_goroutines": 5,
+            "go_heap_alloc_bytes": 1958376,
+            "go_heap_sys_bytes": 7962624,
+            "go_total_alloc_bytes": 1958376,
+            "pending_handshakes": 0
+          },
+          "iterations": 2000,
+          "status": "PASS",
+          "test": "CPP_GO_COPY"
+        },
+        {
+          "bytes": 1500,
+          "cpp_go_roundtrip_total_ns": 1749720,
+          "cpp_two_copies_total_ns": 84807,
+          "go_memory_after": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 1,
+            "go_goroutines": 5,
+            "go_heap_alloc_bytes": 3231416,
+            "go_heap_sys_bytes": 12124160,
+            "go_total_alloc_bytes": 6199712,
+            "pending_handshakes": 0
+          },
+          "go_memory_before": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 0,
+            "go_goroutines": 5,
+            "go_heap_alloc_bytes": 3124144,
+            "go_heap_sys_bytes": 7962624,
+            "go_total_alloc_bytes": 3124144,
+            "pending_handshakes": 0
+          },
+          "iterations": 2000,
+          "status": "PASS",
+          "test": "CPP_GO_COPY"
+        },
+        {
+          "bytes": 16384,
+          "cpp_go_roundtrip_total_ns": 7355801,
+          "cpp_two_copies_total_ns": 1197006,
+          "go_memory_after": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 13,
+            "go_goroutines": 5,
+            "go_heap_alloc_bytes": 1672144,
+            "go_heap_sys_bytes": 12091392,
+            "go_total_alloc_bytes": 39119112,
+            "pending_handshakes": 0
+          },
+          "go_memory_before": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 2,
+            "go_goroutines": 5,
+            "go_heap_alloc_bytes": 1679712,
+            "go_heap_sys_bytes": 12091392,
+            "go_total_alloc_bytes": 6343704,
+            "pending_handshakes": 0
+          },
+          "iterations": 2000,
+          "status": "PASS",
+          "test": "CPP_GO_COPY"
+        },
+        {
+          "bytes": 65535,
+          "cpp_go_roundtrip_total_ns": 26352045,
+          "cpp_two_copies_total_ns": 5731986,
+          "go_memory_after": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 44,
+            "go_goroutines": 5,
+            "go_heap_alloc_bytes": 8275488,
+            "go_heap_sys_bytes": 33030144,
+            "go_total_alloc_bytes": 170336440,
+            "pending_handshakes": 0
+          },
+          "go_memory_before": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 13,
+            "go_goroutines": 5,
+            "go_heap_alloc_bytes": 1815064,
+            "go_heap_sys_bytes": 12091392,
+            "go_total_alloc_bytes": 39262032,
+            "pending_handshakes": 0
+          },
+          "iterations": 2000,
+          "status": "PASS",
+          "test": "CPP_GO_COPY"
+        },
+        {
+          "cycle": 0,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_WARMUP"
+        },
+        {
+          "cycle": 1,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_WARMUP"
+        },
+        {
+          "cycle": 2,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_WARMUP"
+        },
+        {
+          "cycle": 3,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_WARMUP"
+        },
+        {
+          "baseline": 7,
+          "cycle": 0,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 1,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 2,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 3,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 4,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 5,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 6,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 7,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 8,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 9,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 10,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 11,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 12,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 13,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 14,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 15,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 16,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 17,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 18,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 19,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 20,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 21,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 22,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 23,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 24,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 25,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 26,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 27,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 28,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 29,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 30,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 31,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycles": 32,
+          "status": "PASS",
+          "test": "RESOURCE_CLEANUP"
+        },
+        {
+          "test": "IN_PROCESS_EXISTING_CPP_ENGINE",
+          "status": "PASS",
+          "socks_listener": false,
+          "subprocesses": 0
+        }
+      ]
+    },
+    "android": {
+      "status": "PASS",
+      "runtime": "Android API 35 x86_64 emulator",
+      "tests": [
+        {
+          "abi_calls": 523,
+          "active_flows": 0,
+          "copied_to_cpp_bytes": 135860,
+          "copied_to_go_bytes": 135896,
+          "elapsed_us": 203392,
+          "go_gc_count": 0,
+          "go_goroutines": 3,
+          "go_heap_alloc_bytes": 717896,
+          "go_heap_sys_bytes": 7995392,
+          "go_total_alloc_bytes": 717896,
+          "half_close_trailing_data": true,
+          "payload_bytes": 64016,
+          "pending_handshakes": 0,
+          "status": "PASS",
+          "test": "TCP_IPV4"
+        },
+        {
+          "abi_calls": 523,
+          "active_flows": 0,
+          "copied_to_cpp_bytes": 139780,
+          "copied_to_go_bytes": 139836,
+          "elapsed_us": 214838,
+          "go_gc_count": 0,
+          "go_goroutines": 3,
+          "go_heap_alloc_bytes": 1143312,
+          "go_heap_sys_bytes": 7995392,
+          "go_total_alloc_bytes": 1143312,
+          "half_close_trailing_data": true,
+          "payload_bytes": 64016,
+          "pending_handshakes": 0,
+          "status": "PASS",
+          "test": "TCP_IPV6"
+        },
+        {
+          "abi_calls": 17,
+          "active_flows": 1,
+          "copied_to_cpp_bytes": 3538,
+          "copied_to_go_bytes": 3538,
+          "datagrams": 4,
+          "elapsed_us": 135534,
+          "empty_datagram": true,
+          "go_gc_count": 0,
+          "go_goroutines": 3,
+          "go_heap_alloc_bytes": 1297496,
+          "go_heap_sys_bytes": 7995392,
+          "go_total_alloc_bytes": 1297496,
+          "pending_handshakes": 0,
+          "status": "PASS",
+          "test": "UDP_IPV4"
+        },
+        {
+          "abi_calls": 17,
+          "active_flows": 1,
+          "copied_to_cpp_bytes": 3618,
+          "copied_to_go_bytes": 3618,
+          "datagrams": 4,
+          "elapsed_us": 139704,
+          "empty_datagram": true,
+          "go_gc_count": 0,
+          "go_goroutines": 3,
+          "go_heap_alloc_bytes": 1455064,
+          "go_heap_sys_bytes": 7995392,
+          "go_total_alloc_bytes": 1455064,
+          "pending_handshakes": 0,
+          "status": "PASS",
+          "test": "UDP_IPV6"
+        },
+        {
+          "bytes": 64,
+          "cpp_go_roundtrip_total_ns": 180697,
+          "cpp_two_copies_total_ns": 22342,
+          "go_memory_after": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 0,
+            "go_goroutines": 3,
+            "go_heap_alloc_bytes": 1724936,
+            "go_heap_sys_bytes": 7995392,
+            "go_total_alloc_bytes": 1724936,
+            "pending_handshakes": 0
+          },
+          "go_memory_before": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 0,
+            "go_goroutines": 3,
+            "go_heap_alloc_bytes": 1596072,
+            "go_heap_sys_bytes": 7995392,
+            "go_total_alloc_bytes": 1596072,
+            "pending_handshakes": 0
+          },
+          "iterations": 2000,
+          "status": "PASS",
+          "test": "CPP_GO_COPY"
+        },
+        {
+          "bytes": 512,
+          "cpp_go_roundtrip_total_ns": 500923,
+          "cpp_two_copies_total_ns": 70321,
+          "go_memory_after": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 0,
+            "go_goroutines": 3,
+            "go_heap_alloc_bytes": 2889840,
+            "go_heap_sys_bytes": 7995392,
+            "go_total_alloc_bytes": 2889840,
+            "pending_handshakes": 0
+          },
+          "go_memory_before": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 0,
+            "go_goroutines": 3,
+            "go_heap_alloc_bytes": 1864976,
+            "go_heap_sys_bytes": 7995392,
+            "go_total_alloc_bytes": 1864976,
+            "pending_handshakes": 0
+          },
+          "iterations": 2000,
+          "status": "PASS",
+          "test": "CPP_GO_COPY"
+        },
+        {
+          "bytes": 1500,
+          "cpp_go_roundtrip_total_ns": 2490823,
+          "cpp_two_copies_total_ns": 140692,
+          "go_memory_after": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 1,
+            "go_goroutines": 3,
+            "go_heap_alloc_bytes": 3038200,
+            "go_heap_sys_bytes": 8028160,
+            "go_total_alloc_bytes": 6104408,
+            "pending_handshakes": 0
+          },
+          "go_memory_before": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 0,
+            "go_goroutines": 3,
+            "go_heap_alloc_bytes": 3029896,
+            "go_heap_sys_bytes": 7995392,
+            "go_total_alloc_bytes": 3029896,
+            "pending_handshakes": 0
+          },
+          "iterations": 2000,
+          "status": "PASS",
+          "test": "CPP_GO_COPY"
+        },
+        {
+          "bytes": 16384,
+          "cpp_go_roundtrip_total_ns": 45661477,
+          "cpp_two_copies_total_ns": 4931082,
+          "go_memory_after": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 6,
+            "go_goroutines": 3,
+            "go_heap_alloc_bytes": 587648,
+            "go_heap_sys_bytes": 24772608,
+            "go_total_alloc_bytes": 39014384,
+            "pending_handshakes": 0
+          },
+          "go_memory_before": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 2,
+            "go_goroutines": 3,
+            "go_heap_alloc_bytes": 430536,
+            "go_heap_sys_bytes": 7995392,
+            "go_total_alloc_bytes": 6245000,
+            "pending_handshakes": 0
+          },
+          "iterations": 2000,
+          "status": "PASS",
+          "test": "CPP_GO_COPY"
+        },
+        {
+          "bytes": 65535,
+          "cpp_go_roundtrip_total_ns": 173164091,
+          "cpp_two_copies_total_ns": 29389575,
+          "go_memory_after": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 34,
+            "go_goroutines": 3,
+            "go_heap_alloc_bytes": 1986424,
+            "go_heap_sys_bytes": 33128448,
+            "go_total_alloc_bytes": 170234928,
+            "pending_handshakes": 0
+          },
+          "go_memory_before": {
+            "abi_calls": 0,
+            "active_flows": 0,
+            "copied_to_cpp_bytes": 0,
+            "copied_to_go_bytes": 0,
+            "go_gc_count": 6,
+            "go_goroutines": 3,
+            "go_heap_alloc_bytes": 729192,
+            "go_heap_sys_bytes": 24772608,
+            "go_total_alloc_bytes": 39155928,
+            "pending_handshakes": 0
+          },
+          "iterations": 2000,
+          "status": "PASS",
+          "test": "CPP_GO_COPY"
+        },
+        {
+          "cycle": 0,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_WARMUP"
+        },
+        {
+          "cycle": 1,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_WARMUP"
+        },
+        {
+          "cycle": 2,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_WARMUP"
+        },
+        {
+          "cycle": 3,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_WARMUP"
+        },
+        {
+          "baseline": 7,
+          "cycle": 0,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 1,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 2,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 3,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 4,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 5,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 6,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 7,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 8,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 9,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 10,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 11,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 12,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 13,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 14,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 15,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 16,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 17,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 18,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 19,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 20,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 21,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 22,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 23,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 24,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 25,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 26,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 27,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 28,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 29,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 30,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycle": 31,
+          "resources": 7,
+          "status": "PASS",
+          "test": "RESOURCE_CYCLE"
+        },
+        {
+          "baseline": 7,
+          "cycles": 32,
+          "status": "PASS",
+          "test": "RESOURCE_CLEANUP"
+        },
+        {
+          "test": "IN_PROCESS_EXISTING_CPP_ENGINE",
+          "status": "PASS",
+          "socks_listener": false,
+          "subprocesses": 0
+        }
+      ]
+    }
+  },
+  "original_node_parser_comparison": {
+    "nodes": 2894,
+    "stable_rows": 2894,
+    "candidate_rows": 2894,
+    "parsed": 2894,
+    "connectable_by_build": 2894,
+    "all_inspection_rows_identical": true,
+    "input_sha256": "9d3d741ba31d89f1de6742edfa70dcf973154315ae4cd11fc94771b03687b493",
+    "live_node_connections_performed": false
+  },
+  "local_regressions": {
+    "repairs_and_uri_tests": 39,
+    "status": "PASS",
+    "stable_production_tests": 14,
+    "candidate_production_tests": 14,
+    "both_status": "PASS",
+    "provider_go_race_tests": "PASS"
+  },
+  "constraints": {
+    "same_process": true,
+    "single_existing_go_runtime": true,
+    "cpp_protocol_engine_reused": true,
+    "alternate_vpn_engine": false,
+    "tun2socks_subprocess": false,
+    "socks_listener_in_packet_path": false,
+    "main_updated": false,
+    "old_paths_retained": true,
+    "original_parser_protocol_transport_files_preserved": true
+  },
+  "scope_and_limits": [
+    "IPv4/IPv6 TCP/UDP packets and actual C++ VLESS socket transfers; synthetic loopback peer, not live public-node availability.",
+    "Android runtime is an API 35 x86_64 emulator. ARM64 is build-verified; a physical phone and ARM64 runtime remain unverified.",
+    "Copy measurements compare ABI/copy cost with a C++ two-copy control. They are not VPN throughput or an old-app/native-path benchmark.",
+    "Probe transfer timings include polling/sleep scheduling; Windows timer granularity affects them. Do not infer stack throughput or compare different CI hosts from these timings.",
+    "No OS TUN interface, routes, DNS changes or firewall/kill-switch policy is activated by this proof.",
+    "Production flow scheduling and all-protocol packet-path acceptance are required before a full-device release.",
+    "If end-to-end resource/performance or compatibility gates fail, compare lwIP using the same bridge/fixture contract before final selection."
+  ]
+}
