@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Vpn project owner. See NOTICE.md.
 // Compile/link smoke for the Wintun loader; never creates an adapter.
 #include "../src/native-wintun.hpp"
+#include "../src/native-wintun-session.hpp"
 #include <iostream>
 #ifdef _WIN32
 #include <stdexcept>
