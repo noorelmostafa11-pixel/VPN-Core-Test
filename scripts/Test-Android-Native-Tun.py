@@ -19,22 +19,22 @@ def main():
             call(sys.executable,ROOT/'scripts/Build-Android-Experiment.py','--build',a.build,'--fixture-assets',assets,'--output',apk)
             call('adb','install','-r',apk);call('adb','shell','cmd','appops','set',PACKAGE,'ACTIVATE_VPN','allow')
             call('adb','shell','pm','grant',PACKAGE,'android.permission.POST_NOTIFICATIONS')
-            for transport,bad_certificate in (('raw',False),('websocket',False),('raw',True),('websocket',True)):
+            for transport,bad_certificate,reconnect in (('raw',False,False),('websocket',False,False),('raw',True,False),('websocket',True,False),('raw',False,True)):
                 peer=NativeTunPeer('vless',transport=transport,tls_context=context)
                 try:
                     call('adb','shell','am','force-stop',PACKAGE)
                     subprocess.run(['adb','shell','run-as',PACKAGE,'rm','-f','files/fixture-report.txt'],capture_output=True)
-                    call('adb','shell','am','start','-n',PACKAGE+'/.MainActivity','--ez','fixture','true','--ez','bad_certificate',str(bad_certificate).lower(),'--ei','peer_port',str(peer.port),'--es','transport',transport)
+                    call('adb','shell','am','start','-n',PACKAGE+'/.MainActivity','--ez','fixture','true','--ez','bad_certificate',str(bad_certificate).lower(),'--ez','reconnect',str(reconnect).lower(),'--ei','peer_port',str(peer.port),'--es','transport',transport)
                     deadline=time.monotonic()+60;report=''
                     while time.monotonic()<deadline:
                         result=subprocess.run(['adb','shell','run-as',PACKAGE,'cat','files/fixture-report.txt'],capture_output=True,text=True)
                         if result.returncode==0:report=result.stdout.strip();break
                         time.sleep(.5)
-                    (a.output/(transport+('-bad-certificate' if bad_certificate else '')+'-device.log')).write_text(call('adb','logcat','-d','-s','VpnCoreService','VpnTunFixture','AndroidRuntime'))
+                    (a.output/(transport+('-bad-certificate' if bad_certificate else '-reconnect' if reconnect else '')+'-device.log')).write_text(call('adb','logcat','-d','-s','VpnCoreService','VpnTunFixture','AndroidRuntime'))
                     if not report.startswith('PASS:'):raise RuntimeError('Actual Android TUN failed: '+report+'\n'+call('adb','logcat','-d','-s','VpnCoreService','VpnTunFixture','AndroidRuntime'))
                     if peer.errors:raise RuntimeError('Independent TLS peer errors: '+str(peer.errors))
                     if bad_certificate and peer.accepted:raise RuntimeError('Invalid certificate delivered protocol data')
-                    rows.append({'test':'ANDROID_BAD_CERTIFICATE_FAIL_CLOSED' if bad_certificate else 'ANDROID_VPNSERVICE_JNI_FD_TCP_UDP_IPV4_IPV6','transport':transport,'security':'tls','status':'PASS'})
+                    rows.append({'test':'ANDROID_BAD_CERTIFICATE_FAIL_CLOSED' if bad_certificate else 'ANDROID_RECONNECT_RETAINS_TUN_TCP_UDP_IPV4_IPV6' if reconnect else 'ANDROID_VPNSERVICE_JNI_FD_TCP_UDP_IPV4_IPV6','transport':transport,'security':'tls','status':'PASS'})
                 finally:peer.close();call('adb','shell','am','force-stop',PACKAGE)
         (a.output/'android-device-report.json').write_text(json.dumps({'status':'PASS','runtime':'Android API 35 x86_64 emulator','tests':rows},indent=2)+'\n');print(json.dumps(rows))
     finally:core.CoreTests.tearDownClass()

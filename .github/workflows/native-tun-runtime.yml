@@ -119,6 +119,8 @@ jobs:
     name: Android four ABIs and actual VpnService emulator
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    env:
+      VPN_CORE_EXPERIMENT_KEYSTORE: ${{ runner.temp }}/vpn-core-experiment.p12
     steps:
       - uses: actions/checkout@v4
         with: {persist-credentials: false}

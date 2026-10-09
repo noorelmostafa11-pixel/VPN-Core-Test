@@ -32,7 +32,13 @@ def main():
                 meta=json.loads((build/'build-provenance.json').read_text());abi=meta['target'].removeprefix('android-')
                 for name in ('libvpn-core.so','libvpn-tls.so','libvpn-jni.so'):z.write(build/name,'lib/'+abi+'/'+name)
         aligned=td/'aligned.apk';run(tools/'zipalign','-P','16','-f','4',unsigned,aligned)
-        key=td/'experiment.p12';run('keytool','-genkeypair','-keystore',key,'-storepass','vpn-experiment','-keypass','vpn-experiment','-alias','experiment','-keyalg','RSA','-keysize','2048','-validity','365','-dname','CN=VPN Core Experiment')
+        # One ephemeral debug identity per CI run lets controlled stable and
+        # candidate APK updates retain the SAME application UID/permissions.
+        # The key is outside artifacts and never a production signing key.
+        key=pathlib.Path(os.environ.get('VPN_CORE_EXPERIMENT_KEYSTORE',td/'experiment.p12'))
+        if not key.exists():
+            key.parent.mkdir(parents=True,exist_ok=True)
+            run('keytool','-genkeypair','-keystore',key,'-storepass','vpn-experiment','-keypass','vpn-experiment','-alias','experiment','-keyalg','RSA','-keysize','2048','-validity','365','-dname','CN=VPN Core Experiment')
         run(tools/'apksigner','sign','--ks',key,'--ks-pass','pass:vpn-experiment','--out',a.output,aligned)
         run(tools/'apksigner','verify','--verbose',a.output)
     print('Experimental APK: '+str(a.output))

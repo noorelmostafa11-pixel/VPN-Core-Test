@@ -40,6 +40,7 @@ public final class MainActivity extends Activity {
     private void connect(){Intent intent=new Intent(this,VpnCoreVpnService.class).setAction(VpnCoreVpnService.CONNECT).putExtra(VpnCoreVpnService.CONFIG,config);if(Build.VERSION.SDK_INT>=26)startForegroundService(intent);else startService(intent);show("Connecting; readiness does not prove node connectivity");}
     private void show(String text){runOnUiThread(()->status.setText(text));}
     private void testInternet(){
+        if(!NativeCore.tunReady()){show("FAIL: Native TUN is not ready");return;}
         String[] targets={"https://example.com/","http://connectivitycheck.gstatic.com/generate_204","https://www.microsoft.com/robots.txt"};long deadline=System.nanoTime()+10000000000L;boolean success=false;
         for(int i=0;i<targets.length;i++){
             long remaining=(deadline-System.nanoTime())/1000000L;if(remaining<=0)break;
@@ -47,7 +48,7 @@ public final class MainActivity extends Activity {
             try{
                 task=http.submit(()->{HttpURLConnection request=(HttpURLConnection)new URL(target).openConnection();current.set(request);try{request.setInstanceFollowRedirects(false);request.setConnectTimeout(budget);request.setReadTimeout(budget);return request.getResponseCode();}finally{request.disconnect();}});
                 int code=task.get(Math.min(budget,Math.max(1,(deadline-System.nanoTime())/1000000L)),TimeUnit.MILLISECONDS);
-                if(code>=200&&code<300){success=true;break;}
+                if(code>=200&&code<300&&NativeCore.tunReady()&&NativeCore.state()==NativeCore.RUNNING){success=true;break;}
             }catch(Exception ignored){}finally{if(task!=null)task.cancel(true);HttpURLConnection request=current.get();if(request!=null)request.disconnect();}
         }
         show(success?"PASS: validated HTTP response through native tunnel":"FAIL: no validated response within total deadline");
@@ -124,6 +125,7 @@ public final class MainActivity extends Activity {
         try{
             long deadline=System.nanoTime()+30000000000L;while(proxyWorker==null?!NativeCore.tunReady():NativeCore.listenPort()==0){if(System.nanoTime()>deadline)throw new IOException("TUN startup timeout");Thread.sleep(20);}
             if(proxyWorker==null)verifyNetworkPolicy();
+            if(getIntent().getBooleanExtra("reconnect",false))testRetainedTunReconnect();
             if(getIntent().getBooleanExtra("benchmark",false)){benchmark();return;}
             if(getIntent().getBooleanExtra("bad_certificate",false)){
                 boolean rejected=false;
@@ -139,6 +141,26 @@ public final class MainActivity extends Activity {
             }
             stopFixture();fixtureReport("PASS: actual VpnService JNI FD TCP UDP IPv4 IPv6 encrypted peer; joined cleanly");
         }catch(Exception e){String event;while((event=NativeCore.readEvent())!=null)android.util.Log.i("VpnTunFixture",event);fixtureReport("FAIL: "+stage+": "+e.getClass().getSimpleName()+": "+e.getMessage());}
+    }
+    private long vpnNetworkHandle()throws IOException {
+        android.net.ConnectivityManager manager=(android.net.ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);
+        for(android.net.Network network:manager.getAllNetworks()){
+            android.net.NetworkCapabilities cap=manager.getNetworkCapabilities(network);
+            if(cap!=null&&cap.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN))return network.getNetworkHandle();
+        }
+        throw new IOException("VPN network disappeared during reconnect");
+    }
+    private void testRetainedTunReconnect()throws Exception {
+        final long original=vpnNetworkHandle();while(NativeCore.readEvent()!=null){};
+        startService(new Intent(this,VpnCoreVpnService.class).setAction(VpnCoreVpnService.CONNECT).putExtra(VpnCoreVpnService.CONFIG,config));
+        long deadline=System.nanoTime()+15000000000L;boolean ready=false;
+        while(System.nanoTime()<deadline){
+            if(vpnNetworkHandle()!=original)throw new IOException("Reconnect replaced the VPN network");
+            String event;while((event=NativeCore.readEvent())!=null)if("tun_ready".equals(new JSONObject(event).optString("event")))ready=true;
+            if(ready&&NativeCore.tunReady())break;Thread.sleep(10);
+        }
+        if(!ready||!NativeCore.tunReady())throw new IOException("Retained TUN reconnect timeout");
+        verifyNetworkPolicy();android.util.Log.i("VpnTunFixture","PASS: configuration reconnect retained the original VPN network and joined prior core work");
     }
     @Override protected void onDestroy(){http.shutdownNow();super.onDestroy();}
 }

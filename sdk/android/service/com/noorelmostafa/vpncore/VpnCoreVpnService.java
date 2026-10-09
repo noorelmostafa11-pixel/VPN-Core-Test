@@ -28,14 +28,17 @@ public class VpnCoreVpnService extends VpnService {
     private ConnectivityManager connectivity;
     private ConnectivityManager.NetworkCallback callback;
     private volatile long generation;private int retry;
+    private void dispatch(Runnable task){try{lifecycle.execute(task);}catch(RejectedExecutionException ignored){/* An in-flight network callback after destroy owns no new work. */}}
+    private void networkChanged(){if(disconnected)return;Network selected=chooseNetwork();if(selected==null||selected.equals(underlying))return;underlying=selected;setUnderlyingNetworks(new Network[]{selected});retry=0;restart();}
     @Override public void onCreate(){
         super.onCreate();connectivity=(ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);
         callback=new ConnectivityManager.NetworkCallback(){
             @Override public void onAvailable(Network network){
-                lifecycle.execute(()->{if(disconnected)return;Network selected=chooseNetwork();if(selected==null||selected.equals(underlying))return;underlying=selected;setUnderlyingNetworks(new Network[]{selected});retry=0;restart();});
+                dispatch(VpnCoreVpnService.this::networkChanged);
             }
+            @Override public void onCapabilitiesChanged(Network network,NetworkCapabilities capabilities){dispatch(VpnCoreVpnService.this::networkChanged);}
             @Override public void onLost(Network network){
-                lifecycle.execute(()->{if(network.equals(underlying)){underlying=null;stopWorker();underlying=chooseNetwork();if(underlying!=null){setUnderlyingNetworks(new Network[]{underlying});restart();}/* Keep TUN/routes closed while offline. */}});
+                dispatch(()->{if(disconnected)return;if(network.equals(underlying)){underlying=null;stopWorker();underlying=chooseNetwork();setUnderlyingNetworks(underlying==null?new Network[0]:new Network[]{underlying});if(underlying!=null)restart();/* Keep TUN/routes closed while offline. */}});
             }
         };
         NetworkRequest request=new NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build();
@@ -60,17 +63,27 @@ public class VpnCoreVpnService extends VpnService {
     protected void report(String event,int result){android.util.Log.i("VpnCoreService",event+" result="+result);}
     private Network chooseNetwork(){
         Network active=connectivity.getActiveNetwork();if(usable(active,false))return active;
-        for(Network network:connectivity.getAllNetworks())if(usable(network,true))return network;
-        for(Network network:connectivity.getAllNetworks())if(usable(network,false))return network;return null;
+        // When the app default is its own VPN, prefer validated physical
+        // Ethernet/Wi-Fi before mobile. Capabilities callbacks re-evaluate a
+        // Wi-Fi network after validation, not just at initial availability.
+        for(boolean validated:new boolean[]{true,false})for(int transport:new int[]{NetworkCapabilities.TRANSPORT_ETHERNET,NetworkCapabilities.TRANSPORT_WIFI,NetworkCapabilities.TRANSPORT_CELLULAR,-1})
+            for(Network network:connectivity.getAllNetworks())if(usable(network,validated,transport))return network;
+        return null;
     }
-    private boolean usable(Network network,boolean validated){
+    private boolean usable(Network network,boolean validated){return usable(network,validated,-1);}
+    private boolean usable(Network network,boolean validated,int transport){
         if(network==null)return false;NetworkCapabilities c=connectivity.getNetworkCapabilities(network);
-        return c!=null&&c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)&&c.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)&&!c.hasTransport(NetworkCapabilities.TRANSPORT_VPN)&&(!validated||c.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED));
+        return c!=null&&c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)&&c.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)&&!c.hasTransport(NetworkCapabilities.TRANSPORT_VPN)&&(!validated||c.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED))&&(transport<0||c.hasTransport(transport));
     }
     private void connect(String path)throws IOException {
         if(path==null||!new File(path).isFile())throw new IOException("configPath");
-        if(tun!=null){disconnect();foreground();}
         if(prepare(this)!=null)throw new IOException("VPN consent required");
+        if(tun!=null){
+            // Replace sessions/configuration while retaining the SAME TUN FD,
+            // routes and DNS. Never disconnect into a physical-network gap.
+            stopWorker();config=path;getSharedPreferences("vpn-core-tun",MODE_PRIVATE).edit().putString(CONFIG,path).apply();underlying=chooseNetwork();disconnected=false;retry=0;
+            setUnderlyingNetworks(underlying==null?new Network[0]:new Network[]{underlying});if(underlying!=null)restart();report("TUN_REUSED",0);return;
+        }
         config=path;getSharedPreferences("vpn-core-tun",MODE_PRIVATE).edit().putString(CONFIG,path).apply();underlying=chooseNetwork();if(underlying==null)throw new IOException("Underlying network unavailable");
         Builder builder=new Builder().setSession("VpnCore Native TUN").setMtu(1500).setBlocking(false)
             .addAddress("198.18.0.2",30).addAddress("fd71:5650::2",126)
@@ -82,7 +95,7 @@ public class VpnCoreVpnService extends VpnService {
     }
     private void stopWorker(){
         ++generation;Thread owned=worker;if(owned==null)return;
-        NativeCore.stop();try{owned.join();}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException("Join interrupted; retain TUN and hooks",e);}worker=null;
+        try{while(owned.isAlive()){NativeCore.stop();owned.join(20);}}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException("Join interrupted; retain TUN and hooks",e);}worker=null;
     }
     private void restart(){
         if(disconnected||tun==null||underlying==null)return;stopWorker();
@@ -107,7 +120,7 @@ public class VpnCoreVpnService extends VpnService {
             }
             @Override public String[] resolve(String host){try{InetAddress[] list=selected.getAllByName(host);String[] ips=new String[list.length];for(int i=0;i<list.length;i++)ips[i]=list[i].getHostAddress();return ips;}catch(UnknownHostException e){return new String[0];}}
         };
-        worker=new Thread(()->{int result=NativeCore.runTun(path,fd,hooks);report("CORE_RETURNED",result);try{lifecycle.execute(()->{if(disconnected||token!=generation)return;worker=null;long delay=Math.min(30000,1000L<<Math.min(retry++,5));lifecycle.schedule(()->{if(!disconnected&&token==generation&&underlying!=null)restart();},delay,TimeUnit.MILLISECONDS);});}catch(RejectedExecutionException ignored){/* Destroy has already scheduled a join. */}},"vpn-core-native-tun");worker.start();
+        worker=new Thread(()->{if(disconnected||token!=generation)return;int result=NativeCore.runTun(path,fd,hooks);report("CORE_RETURNED",result);dispatch(()->{if(disconnected||token!=generation)return;worker=null;long delay=Math.min(30000,1000L<<Math.min(retry++,5));lifecycle.schedule(()->{if(!disconnected&&token==generation&&underlying!=null)restart();},delay,TimeUnit.MILLISECONDS);});},"vpn-core-native-tun");worker.start();
     }
     private void disconnect(){
         disconnected=true;stopWorker();if(tun!=null){try{tun.close();}catch(IOException ignored){}tun=null;}underlying=null;setUnderlyingNetworks(null);stopForeground(true);report("DISCONNECTED",0);

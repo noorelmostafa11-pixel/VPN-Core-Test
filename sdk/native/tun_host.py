@@ -66,8 +66,12 @@ class TunHost:
         self.drain();return next(e for e in self.events if e.get('event')=='tun_ready')
     def request_stop(self):self.core.vpn_core_stop()
     def stop(self,timeout=10):
+        deadline=time.monotonic()+timeout
         self.request_stop()
-        if self.thread.ident:self.thread.join(timeout)
+        # A worker can still be entering the blocking C ABI after the first
+        # request. Repeat while joining so startup cannot consume cancellation.
+        while self.thread.ident and self.thread.is_alive() and time.monotonic()<deadline:
+            self.request_stop();self.thread.join(min(.02,max(0,deadline-time.monotonic())))
         if self.thread.is_alive():raise RuntimeError('Stop timed out; keep descriptor and hooks alive')
         self.drain()
         if self.core.vpn_core_pending_callbacks()!=0:raise RuntimeError('Undrained network hook leases')

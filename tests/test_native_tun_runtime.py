@@ -74,4 +74,20 @@ class NativeRuntimeTests(unittest.TestCase):
                 if stable>=4:break
             self.assertGreaterEqual(stable,4);baseline=previous
             for _ in range(32):cycle();self.assertLessEqual(len(os.listdir('/proc/self/fd')),baseline)
+    def test_cancel_before_worker_enters_native_startup(self):
+        with tempfile.TemporaryDirectory() as td:
+            cfg=pathlib.Path(td)/'node.ini';cfg.write_text(f'node_uri=vless://{peers.ID}@127.0.0.1:9?security=tls&sni=localhost&fp=chrome\n')
+            app,tun=socket.socketpair(type=socket.SOCK_DGRAM);host=self.host(cfg,tun.fileno(),lambda _:['127.0.0.1'])
+            entered=threading.Event();release=threading.Event();run=host._run
+            def delayed():entered.set();release.wait(2);run()
+            host.thread=threading.Thread(target=delayed,name='delayed-native-start')
+            timer=threading.Timer(.1,release.set)
+            try:
+                host.thread.start();self.assertTrue(entered.wait(1));timer.start()
+                self.assertEqual(host.stop(timeout=3),0);self.assertFalse(host.thread.is_alive());os.fstat(tun.fileno())
+                self.assertEqual(host.core.vpn_core_tun_ready(),0);self.assertEqual(host.core.vpn_core_pending_callbacks(),0)
+            finally:
+                release.set();timer.cancel()
+                if host.thread.is_alive():host.stop()
+                app.close();tun.close()
 if __name__=='__main__':unittest.main()
