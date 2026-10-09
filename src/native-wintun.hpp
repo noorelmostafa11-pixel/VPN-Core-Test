@@ -7,6 +7,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <netioapi.h>
 #include <cstdint>
 #include <cstring>
 #include <stdexcept>
@@ -30,6 +31,7 @@ public:
     using CreateAdapterFn=Adapter(WINAPI*)(LPCWSTR,LPCWSTR,const GUID*);
     using OpenAdapterFn=Adapter(WINAPI*)(LPCWSTR);
     using CloseAdapterFn=void(WINAPI*)(Adapter);
+    using GetAdapterLuidFn=void(WINAPI*)(Adapter,NET_LUID*);
     using StartSessionFn=Session(WINAPI*)(Adapter,DWORD);
     using EndSessionFn=void(WINAPI*)(Session);
     using GetReadWaitEventFn=HANDLE(WINAPI*)(Session);
@@ -41,6 +43,7 @@ public:
     CreateAdapterFn create_adapter=nullptr;
     OpenAdapterFn open_adapter=nullptr;
     CloseAdapterFn close_adapter=nullptr;
+    GetAdapterLuidFn get_adapter_luid=nullptr;
     StartSessionFn start_session=nullptr;
     EndSessionFn end_session=nullptr;
     GetReadWaitEventFn read_event=nullptr;
@@ -65,6 +68,7 @@ public:
             create_adapter=symbol<CreateAdapterFn>("WintunCreateAdapter");
             open_adapter=symbol<OpenAdapterFn>("WintunOpenAdapter");
             close_adapter=symbol<CloseAdapterFn>("WintunCloseAdapter");
+            get_adapter_luid=symbol<GetAdapterLuidFn>("WintunGetAdapterLUID");
             start_session=symbol<StartSessionFn>("WintunStartSession");
             end_session=symbol<EndSessionFn>("WintunEndSession");
             read_event=symbol<GetReadWaitEventFn>("WintunGetReadWaitEvent");
