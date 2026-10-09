@@ -44,6 +44,8 @@ jobs:
           ./bin/native_tun_packet_probe
           g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror tests/native_tun_udp_probe.cpp -o bin/native_tun_udp_probe
           ./bin/native_tun_udp_probe
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -Wno-misleading-indentation tests/native_tun_udp_protocol_probe.cpp -o bin/native_tun_udp_protocol_probe -ldl -pthread
+          ./bin/native_tun_udp_protocol_probe
           python scripts/Build.py --target linux --build-tests --require-clean
           python -m unittest -v test_portable_044.PortableTransportTests test_portable_044.SharedCoreTests
           python -m unittest -v test_udp_sdk.UdpSdkTests test_udp_sdk.NetworkHookTests test_lifecycle_acceptance.LifecycleAcceptanceTests test_dns_acceptance.DnsAcceptanceTests
@@ -95,6 +97,10 @@ jobs:
           if ($LASTEXITCODE) { throw 'Native TUN UDP codec compilation failed' }
           & (Join-Path 'bin' 'native_tun_udp_probe.exe')
           if ($LASTEXITCODE) { throw 'Native TUN UDP codec smoke failed' }
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -Wno-misleading-indentation -D_WIN32_WINNT=0x0A00 tests/native_tun_udp_protocol_probe.cpp -o bin/native_tun_udp_protocol_probe.exe -lws2_32 -lsecur32 -lcrypt32 -lbcrypt -pthread
+          if ($LASTEXITCODE) { throw 'Native TUN UDP protocol bridge compilation failed' }
+          & (Join-Path 'bin' 'native_tun_udp_protocol_probe.exe')
+          if ($LASTEXITCODE) { throw 'Native TUN UDP protocol bridge smoke failed' }
           g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror tests/native_wintun_loader_probe.cpp -o bin/native_wintun_loader_probe.exe
           if ($LASTEXITCODE) { throw 'Native Wintun loader compilation failed' }
           & (Join-Path 'bin' 'native_wintun_loader_probe.exe')
