@@ -87,11 +87,11 @@ jobs:
           if ($LASTEXITCODE) { throw 'Independent peer build failed' }
           g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror tests/native_tun_packet_probe.cpp -o bin/native_tun_packet_probe.exe
           if ($LASTEXITCODE) { throw 'Native TUN packet policy compilation failed' }
-          .\\bin\\native_tun_packet_probe.exe
+          & (Join-Path 'bin' 'native_tun_packet_probe.exe')
           if ($LASTEXITCODE) { throw 'Native TUN packet policy smoke failed' }
           g++ -std=c++17 -Wall -Wextra -Wpedantic -Werror tests/native_wintun_loader_probe.cpp -o bin/native_wintun_loader_probe.exe
           if ($LASTEXITCODE) { throw 'Native Wintun loader compilation failed' }
-          .\\bin\\native_wintun_loader_probe.exe
+          & (Join-Path 'bin' 'native_wintun_loader_probe.exe')
           if ($LASTEXITCODE) { throw 'Native Wintun loader smoke failed' }
           python scripts/Build.py --target windows --require-clean
           if ($LASTEXITCODE) { throw 'Windows build failed' }
