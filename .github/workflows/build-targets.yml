@@ -48,7 +48,7 @@ jobs:
           ./bin/native_tun_udp_probe
           g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror tests/native_tun_tcp_probe.cpp -o bin/native_tun_tcp_probe
           ./bin/native_tun_tcp_probe
-          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -Wno-misleading-indentation tests/native_tun_udp_protocol_probe.cpp -o bin/native_tun_udp_protocol_probe -ldl -pthread
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -Wno-misleading-indentation -DVPN_CORE_PORTABLE tests/native_tun_udp_protocol_probe.cpp -o bin/native_tun_udp_protocol_probe -ldl -pthread
           ./bin/native_tun_udp_protocol_probe
           python scripts/Build.py --target linux --build-tests --require-clean
           python -m unittest -v test_portable_044.PortableTransportTests test_portable_044.SharedCoreTests
