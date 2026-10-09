@@ -150,7 +150,7 @@ int run(int argc,char** argv,const vpn::NetworkHooks* hooks=nullptr) {
                 throw std::runtime_error("Native TUN DLL path conversion failed");
             wide.pop_back();
             NativeWintunApi driver(wide);
-            std::cout<<"PASS: Wintun API available; no adapter created or routes modified\\n";
+            std::cout<<"PASS: Wintun API available; no adapter created or routes modified\n";
             return 0;
 #else
             throw std::runtime_error("Native TUN is only available on Windows");
