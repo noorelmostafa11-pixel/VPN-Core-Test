@@ -6,6 +6,7 @@
 #include "core-events.hpp"
 #include "udp-relay.hpp"
 #include "native-tun-udp-protocol.hpp"
+#include "native-tun-tcp-reliable.hpp"
 #ifdef _WIN32
 #include "native-tun-udp-pump.hpp"
 #endif
