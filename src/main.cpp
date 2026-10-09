@@ -179,20 +179,22 @@ int run(int argc,char** argv,const vpn::NetworkHooks* hooks=nullptr,const vpn_co
             if(tun->size!=sizeof(*tun)||tun->abi!=1||tun->reserved||tun->mtu<1280||tun->mtu>65535||tun->maximum_flows<1||tun->maximum_flows>256||!hooks||!hooks->protect||!hooks->resolve)
                 throw Failure("STARTUP_FAILED: TUN options/hooks","TUN_ARGUMENT");
             NativeTunDevice device(*tun);NetstackPackets packets(int(tun->mtu),int(tun->maximum_flows));
-            NetstackCoreBridge bridge(config,packets,tun->maximum_flows,[](uint64_t id,const std::string& reason){Json event=Json::obj();diagnostic_identity(event,id);event["event"]=Json("tun_flow_failure");event["reason_code"]=Json(reason);publish_event(event);});
+            NetstackCoreBridge bridge(config,packets,tun->maximum_flows,[](uint64_t id,const std::string& reason){Json event=Json::obj();diagnostic_identity(event,id);event["event"]=Json(reason=="CANCELLED"?"tun_flow_cancelled":"tun_flow_failure");event["reason_code"]=Json(reason);publish_event(event);});
             struct StopTunBeforeJoin {~StopTunBeforeJoin(){tun_ready=false;stopping=true;core_state.store(VPN_CORE_STOPPING);try{cancel_provider_network();}catch(...){}}} stop_tun;
             tun_ready=true;core_state.store(VPN_CORE_RUNNING);Json ready=Json::obj();ready["event"]=Json("tun_ready");ready["interface"]=Json(device.name());ready["luid"]=Json::integer(device.luid());ready["mtu"]=Json::integer(tun->mtu);publish_event(ready);
             Bytes input,pending;auto report_at=Clock::now();
             try {while(!stopping) {
                 // One bounded pending output packet plus the netstack link ring.
                 // No protocol/TLS creation runs on this packet I/O owner.
+                packets.consume_wakeup();
                 bool output_progress=false,input_progress=false;
                 for(unsigned i=0;i<64;++i){if(pending.empty()&&!packets.packet(pending))break;if(!device.write(pending))break;pending.clear();output_progress=true;}
-                for(unsigned i=0;i<32;++i){if(!device.read(input,(i||output_progress)?0:2))break;packets.inject(input);input_progress=true;}
+                for(unsigned i=0;i<32;++i){if(!device.read(input,(i||output_progress)?0:50,packets.wake_handle()))break;packets.inject(input);input_progress=true;}
                 bridge.poll();if(input_progress)bridge.notify_packets();
                 if(Clock::now()-report_at>=std::chrono::seconds(1)){Json event=bridge.metrics();event["event"]=Json("tun_metrics");publish_event(event);report_at=Clock::now();}
             }}catch(const Failure& e){if(e.code!="CANCELLED"||!stopping)throw;}
-            Json final_metrics=bridge.metrics();final_metrics["event"]=Json("tun_metrics");final_metrics["final"]=Json::boolean(true);publish_event(final_metrics);
+            bridge.stop(); // join protocol workers before the final copy/cancellation snapshot
+            Json final_metrics=bridge.metrics();final_metrics["cpp_workers_joined"]=Json::boolean(true);final_metrics["event"]=Json("tun_metrics");final_metrics["final"]=Json::boolean(true);publish_event(final_metrics);
             return 0;
 #else
             return -5;

@@ -3,6 +3,11 @@
 #include "provider-module.hpp"
 #include <cstdint>
 #include <mutex>
+#ifndef _WIN32
+#include <unistd.h>
+#include <fcntl.h>
+#include <cerrno>
+#endif
 namespace vpn {
 struct alignas(8) NetstackFlow {
     uint64_t id=0;
@@ -25,6 +30,7 @@ public:
     void(*drop)(uint64_t,uint64_t)=nullptr;
     void(*release)(uint64_t,uint64_t)=nullptr;
     int(*metrics)(uint64_t,uint8_t*,int)=nullptr;
+    int(*set_wakeup)(uint64_t,int64_t)=nullptr;
     int(*copy_probe)(const uint8_t*,uint8_t*,int)=nullptr;
     NetstackAPI() {
         auto& p=ProviderModule::instance();
@@ -36,18 +42,67 @@ public:
         p.symbol(write,"vpn_tun_write");p.symbol(shutdown_write,"vpn_tun_shutdown_write");
         p.symbol(drop,"vpn_tun_drop");p.symbol(metrics,"vpn_tun_metrics");
         p.symbol(release,"vpn_tun_release");
-        p.symbol(copy_probe,"vpn_tun_copy_probe");
+        p.symbol(copy_probe,"vpn_tun_copy_probe");p.symbol(set_wakeup,"vpn_tun_set_wakeup");
+    }
+};
+class NetstackWakeup {
+#ifdef _WIN32
+    HANDLE event_=nullptr;
+#else
+    int pipe_[2]{-1,-1};
+#endif
+public:
+    NetstackWakeup(){
+#ifdef _WIN32
+        event_=CreateEventW(nullptr,FALSE,FALSE,nullptr);if(!event_)throw Failure("STARTUP_FAILED: stack wake event","NETSTACK_WAKE_EVENT",GetLastError());
+#else
+        if(pipe2(pipe_,O_NONBLOCK|O_CLOEXEC)<0)throw Failure("STARTUP_FAILED: stack wake pipe","NETSTACK_WAKE_PIPE",errno);
+#endif
+    }
+    ~NetstackWakeup(){
+#ifdef _WIN32
+        if(event_)CloseHandle(event_);
+#else
+        if(pipe_[0]>=0)::close(pipe_[0]);if(pipe_[1]>=0)::close(pipe_[1]);
+#endif
+    }
+    NetstackWakeup(const NetstackWakeup&)=delete;
+    int64_t wait_handle()const noexcept {
+#ifdef _WIN32
+        return int64_t(reinterpret_cast<uintptr_t>(event_));
+#else
+        return pipe_[0];
+#endif
+    }
+    int64_t signal_handle()const noexcept {
+#ifdef _WIN32
+        return wait_handle();
+#else
+        return pipe_[1];
+#endif
+    }
+    // Consume only BEFORE draining the packet/accept queues; never after them.
+    void consume()noexcept {
+#ifdef _WIN32
+        WaitForSingleObject(event_,0);
+#else
+        uint64_t values[64];for(;;){auto n=::read(pipe_[0],values,sizeof(values));if(n<0&&errno==EINTR)continue;if(n<=0)break;}
+#endif
     }
 };
 class NetstackPackets {
     NetstackAPI api_;
     std::mutex calls_;
+    NetstackWakeup wakeup_;
     uint64_t id_=0;
 public:
     explicit NetstackPackets(int mtu=1500,int flows=64):id_(api_.create(mtu,flows)) {
         if(!id_)throw Failure("PROTOCOL_FAILED: packet stack create","NETSTACK_CREATE");
+        if(api_.set_wakeup(id_,wakeup_.signal_handle())){api_.close(id_);id_=0;throw Failure("STARTUP_FAILED: stack wake binding","NETSTACK_WAKE_BIND");}
     }
-    ~NetstackPackets(){api_.close(id_);}
+    ~NetstackPackets(){api_.close(id_);} // Go drains/disables notification before wakeup_ closes.
+    void consume_wakeup()noexcept{wakeup_.consume();}
+    int64_t wake_handle()const noexcept{return wakeup_.wait_handle();}
     NetstackPackets(const NetstackPackets&)=delete;
     NetstackPackets& operator=(const NetstackPackets&)=delete;
     uint64_t id()const noexcept{return id_;}

@@ -109,17 +109,48 @@ class NetstackCoreBridge {
         std::atomic<uint64_t> packet_wakes{0};
         std::mutex wait_mutex;
         std::condition_variable wake;
-        ~Session(){stop=true;wake.notify_all();if(worker.joinable())worker.join();}
+#ifdef _WIN32
+        HANDLE packet_event=nullptr,idle_timer=nullptr;
+        Session(){
+            packet_event=CreateEventW(nullptr,FALSE,FALSE,nullptr);
+            idle_timer=CreateWaitableTimerExW(nullptr,nullptr,0x00000002,TIMER_MODIFY_STATE|SYNCHRONIZE);
+            if(!packet_event||!idle_timer){auto error=GetLastError();if(packet_event)CloseHandle(packet_event);if(idle_timer)CloseHandle(idle_timer);throw Failure("STARTUP_FAILED: precise flow wait","NETSTACK_FLOW_WAIT",error);}
+        }
+#endif
+        void notify()noexcept{
+#ifdef _WIN32
+            SetEvent(packet_event);
+#else
+            wake.notify_all();
+#endif
+        }
+        void idle(uint64_t observed){
+#ifdef _WIN32
+            if(stop||stopping||packet_wakes.load()!=observed)return;
+            LARGE_INTEGER due{};due.QuadPart=-10000; // one-shot 1 ms; no global timer-resolution change
+            if(!SetWaitableTimer(idle_timer,&due,0,nullptr,nullptr,FALSE))throw Failure("RELAY_FAILED: flow timer","NETSTACK_FLOW_TIMER",GetLastError());
+            HANDLE events[]{packet_event,idle_timer};auto result=WaitForMultipleObjects(2,events,FALSE,INFINITE);CancelWaitableTimer(idle_timer);
+            if(result==WAIT_FAILED)throw Failure("RELAY_FAILED: flow wait","NETSTACK_FLOW_WAIT",GetLastError());
+#else
+            std::unique_lock<std::mutex> wait(wait_mutex);
+            wake.wait_for(wait,std::chrono::milliseconds(1),[&]{return stop.load()||stopping.load()||packet_wakes.load()!=observed;});
+#endif
+        }
+        ~Session(){stop=true;notify();if(worker.joinable())worker.join();
+#ifdef _WIN32
+            CloseHandle(idle_timer);CloseHandle(packet_event);
+#endif
+        }
     };
     const Config& config_;
     NetstackPackets& packets_;
     size_t maximum_;
     std::map<uint64_t,std::unique_ptr<Session>> sessions_;
     std::function<void(uint64_t,const std::string&)> diagnostic_;
-    std::atomic<uint64_t> upload_{0},download_{0},udp_dropped_{0},failures_{0};
+    std::atomic<uint64_t> upload_{0},download_{0},udp_dropped_{0},failures_{0},cancelled_{0};
     template<class F>auto call(F f){std::lock_guard<std::mutex> lock(packets_.calls());return f(packets_.api(),packets_.id());}
     void worker(Session& s)noexcept {
-        bool graceful=false;
+        bool graceful=false,cancelled=false;
         try {
             auto destination=netstack_destination(s.flow);
             std::unique_ptr<PacketProtocolStream> stream;
@@ -178,11 +209,12 @@ class NetstackCoreBridge {
                     }
                 }
                 if(progress){last=Clock::now();continue;}
-                std::unique_lock<std::mutex> wait(s.wait_mutex);
-                s.wake.wait_for(wait,std::chrono::milliseconds(1),[&]{return s.stop.load()||stopping.load()||s.packet_wakes.load()!=wake_at;});
+                s.idle(wake_at);
             }
-        }catch(const std::exception& e){++failures_;auto f=dynamic_cast<const Failure*>(&e);if(diagnostic_)try{diagnostic_(s.flow.id,f?f->code:"NETSTACK_CARRIER_FAILED");}catch(...){} }
+            if(!graceful&&(s.stop||stopping))cancelled=true;
+        }catch(const std::exception& e){auto f=dynamic_cast<const Failure*>(&e);if(f&&f->code=="CANCELLED")cancelled=true;else{++failures_;if(diagnostic_)try{diagnostic_(s.flow.id,f?f->code:"NETSTACK_CARRIER_FAILED");}catch(...){}} }
         catch(...){++failures_;if(diagnostic_)try{diagnostic_(s.flow.id,"NETSTACK_WORKER_FAILED");}catch(...){} }
+        if(cancelled){++cancelled_;if(diagnostic_)try{diagnostic_(s.flow.id,"CANCELLED");}catch(...){}}
         try{call([&](NetstackAPI& a,uint64_t id){if(graceful)a.release(id,s.flow.id);else a.drop(id,s.flow.id);return 0;});}catch(...){}
         s.done=true;
     }
@@ -196,15 +228,15 @@ public:
     }
     ~NetstackCoreBridge(){stop();}
     void stop()noexcept {
-        for(auto& pair:sessions_){pair.second->stop=true;pair.second->wake.notify_all();}
+        for(auto& pair:sessions_){pair.second->stop=true;pair.second->notify();}
         sessions_.clear(); // joins before packets_ is destroyed
     }
     // Called only by the packet owner after a bounded injection batch.
     void notify_packets()noexcept {
-        for(auto& pair:sessions_){++pair.second->packet_wakes;pair.second->wake.notify_one();}
+        for(auto& pair:sessions_){++pair.second->packet_wakes;pair.second->notify();}
     }
     size_t active_sessions()const noexcept{return sessions_.size();}
-    Json metrics(){Json j=packets_.metrics();j["cpp_uploaded_bytes"]=Json::integer(upload_.load());j["cpp_downloaded_bytes"]=Json::integer(download_.load());j["udp_queue_dropped_records"]=Json::integer(udp_dropped_.load());j["flow_failures"]=Json::integer(failures_.load());j["maximum_workers"]=Json::integer(maximum_);return j;}
+    Json metrics(){Json j=packets_.metrics();j["cpp_uploaded_bytes"]=Json::integer(upload_.load());j["cpp_downloaded_bytes"]=Json::integer(download_.load());j["udp_queue_dropped_records"]=Json::integer(udp_dropped_.load());j["flow_failures"]=Json::integer(failures_.load());j["cancelled_flows"]=Json::integer(cancelled_.load());j["maximum_workers"]=Json::integer(maximum_);return j;}
     void poll() {
         check_cancelled();
         for(auto it=sessions_.begin();it!=sessions_.end();)if(it->second->done){it=sessions_.erase(it);}else ++it;

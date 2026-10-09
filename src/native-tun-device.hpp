@@ -62,14 +62,14 @@ public:
     NativeTunDevice(const NativeTunDevice&)=delete;
     const std::string& name()const noexcept{return name_;}
     uint64_t luid()const noexcept{return luid_;}
-    bool read(Bytes& p,unsigned wait_ms=5) {
+    bool read(Bytes& p,unsigned wait_ms=5,int64_t wake_handle=-1) {
         p.clear();check_cancelled();
 #ifdef _WIN32
         DWORD size=0;BYTE* data=api_->receive_packet(session_,&size);
-        if(!data){DWORD error=GetLastError();if(error==ERROR_NO_MORE_ITEMS){auto r=WaitForSingleObject(api_->read_event(session_),wait_ms);if(r==WAIT_FAILED)throw Failure("RELAY_FAILED: Wintun wait","TUN_READ_WAIT",GetLastError());return false;}throw Failure("RELAY_FAILED: Wintun receive","TUN_READ",error);}
+        if(!data){DWORD error=GetLastError();if(error==ERROR_NO_MORE_ITEMS){HANDLE events[]{api_->read_event(session_),reinterpret_cast<HANDLE>(uintptr_t(wake_handle))};auto r=wake_handle>=0?WaitForMultipleObjects(2,events,FALSE,wait_ms):WaitForSingleObject(events[0],wait_ms);if(r==WAIT_FAILED)throw Failure("RELAY_FAILED: Wintun wait","TUN_READ_WAIT",GetLastError());return false;}throw Failure("RELAY_FAILED: Wintun receive","TUN_READ",error);}
         try{p.assign(data,data+size);}catch(...){api_->release_packet(session_,data);throw;}api_->release_packet(session_,data);return true;
 #else
-        pollfd event{fd_,POLLIN,0};int ready=::poll(&event,1,int(wait_ms));if(ready<0){if(errno==EINTR)return false;throw Failure("RELAY_FAILED: TUN wait","TUN_READ_WAIT",errno);}if(!ready)return false;
+        pollfd events[2]{{fd_,POLLIN,0},{int(wake_handle),POLLIN,0}};int ready=::poll(events,wake_handle>=0?2:1,int(wait_ms));if(ready<0){if(errno==EINTR)return false;throw Failure("RELAY_FAILED: TUN wait","TUN_READ_WAIT",errno);}if(!ready||!(events[0].revents&(POLLIN|POLLERR|POLLHUP)))return false;
         p.resize(65535);auto n=::read(fd_,p.data(),p.size());if(n<0){p.clear();if(errno==EAGAIN||errno==EWOULDBLOCK||errno==EINTR)return false;throw Failure("RELAY_FAILED: TUN read","TUN_READ",errno);}if(n==0)throw Failure("RELAY_FAILED: TUN device closed","TUN_DEVICE_CLOSED");p.resize(size_t(n));return true;
 #endif
     }

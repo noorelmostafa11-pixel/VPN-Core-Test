@@ -38,13 +38,20 @@ def main():
                 instructions='Install the debug experiment APK. Enter the unchanged original node URI, approve VPN access, connect and use Test HTTPS connection. Disconnect explicitly. Enable Android always-on and Block connections without VPN for crash protection. The service integration is supplied as source: include NativeCore, JNI libraries and VpnCoreVpnService in the app with the documented manifest permissions. Test packages use a fresh debug key; uninstall the previous experiment before installing a new build. Existing proxy runStandalone/run APIs remain available.'
             else:
                 build=artifact/'build'/('windows-amd64' if target=='windows' else 'linux-amd64');verify(build,sha);shutil.copytree(build,trial/'Core')
+                if target=='linux':
+                    # Artifact extraction resets file modes; restore executable
+                    # bits in the final ZIP and exercise that exact packaged core.
+                    for name in ('vpn-core','netstack-core-probe','core-api-smoke'):
+                        path=trial/'Core'/name
+                        if path.is_file():path.chmod(0o755)
+                    for option in ('--version','--self-test','--check-components'):subprocess.run([trial/'Core/vpn-core',option],check=True)
                 shutil.copytree(ROOT/'sdk/native',trial/'SDK/native')
                 shutil.copytree(ROOT/('sdk/windows' if target=='windows' else 'sdk/linux'),trial/('SDK/windows' if target=='windows' else 'SDK/linux'))
                 if target=='windows':
                     shutil.copy2(ROOT/'sdk/windows/Start-Native-Tun.ps1',trial/'Core/Start-Native-Tun.ps1')
                     instructions='Requires Windows 10 build 19041+ or Windows 11 x64 and Administrator. Create node.ini containing node_uri=<your unchanged original URI>. In an elevated Windows PowerShell: powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\Core\\Start-Native-Tun.ps1 -ConfigPath .\\node.ini. Ctrl+C disconnects and joins. After a crash or fatal error: powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\Core\\Start-Native-Tun.ps1 -Recover. Existing SOCKS fallback: .\\Core\\vpn-core.exe --config .\\node.ini (after stopping/recovering the tunnel). Required non-system DLLs are bundled and CI checked.'
                 else:
-                    instructions='Requires x86_64 Linux with root/CAP_NET_ADMIN, Python 3.10+, iproute2, nftables and systemd-resolved. Create node.ini with the unchanged URI. Run sudo python3 SDK/linux/native_tun.py --build Core --config node.ini --node-host ORIGINAL_HOST --node-port ORIGINAL_PORT --uplink PHYSICAL_INTERFACE. Ctrl+C disconnects. After a crash: sudo python3 SDK/linux/native_tun.py --recover. The host/port must match the original URI, never rewritten. Legacy proxy fallback: ./Core/vpn-core --config node.ini after stop/recovery.'
+                    instructions='Requires x86_64 Ubuntu 24.04 or an ABI-compatible Linux with OpenSSL 3, root/CAP_NET_ADMIN, Python 3.10+, iproute2, nftables and systemd-resolved. Create node.ini with the unchanged URI. Run sudo python3 SDK/linux/native_tun.py --build Core --config node.ini --node-host ORIGINAL_HOST --node-port ORIGINAL_PORT --uplink PHYSICAL_INTERFACE. Ctrl+C disconnects. After a crash: sudo python3 SDK/linux/native_tun.py --recover. The host/port must match the original URI, never rewritten. Legacy proxy fallback: ./Core/vpn-core --config node.ini after stop/recovery.'
             (trial/'README.txt').write_text('EXPERIMENTAL NATIVE TUN TRIAL\nSource: '+sha+'\nStable reference: 0.4.11 / 90a1853114de3e4bcb3deed6747801c10bc5b370\n\n'+instructions+'\n\nSee Docs/NATIVE-TUN-INTEGRATION.md and Evidence for coverage and performance limits. This package is for physical-device acceptance, not production approval. No node URI corpus is published in this package.\n')
             files=[{'file':str(x.relative_to(trial)),'sha256':hashlib.sha256(x.read_bytes()).hexdigest(),'bytes':x.stat().st_size} for x in sorted(trial.rglob('*')) if x.is_file()]
             (trial/'package-hashes.json').write_text(json.dumps(files,indent=2)+'\n')

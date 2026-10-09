@@ -7,6 +7,18 @@ package main
 
 /*
 #include <stdint.h>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+static void vpn_tun_signal(int64_t event) { SetEvent((HANDLE)(uintptr_t)event); }
+#else
+#include <unistd.h>
+#include <errno.h>
+static void vpn_tun_signal(int64_t fd) {
+    uint64_t one=1;ssize_t n;
+    do { n=write((int)fd,&one,sizeof(one)); } while(n<0 && errno==EINTR);
+}
+#endif
 typedef struct __attribute__((aligned(8))) {
     uint64_t id;
     uint32_t protocol;
@@ -65,6 +77,10 @@ type tunStack struct {
     copiedOut atomic.Uint64
     calls atomic.Uint64
     totalCalls atomic.Uint64
+    wakeSignals atomic.Uint64
+    wakeMu sync.Mutex
+    wakeHandle int64
+    notification *channel.NotificationHandle
 }
 var tunRegistry = struct {
     sync.Mutex
@@ -76,6 +92,20 @@ func tunLookup(id C.uint64_t) *tunStack {
     tunRegistry.Lock()
     defer tunRegistry.Unlock()
     return tunRegistry.stacks[uint64(id)]
+}
+// Numeric owned OS event/pipe handle only; no foreign memory is retained.
+// close disables and drains signal calls before C++ releases the handle.
+func (t *tunStack) WriteNotify() {
+    t.wakeMu.Lock()
+    defer t.wakeMu.Unlock()
+    if t.wakeHandle>=0 { t.wakeSignals.Add(1);C.vpn_tun_signal(C.int64_t(t.wakeHandle)) }
+}
+
+//export vpn_tun_set_wakeup
+func vpn_tun_set_wakeup(id C.uint64_t, handle C.int64_t) C.int {
+    t:=tunLookup(id);if t==nil || handle<0 {return -1}
+    t.wakeMu.Lock();t.wakeHandle=int64(handle);t.wakeMu.Unlock()
+    return 0
 }
 func (t *tunStack) reserve() bool {
     t.mu.Lock()
@@ -96,6 +126,7 @@ func (t *tunStack) publish(ep tcpip.Endpoint, id stack.TransportEndpointID, prot
     f := &tunFlow{id:t.next, protocol:protocol, address:append([]byte(nil), id.LocalAddress.AsSlice()...), port:id.LocalPort, endpoint:ep}
     t.flows[f.id] = f
     t.pending = append(t.pending, f)
+    t.WriteNotify()
 }
 
 //export vpn_tun_abi_version
@@ -104,7 +135,7 @@ func vpn_tun_abi_version() C.int { return 1 }
 //export vpn_tun_create
 func vpn_tun_create(mtu C.int, maximum C.int) C.uint64_t {
     if mtu < 1280 || mtu > 65535 || maximum < 1 || maximum > 256 { return 0 }
-    t := &tunStack{limit:int(maximum), flows:make(map[uint64]*tunFlow)}
+    t := &tunStack{limit:int(maximum), flows:make(map[uint64]*tunFlow), wakeHandle:-1}
     t.link = channel.New(256, uint32(mtu), "")
     t.stack = stack.New(stack.Options{
         NetworkProtocols:[]stack.NetworkProtocolFactory{ipv4.NewProtocol, ipv6.NewProtocol},
@@ -145,6 +176,7 @@ func vpn_tun_create(mtu C.int, maximum C.int) C.uint64_t {
     })
     tunRegistry.Lock()
     defer tunRegistry.Unlock()
+    t.notification=t.link.AddNotify(t)
     tunRegistry.next++
     tunRegistry.stacks[tunRegistry.next]=t
     return C.uint64_t(tunRegistry.next)
@@ -157,6 +189,8 @@ func vpn_tun_close(id C.uint64_t) {
     delete(tunRegistry.stacks,uint64(id))
     tunRegistry.Unlock()
     if t==nil {return}
+    t.wakeMu.Lock();t.wakeHandle=-1;t.wakeMu.Unlock()
+    t.link.RemoveNotify(t.notification)
     t.mu.Lock()
     t.closed=true
     for _,f:=range t.flows {f.endpoint.Abort()}
@@ -254,6 +288,7 @@ func vpn_tun_write(id C.uint64_t, flow C.uint64_t, data *C.uint8_t, size C.int) 
     p:=C.GoBytes(unsafe.Pointer(data),size)
     n,err:=f.endpoint.Write(bytes.NewReader(p),tcpip.WriteOptions{Atomic:f.protocol==17})
     if _,ok:=err.(*tcpip.ErrWouldBlock);ok{return -2}
+    if _,ok:=err.(*tcpip.ErrNoBufferSpace);ok{return -2}
     if err!=nil{return -1}
     t.calls.Add(1);t.copiedIn.Add(uint64(n));return C.int(n)
 }
@@ -287,7 +322,7 @@ func vpn_tun_metrics(id C.uint64_t, out *C.uint8_t, capacity C.int) C.int {
     t:=tunLookup(id);if t==nil || out==nil || capacity<1{return -1}
     var memory runtime.MemStats;runtime.ReadMemStats(&memory)
     t.mu.Lock();active:=len(t.flows);reserved:=t.reserved;t.mu.Unlock()
-    b,_:=json.Marshal(map[string]uint64{"abi_calls":t.calls.Load(),"abi_total_calls":t.totalCalls.Load(),"copied_to_go_bytes":t.copiedIn.Load(),"copied_to_cpp_bytes":t.copiedOut.Load(),"active_flows":uint64(active),"pending_handshakes":uint64(reserved),"go_heap_alloc_bytes":memory.HeapAlloc,"go_heap_sys_bytes":memory.HeapSys,"go_total_alloc_bytes":memory.TotalAlloc,"go_goroutines":uint64(runtime.NumGoroutine()),"go_gc_count":uint64(memory.NumGC)})
+    b,_:=json.Marshal(map[string]uint64{"wakeup_notifications":t.wakeSignals.Load(),"abi_calls":t.calls.Load(),"abi_total_calls":t.totalCalls.Load(),"copied_to_go_bytes":t.copiedIn.Load(),"copied_to_cpp_bytes":t.copiedOut.Load(),"active_flows":uint64(active),"pending_handshakes":uint64(reserved),"go_heap_alloc_bytes":memory.HeapAlloc,"go_heap_sys_bytes":memory.HeapSys,"go_total_alloc_bytes":memory.TotalAlloc,"go_goroutines":uint64(runtime.NumGoroutine()),"go_gc_count":uint64(memory.NumGC)})
     if len(b)>int(capacity){return -3}
     return C.int(copy(unsafe.Slice((*byte)(unsafe.Pointer(out)),int(capacity)),b))
 }
