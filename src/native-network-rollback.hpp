@@ -3,6 +3,7 @@
 // No OS API is called: this header does not modify DNS, routes or adapters.
 #pragma once
 #include <exception>
+#include <cstddef>
 #include <functional>
 #include <stdexcept>
 #include <string>
@@ -39,14 +40,19 @@ public:
     }
     // Failed undo steps are retained for retry. Caller must inspect failures
     // before declaring network restoration. Destruction retries best-effort.
-    std::vector<std::string> rollback()noexcept {
+    const std::vector<std::string>& rollback()noexcept {
         failures_.clear();
-        std::vector<Entry> pending;
-        for(auto it=entries_.rbegin();it!=entries_.rend();++it) {
-            try {it->undo();}
-            catch(...) {failures_.push_back(it->name);pending.push_back(*it);}
+        // Avoid allocations or copying compensation entries while unwinding.
+        // Failed entries stay registered for the next rollback attempt.
+        for(size_t i=entries_.size();i>0;--i) {
+            const size_t index=i-1;
+            try {
+                entries_[index].undo();
+                entries_.erase(entries_.begin()+std::ptrdiff_t(index));
+            }catch(...) {
+                try {failures_.push_back(entries_[index].name);}catch(...){}
+            }
         }
-        entries_.assign(pending.rbegin(),pending.rend());
         if(entries_.empty())closed_=true;
         return failures_;
     }
