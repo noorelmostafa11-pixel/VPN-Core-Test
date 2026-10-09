@@ -127,10 +127,11 @@ public:
         for(auto it=sessions_.begin();it!=sessions_.end();) {
             check_cancelled();
             const auto& key=it->first;
-            if(!can_read(key)){++it;continue;}
+            const size_t allowance=std::min(read_limit_,size_t(can_read(key)));
+            if(!allowance){++it;continue;}
             try {
                 uint8_t b[read_limit_]{};
-                const int n=it->second.socket.receive(b,sizeof(b));
+                const int n=it->second.socket.receive(b,allowance);
                 if(n==-2){++it;continue;}
                 if(n==0){ended(key);it=sessions_.erase(it);continue;}
                 deliver(key,b,size_t(n));
