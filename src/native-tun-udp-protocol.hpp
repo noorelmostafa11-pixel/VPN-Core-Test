@@ -66,6 +66,16 @@ public:
     // the caller MUST also pin the VPN endpoint outside any later TUN routes.
     bool submit(const tun_udp::Outbound& packet) {
         if(!valid_destination(packet))return false;
+        if(config_.protocol!="vless"&&config_.protocol!="vmess"&&
+           config_.protocol!="trojan"&&config_.protocol!="ss")return false;
+        // Native full-tunnel routing must never silently fall back to an
+        // unprotected OS socket or an OS DNS resolver.
+        {
+            std::lock_guard<std::mutex> lock(network_hooks_mutex);
+            if(!network_hooks.protect||!network_hooks.resolve)
+                throw Failure("CONNECT_FAILED: native TUN requires protected sockets and bootstrap DNS",
+                              "NATIVE_TUN_NETWORK_HOOKS_REQUIRED");
+        }
         check_cancelled();
         auto it=sessions_.find(packet.flow_id);
         if(it==sessions_.end()) {
