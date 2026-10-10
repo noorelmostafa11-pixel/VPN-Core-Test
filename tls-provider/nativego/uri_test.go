@@ -29,7 +29,7 @@ func TestGoNativeURIParseTLSAndReality(t *testing.T){
 func TestGoNativeURIRejectsDowngradeAndUnknownOptions(t *testing.T){
  base:="vless://00112233-4455-6677-8899-aabbccddeeff@1.2.3.4:443?"
  bad:=[]string{
-  "type=websocket&security=tls&sni=example.com",
+  "type=grpc&security=tls&sni=example.com",
   "security=none&sni=example.com",
   "security=tls&sni=example.com&allowInsecure=1",
   "security=tls&sni=example.com&unknown=1",
