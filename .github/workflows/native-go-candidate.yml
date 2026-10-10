@@ -38,7 +38,7 @@ jobs:
           sudo ip netns add "$NS"
           trap 'sudo ip netns delete "$NS" || true' EXIT
           sudo ip netns exec "$NS" ip link set lo up
-          sudo ip netns exec "$NS" env VPN_NATIVE_GO_PRIVILEGED_TEST=1 /tmp/nativego-tun-test -test.v -test.run TestNativeGoLinuxRealTUNPacketDNS
+          sudo ip netns exec "$NS" env VPN_NATIVE_GO_PRIVILEGED_TEST=1 /tmp/nativego-tun-test -test.v -test.run TestNativeGoLinuxRealTUN
       - name: Ensure Go-only package can build without CGO
         working-directory: tls-provider
         run: CGO_ENABLED=0 go build -tags=netstack -mod=vendor ./nativego
