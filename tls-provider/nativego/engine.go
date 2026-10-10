@@ -255,7 +255,8 @@ func (e *Engine) serveTCP(ctx context.Context, ep tcpip.Endpoint, q *waiter.Queu
 }
 
 func (e *Engine) serveUDP(ctx context.Context,ep tcpip.Endpoint,q *waiter.Queue,dest netip.AddrPort){
- if !ownedDNS(dest)||e.Resolver==nil{return} // All other UDP fails closed.
+ if !ownedDNS(dest){e.serveTunnelUDP(ctx,ep,q,dest);return}
+ if e.Resolver==nil{return}
  entry,ch:=waiter.NewChannelEntry(waiter.EventIn|waiter.EventOut|waiter.EventErr)
  q.EventRegister(&entry);defer q.EventUnregister(&entry)
  b:=make([]byte,65535)
