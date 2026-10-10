@@ -160,71 +160,98 @@ func ownedDNS(dest netip.AddrPort)bool{
  return dest.Addr()==netip.MustParseAddr("198.18.0.53")||dest.Addr()==netip.MustParseAddr("fd71:5650::53")
 }
 
-func (e *Engine) serveTCP(ctx context.Context,ep tcpip.Endpoint,q *waiter.Queue,dest netip.AddrPort){
+func (e *Engine) serveTCP(ctx context.Context, ep tcpip.Endpoint, q *waiter.Queue, dest netip.AddrPort) {
  var upstream net.Conn
  var err error
  if ownedDNS(dest) {
-  if e.Resolver==nil{return}
-  client,server:=net.Pipe()
-  upstream=client
-  go func(){defer server.Close();serveDNSStream(ctx,server,e.Resolver)}()
- }else{
-  upstream,err=e.Dial.DialStream(ctx,dest)
-  if err!=nil{return}
+  if e.Resolver == nil { return }
+  client, server := net.Pipe()
+  upstream = client
+  go func() { defer server.Close(); serveDNSStream(ctx, server, e.Resolver) }()
+ } else {
+  upstream, err = e.Dial.DialStream(ctx, dest)
+  if err != nil { return }
  }
  defer upstream.Close()
- // The endpoint's waiter is shared by both relay directions; the two
- // separately registered events prevent busy polling and lost readiness.
- flowCtx,cancel:=context.WithCancel(ctx);defer cancel()
- var flowWG sync.WaitGroup
- flowWG.Add(1)
- go func(){defer flowWG.Done();select{case <-flowCtx.Done():_ = upstream.Close();ep.Abort();case <-time.After(24*time.Hour):}}()
- results:=make(chan struct{},2)
- go func(){
-  defer func(){results<-struct{}{}}()
-  egress:=make([]byte,32768)
-  entry,ch:=waiter.NewChannelEntry(waiter.EventIn|waiter.EventErr|waiter.EventHUp)
-  q.EventRegister(&entry);defer q.EventUnregister(&entry)
-  for{
-   w:=tcpip.SliceWriter(egress)
-   result,er:=ep.Read(&w,tcpip.ReadOptions{})
-   if result.Count>0 {
-    if _,err:=upstream.Write(egress[:result.Count]);err!=nil{return}
+ // A normal remote read EOF is only a half-close. Never cancel a pending
+ // upload just because its independent download goroutine finished.
+ flowCtx, cancel := context.WithCancel(ctx)
+ defer cancel()
+ failed := make(chan struct{}, 2)
+ var relays sync.WaitGroup
+ relays.Add(2)
+ go func() {
+  defer relays.Done()
+  entry, ch := waiter.NewChannelEntry(waiter.EventIn | waiter.EventErr | waiter.EventHUp)
+  q.EventRegister(&entry)
+  defer q.EventUnregister(&entry)
+  b := make([]byte, 32768)
+  for {
+   w := tcpip.SliceWriter(b)
+   result, er := ep.Read(&w, tcpip.ReadOptions{})
+   sent := 0
+   for sent < result.Count {
+    n, writeErr := upstream.Write(b[sent:result.Count])
+    sent += n
+    if writeErr != nil || n == 0 {
+     failed <- struct{}{}
+     return
+    }
    }
-   if _,ok:=er.(*tcpip.ErrClosedForReceive);ok{if c,ok:=upstream.(interface{CloseWrite()error});ok{_=c.CloseWrite()};return}
-   if _,ok:=er.(*tcpip.ErrWouldBlock);ok{
-    select{case <-ch:continue;case <-flowCtx.Done():return}
+   if _, ok := er.(*tcpip.ErrClosedForReceive); ok {
+    if cw, ok := upstream.(interface{ CloseWrite() error }); ok {
+     if cw.CloseWrite() != nil { failed <- struct{}{} }
+    }
+    return
    }
-   if er!=nil{return}
+   if _, ok := er.(*tcpip.ErrWouldBlock); ok {
+    select { case <-ch: continue; case <-flowCtx.Done(): return }
+   }
+   if er != nil { failed <- struct{}{}; return }
+   if result.Count == 0 {
+    select { case <-ch: case <-flowCtx.Done(): return }
+   }
   }
  }()
- go func(){
-  defer func(){results<-struct{}{}}()
-  entry,ch:=waiter.NewChannelEntry(waiter.EventOut|waiter.EventErr|waiter.EventHUp)
-  q.EventRegister(&entry);defer q.EventUnregister(&entry)
-  b:=make([]byte,32768)
-  for{
-   n,er:=upstream.Read(b)
-   off:=0
-   for off<n{
-    accepted,writeErr:=ep.Write(bytes.NewReader(b[off:n]),tcpip.WriteOptions{})
-    off+=int(accepted)
-    if _,ok:=writeErr.(*tcpip.ErrWouldBlock);ok{
-     select{case <-ch:continue;case <-flowCtx.Done():return}
+ go func() {
+  defer relays.Done()
+  entry, ch := waiter.NewChannelEntry(waiter.EventOut | waiter.EventErr | waiter.EventHUp)
+  q.EventRegister(&entry)
+  defer q.EventUnregister(&entry)
+  b := make([]byte, 32768)
+  for {
+   n, er := upstream.Read(b)
+   off := 0
+   for off < n {
+    accepted, writeErr := ep.Write(bytes.NewReader(b[off:n]), tcpip.WriteOptions{})
+    off += int(accepted)
+    if _, ok := writeErr.(*tcpip.ErrWouldBlock); ok {
+     select { case <-ch: continue; case <-flowCtx.Done(): return }
     }
-    if _,ok:=writeErr.(*tcpip.ErrNoBufferSpace);ok{
-     select{case <-ch:continue;case <-flowCtx.Done():return}
+    if _, ok := writeErr.(*tcpip.ErrNoBufferSpace); ok {
+     select { case <-ch: continue; case <-flowCtx.Done(): return }
     }
-    if writeErr!=nil||accepted==0{return}
+    if writeErr != nil || accepted == 0 { failed <- struct{}{}; return }
    }
-   if er!=nil{_=ep.Shutdown(tcpip.ShutdownWrite);return}
+   if er == io.EOF { _ = ep.Shutdown(tcpip.ShutdownWrite); return }
+   if er != nil { failed <- struct{}{}; return }
   }
  }()
- select {case <-ctx.Done():case <-results:}
- // Do not hang a stopped tunnel on a malicious/stalled upstream.
- cancel();_=upstream.Close();ep.Abort()
- <-results
- flowWG.Wait()
+ done := make(chan struct{})
+ go func() { relays.Wait(); close(done) }()
+ timer := time.NewTimer(2 * time.Minute)
+ defer timer.Stop()
+ select {
+ case <-done: // Both directions reached EOF: graceful full relay.
+  return
+ case <-failed: // A genuine relay failure needs immediate fail-close.
+ case <-ctx.Done():
+ case <-timer.C: // Bound unresponsive half-closed connections.
+ }
+ cancel()
+ _ = upstream.Close()
+ ep.Abort()
+ <-done
 }
 
 func (e *Engine) serveUDP(ctx context.Context,ep tcpip.Endpoint,q *waiter.Queue,dest netip.AddrPort){
