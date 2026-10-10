@@ -3,11 +3,9 @@ package nativego
 import (
  "bytes"
  "context"
- "errors"
  "io"
  "net/netip"
  "sync"
- "time"
 
  "gvisor.dev/gvisor/pkg/tcpip"
  "gvisor.dev/gvisor/pkg/waiter"
@@ -22,7 +20,6 @@ func(e *Engine)serveTunnelUDP(ctx context.Context,ep tcpip.Endpoint,q *waiter.Qu
  if err!=nil{return} // Rejected features and failed authentication fail closed.
  defer session.Close()
  stop:=make(chan struct{})
- defer close(stop)
  go func(){select{case <-ctx.Done():_=session.Close();case <-stop:}}()
  errorEvents:=make(chan error,2)
  var workers sync.WaitGroup
@@ -72,6 +69,7 @@ func(e *Engine)serveTunnelUDP(ctx context.Context,ep tcpip.Endpoint,q *waiter.Qu
  case <-ctx.Done():
  case <-errorEvents:
  }
+ close(stop)
  _=session.Close()
  _=ep.Shutdown(tcpip.ShutdownRead|tcpip.ShutdownWrite)
  // The relay may be blocked on the endpoint or the carrier during teardown;
@@ -79,7 +77,3 @@ func(e *Engine)serveTunnelUDP(ctx context.Context,ep tcpip.Endpoint,q *waiter.Qu
  workers.Wait()
 }
 
-// Check the exported input contract during compilation, including the
-// timeout distinction between a valid zero-length UDP record and EOF.
-var _=errors.Is
-var _=time.Second
