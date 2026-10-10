@@ -1,0 +1,31 @@
+name: Native TUN Go-only candidate proof
+on:
+  push:
+    branches: [feature/native-tun-go-core]
+    paths:
+      - 'tls-provider/nativego/**'
+      - '.github/workflows/native-go-candidate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+          cache-dependency-path: tls-provider/go.sum
+      - name: Native Go packet engine and protocol tests
+        working-directory: tls-provider
+        run: go test -v -tags=netstack -mod=vendor ./nativego
+      - name: Native Go vet
+        working-directory: tls-provider
+        run: go vet -tags=netstack -mod=vendor ./nativego
+      - name: Ensure Go-only package can build without CGO
+        working-directory: tls-provider
+        run: CGO_ENABLED=0 go build -tags=netstack -mod=vendor ./nativego
