@@ -87,7 +87,7 @@ public class VpnCoreVpnService extends VpnService {
         config=path;getSharedPreferences("vpn-core-tun",MODE_PRIVATE).edit().putString(CONFIG,path).apply();underlying=chooseNetwork();if(underlying==null)throw new IOException("Underlying network unavailable");
         Builder builder=new Builder().setSession("VpnCore Native TUN").setMtu(1500).setBlocking(false)
             .addAddress("198.18.0.2",30).addAddress("fd71:5650::2",126)
-            .addRoute("0.0.0.0",0).addRoute("::",0).addDnsServer("9.9.9.9").addDnsServer("2620:fe::fe")
+            .addRoute("0.0.0.0",0).addRoute("::",0).addDnsServer("198.18.0.53").addDnsServer("fd71:5650::53")
             .setUnderlyingNetworks(new Network[]{underlying});
         // No allowBypass and no per-app exclusion: all device apps use VPN.
         tun=builder.establish();if(tun==null)throw new IOException("TUN establish failed");

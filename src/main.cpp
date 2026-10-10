@@ -179,7 +179,15 @@ int run(int argc,char** argv,const vpn::NetworkHooks* hooks=nullptr,const vpn_co
             if(tun->size!=sizeof(*tun)||tun->abi!=1||tun->reserved||tun->mtu<1280||tun->mtu>65535||tun->maximum_flows<1||tun->maximum_flows>256||!hooks||!hooks->protect||!hooks->resolve)
                 throw Failure("STARTUP_FAILED: TUN options/hooks","TUN_ARGUMENT");
             NativeTunDevice device(*tun);NetstackPackets packets(int(tun->mtu),int(tun->maximum_flows));
-            NetstackCoreBridge bridge(config,packets,tun->maximum_flows,[](uint64_t id,const std::string& reason){Json event=Json::obj();diagnostic_identity(event,id);event["event"]=Json(reason=="CANCELLED"?"tun_flow_cancelled":"tun_flow_failure");event["reason_code"]=Json(reason);publish_event(event);});
+            NetstackCoreBridge bridge(config,packets,tun->maximum_flows,[](const FlowFailure& failure){
+                Json event=Json::obj();diagnostic_identity(event,failure.id);
+                event["event"]=Json(failure.reason=="CANCELLED"?"tun_flow_cancelled":"tun_flow_failure");
+                event["reason_code"]=Json(failure.reason);event["phase"]=Json(failure.phase);
+                event["flow_protocol"]=Json(failure.protocol==6?"TCP":"UDP");
+                event["destination_family"]=Json(failure.address_size==4?"IPv4":"IPv6");
+                event["destination_port"]=Json::integer(failure.port);
+                event["native_status"]=Json::integer(failure.native_status);publish_event(event);
+            });
             struct StopTunBeforeJoin {~StopTunBeforeJoin(){tun_ready=false;stopping=true;core_state.store(VPN_CORE_STOPPING);try{cancel_provider_network();}catch(...){}}} stop_tun;
             tun_ready=true;core_state.store(VPN_CORE_RUNNING);Json ready=Json::obj();ready["event"]=Json("tun_ready");ready["interface"]=Json(device.name());ready["luid"]=Json::integer(device.luid());ready["mtu"]=Json::integer(tun->mtu);publish_event(ready);
             std::array<uint8_t,65535> pending;size_t pending_size=0;auto report_at=Clock::now();

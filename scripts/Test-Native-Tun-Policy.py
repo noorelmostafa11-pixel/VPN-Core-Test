@@ -45,7 +45,7 @@ def main():
                         assert proof.startswith('PASS: owned WFP UDP DNS classify-drop'),proof
                         rows.append({'test':'WFP_PHYSICAL_DNS_UDP_BLOCK','status':'PASS','evidence':proof.strip()})
                         dns=cmd('powershell','-NoProfile','-Command',"Get-DnsClientServerAddress -InterfaceAlias VpnCore-Policy-CI | ConvertTo-Json -Depth 4")
-                        assert '9.9.9.9' in dns and '2620:fe::fe' in dns
+                        assert '198.18.0.53' in dns and 'fd71:5650::53' in dns
                         rows.append({'test':'OWNED_ADAPTER_DNS_IPV4_IPV6','status':'PASS'})
                     finally:
                         if process.poll() is None:process.send_signal(signal.CTRL_BREAK_EVENT)

@@ -26,3 +26,4 @@ local.ini
 /pre-run/
 /tests/dotnet/bin/
 /tests/dotnet/obj/
+/evidence/

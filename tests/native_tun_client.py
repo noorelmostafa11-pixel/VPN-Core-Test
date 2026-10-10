@@ -9,7 +9,8 @@ from test_native_tun_runtime import checksum,SRC,DST
 _ports=itertools.count(33000)
 
 class PacketTCPClient:
-    def __init__(self,app):
+    def __init__(self,app,target_port=443):
+        self.target_port=target_port
         self.app=app;self.port=next(_ports);self.timeout=30;self.lock=threading.Condition();self.send_lock=threading.Lock()
         self.next=1001;self.ack=1001;self.window=0;self.remote=None;self.established=False;self.eof=False;self.fin=None
         self.received=bytearray();self.out_of_order={};self.limit=524288;self.error=None;self.stopped=False
@@ -26,7 +27,7 @@ class PacketTCPClient:
             self.lock.wait(left)
     def _free(self):return max(0,min(65535,self.limit-len(self.received)-sum(map(len,self.out_of_order.values()))))
     def _packet(self,payload,seq,ack,flags):
-        segment=struct.pack('!HHIIBBHHH',self.port,443,seq&0xffffffff,ack&0xffffffff,80,flags,self._free(),0,0)+payload
+        segment=struct.pack('!HHIIBBHHH',self.port,self.target_port,seq&0xffffffff,ack&0xffffffff,80,flags,self._free(),0,0)+payload
         check=checksum(SRC+DST+struct.pack('!BBH',0,6,len(segment))+segment)
         segment=segment[:16]+struct.pack('!H',check)+segment[18:]
         header=struct.pack('!BBHHHBBH4s4s',69,0,20+len(segment),0,0,64,6,0,SRC,DST)
@@ -59,7 +60,7 @@ class PacketTCPClient:
                 ip=(p[0]&15)*4
                 if len(p)<ip+20:raise RuntimeError('short TCP header')
                 source,destination,seq,ack,offset,flags,window=struct.unpack('!HHIIBBH',p[ip:ip+16])
-                if source!=443 or destination!=self.port:continue
+                if source!=self.target_port or destination!=self.port:continue
                 if checksum(p[:ip]) or checksum(p[12:20]+struct.pack('!BBH',0,6,len(p)-ip)+p[ip:]):raise RuntimeError('synthetic response checksum failed')
                 data=p[ip+(offset>>4)*4:];reply=None
                 with self.lock:

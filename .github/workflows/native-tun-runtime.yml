@@ -39,7 +39,7 @@ jobs:
           python scripts/Build.py --target linux --experimental-netstack --build-tests --require-clean
           python scripts/Test-Netstack-Compatibility.py --build build/linux-amd64 --output evidence/linux/packet
           (cd tls-provider && go test -race -tags=netstack -mod=vendor .)
-          python -m unittest -v test_native_tun_encrypted test_native_tun_bootstrap test_native_tun_runtime test_netstack_abi test_native_tun_policy_lifecycle
+          python -m unittest -v test_native_dns test_native_tun_encrypted test_native_tun_bootstrap test_native_tun_runtime test_netstack_abi test_native_tun_policy_lifecycle
           sudo apt-get update -qq
           sudo apt-get install -y nftables iproute2
           sudo mkdir -p /dev/net
@@ -66,7 +66,7 @@ jobs:
           if ($LASTEXITCODE) { throw 'Unbundled runtime dependency' }
           python scripts/Test-Netstack-Compatibility.py --build build/windows-amd64 --output evidence/windows/packet
           if ($LASTEXITCODE) { throw 'Packet transfers failed' }
-          python -m unittest -v test_native_tun_encrypted test_native_tun_bootstrap test_netstack_abi
+          python -m unittest -v test_native_dns test_native_tun_encrypted test_native_tun_bootstrap test_netstack_abi
           if ($LASTEXITCODE) { throw 'Encrypted packet paths failed' }
           python scripts/Test-Native-Tun-Device.py --build build/windows-amd64 --output evidence/windows/device
           if ($LASTEXITCODE) { throw 'Actual Wintun transfer/lifecycle failed' }

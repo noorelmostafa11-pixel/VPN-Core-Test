@@ -13,7 +13,7 @@ TABLE='vpncore_native_v1';MARK=0x56504e;COMMENT='vpn-core-native-tun-owned-v1'
 def command(*argv,input=None):
     return subprocess.run(list(argv),input=input,text=True,capture_output=True,check=True).stdout
 class LinuxPolicy:
-    def __init__(self,name,addresses,port,dns=('9.9.9.9','2620:fe::fe'),endpoints=None):
+    def __init__(self,name,addresses,port,dns=('198.18.0.53','fd71:5650::53'),endpoints=None):
         if not name.isalnum() or len(name)>15:raise ValueError('Use a unique alphanumeric interface name')
         self.name=name;self.addresses=tuple(ipaddress.ip_address(a) for a in addresses);self.port=int(port);self.endpoints=tuple((ipaddress.ip_address(ip),int(p)) for ip,p in (endpoints or [(ip,self.port) for ip in self.addresses]));self.dns=dns;self.acquired=False
         if any(not 1<=p<=65535 for _,p in self.endpoints):raise ValueError("Invalid bootstrap port")
@@ -54,6 +54,8 @@ class LinuxPolicy:
         command('ip','-6','address','add','fd71:5650::2/126','dev',self.name,'nodad')
         for prefix in ('0.0.0.0/1','128.0.0.0/1'):command('ip','route','add',prefix,'dev',self.name,'metric','5')
         for prefix in ('::/1','8000::/1'):command('ip','-6','route','add',prefix,'dev',self.name,'metric','5')
+        command('ip','route','add','198.18.0.53/32','dev',self.name,'metric','5')
+        command('ip','-6','route','add','fd71:5650::53/128','dev',self.name,'metric','5')
         # systemd-resolved link-scoped state disappears with the owned interface.
         # Fail startup on unsupported DNS manager instead of silently leaking.
         command('resolvectl','dns',self.name,*self.dns)
@@ -65,7 +67,7 @@ class LinuxPolicy:
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--build',type=pathlib.Path);p.add_argument('--config',type=pathlib.Path)
     p.add_argument('--node-host');p.add_argument('--node-port',type=int);p.add_argument('--uplink',help='Existing physical interface; sockets are pinned before connect')
-    p.add_argument('--name',default='vpncoretun');p.add_argument('--recover',action='store_true');p.add_argument('--dns',nargs='+',default=['9.9.9.9','2620:fe::fe']);a=p.parse_args()
+    p.add_argument('--name',default='vpncoretun');p.add_argument('--recover',action='store_true');p.add_argument('--dns',nargs='+',default=['198.18.0.53','fd71:5650::53']);a=p.parse_args()
     if os.geteuid()!=0:p.error('Administrative network privileges required')
     lock=open('/run/vpn-core-native-tun.lock','w');fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
     if a.recover:LinuxPolicy.recover();return

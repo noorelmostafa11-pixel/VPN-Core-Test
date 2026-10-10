@@ -28,12 +28,15 @@ class UdpTunnel {
         if(!out.empty())last_=Clock::now();return out;
     }
 public:
-    UdpTunnel(const Config& c,const Bytes& destination,size_t maximum_payload=65507):config_(c),protocol_(c,true),codec_(c,destination,maximum_payload),transport_(c),provider_(c.transport=="xhttp"||c.transport=="http"||c.transport=="kcp"||c.transport=="quic"){
+    UdpTunnel(const Config& c,const Bytes& destination,size_t maximum_payload=65507,const char** phase=nullptr):config_(c),protocol_(c,true),codec_(c,destination,maximum_payload),transport_(c),provider_(c.transport=="xhttp"||c.transport=="http"||c.transport=="kcp"||c.transport=="quic"){
         auto deadline=Clock::now()+std::chrono::milliseconds(c.connect_ms);
-        if(provider_){xhttp_.open(c,protocol_.open(destination),deadline);return;}
-        server_=connect_server(c,deadline);tls_.handshake(server_,c,deadline);Bytes header;
+        if(provider_){if(phase)*phase="TRANSPORT";xhttp_.open(c,protocol_.open(destination),deadline);return;}
+        if(phase)*phase="CONNECT";server_=connect_server(c,deadline);
+        if(phase)*phase="TLS";tls_.handshake(server_,c,deadline);Bytes header;
+        if(phase)*phase="PROTOCOL";
         if(c.transport=="websocket"&&c.ws_early_data)header=transport_.prepare(protocol_.open(destination));
-        auto initial=transport_.open(server_,tls_,deadline,header.empty()?nullptr:&header);
+        if(phase)*phase="TRANSPORT";auto initial=transport_.open(server_,tls_,deadline,header.empty()?nullptr:&header);
+        if(phase)*phase="PROTOCOL";
         if(c.transport=="websocket"&&c.ws_early_data){if(!header.empty())send_secure(server_,tls_,transport_.encode_prepared(header),deadline);}
         else send_secure(server_,tls_,transport_.encode(protocol_.open(destination)),deadline);
         // No response datagram can precede the first UDP payload.

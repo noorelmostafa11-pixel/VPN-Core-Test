@@ -37,14 +37,14 @@ struct OwnedRoutes {
         HMODULE module=GetModuleHandleW(L"iphlpapi.dll");using Setter=DWORD(WINAPI*)(GUID,const Settings*);Setter setter=nullptr;auto raw=GetProcAddress(module,"SetInterfaceDnsSettings");std::memcpy(&setter,&raw,sizeof(setter));
         if(!setter)throw Failure("STARTUP_FAILED: Windows 10 build 19041 required","TUN_DNS_API");
         NET_LUID id{};id.Value=luid;GUID guid{};auto code=ConvertInterfaceLuidToGuid(&id,&guid);if(code)throw Failure("STARTUP_FAILED: TUN GUID","TUN_DNS_INTERFACE",code);
-        for(unsigned v6=0;v6<2;++v6){Settings settings{};settings.version=1;settings.flags=0x2|0x8|0x80|(v6?1:0);settings.name_server=const_cast<wchar_t*>(v6?L"2620:fe::fe":L"9.9.9.9");code=setter(guid,&settings);if(code)throw Failure("STARTUP_FAILED: owned interface DNS","TUN_DNS",code);}
+        for(unsigned v6=0;v6<2;++v6){Settings settings{};settings.version=1;settings.flags=0x2|0x8|0x80|(v6?1:0);settings.name_server=const_cast<wchar_t*>(v6?L"fd71:5650::53":L"198.18.0.53");code=setter(guid,&settings);if(code)throw Failure("STARTUP_FAILED: owned interface DNS","TUN_DNS",code);}
     }
     void configure(uint64_t luid,bool test) {
         for(ADDRESS_FAMILY family:{ADDRESS_FAMILY(AF_INET),ADDRESS_FAMILY(AF_INET6)}){MIB_IPINTERFACE_ROW row{};InitializeIpInterfaceEntry(&row);row.Family=family;row.InterfaceLuid.Value=luid;auto e=GetIpInterfaceEntry(&row);if(e)throw Failure("STARTUP_FAILED: TUN interface","TUN_INTERFACE",e);if(family==AF_INET)row.SitePrefixLength=0;row.NlMtu=1500;row.UseAutomaticMetric=FALSE;row.Metric=5;row.DadTransmits=0;if((e=SetIpInterfaceEntry(&row)))throw Failure("STARTUP_FAILED: TUN MTU","TUN_MTU",e);}
         address(luid,"198.18.0.2",false,30);address(luid,"fd71:5650::2",true,126);
         if(!test)dns(luid);
         if(test){route(luid,"203.0.113.0",false,24);route(luid,"2001:db8::",true,32);}
-        else{route(luid,"0.0.0.0",false,1);route(luid,"128.0.0.0",false,1);route(luid,"::",true,1);route(luid,"8000::",true,1);}
+        else{route(luid,"198.18.0.53",false,32);route(luid,"fd71:5650::53",true,128);route(luid,"0.0.0.0",false,1);route(luid,"128.0.0.0",false,1);route(luid,"::",true,1);route(luid,"8000::",true,1);}
     }
 };
 std::string argument(const wchar_t* w){int n=WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,w,-1,nullptr,0,nullptr,nullptr);if(n<1)throw Failure("STARTUP_FAILED: arguments","TUN_ARGUMENT");std::string s(size_t(n),'\0');WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,w,-1,s.data(),n,nullptr,nullptr);s.pop_back();return s;}
