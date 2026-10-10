@@ -44,6 +44,7 @@ type Node struct {
  Pins []string `json:"pins,omitempty"`
  Names []string `json:"names,omitempty"`
  Encryption string `json:"encryption,omitempty"`
+ Cipher string `json:"cipher,omitempty"`
 }
 
 type Dialer struct {
@@ -54,10 +55,19 @@ type Dialer struct {
 }
 
 // NewDialer deliberately accepts only a proven narrow Go-native subset.
-// Unimplemented REALITY, Vision, WS, VMess and Shadowsocks are rejected rather
+// Unimplemented Vision, WS, VMess and non-AEAD Shadowsocks are rejected rather
 // than silently downgraded to ordinary TLS or an unprotected network socket.
 func NewDialer(n Node, protected ProtectedDial) (*Dialer, error) {
  if protected == nil { return nil, ErrUnprotected }
+ if n.Protocol=="ss"{
+  if n.Port==0||n.Address==""||n.Transport!="raw"||n.Security!="none"||
+   n.Password==""||ssAEADKeySize(n.Cipher)==0||n.Flow!=""||n.UUID!=""||
+   n.Fingerprint!=""||n.PublicKey!=""||n.ShortID!=""||n.PQVerify!=""||
+   len(n.Pins)>0||len(n.Names)>0||len(n.ALPN)>0||n.Encryption!=""{
+   return nil,fmt.Errorf("%w: Shadowsocks requires authenticated classic AEAD and protected raw carrier",ErrUnsupported)
+  }
+  return &Dialer{node:n,protected:protected},nil
+ }
  if n.Port == 0 || n.Address == "" || n.ServerName == "" { return nil, fmt.Errorf("%w: incomplete node endpoint", ErrUnsupported) }
  if (n.Security!="tls"&&n.Security!="reality")||n.Transport!="raw"||n.Flow!="" {return nil,fmt.Errorf("%w: security/transport/flow",ErrUnsupported)}
  if n.Security=="reality"{
@@ -91,6 +101,7 @@ func NewDialer(n Node, protected ProtectedDial) (*Dialer, error) {
 // HTTPS and VPN TLS verification cannot be disabled via configuration.
 func (d *Dialer) DialStream(ctx context.Context, target netip.AddrPort) (net.Conn,error) {
  if !target.IsValid() || target.Port()==0 {return nil,errors.New("nativego: bad target")}
+ if d.node.Protocol=="ss"{return d.dialShadowsocksStream(ctx,target)}
  conn,err:=d.secureCarrier(ctx)
  if err!=nil{return nil,err}
  var frame []byte
