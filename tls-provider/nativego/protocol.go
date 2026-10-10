@@ -45,6 +45,8 @@ type Node struct {
  Names []string `json:"names,omitempty"`
  Encryption string `json:"encryption,omitempty"`
  Cipher string `json:"cipher,omitempty"`
+ WSPath string `json:"ws_path,omitempty"`
+ WSHost string `json:"ws_host,omitempty"`
 }
 
 type Dialer struct {
@@ -62,14 +64,20 @@ func NewDialer(n Node, protected ProtectedDial) (*Dialer, error) {
  if n.Protocol=="ss"{
   if n.Port==0||n.Address==""||n.Transport!="raw"||n.Security!="none"||
    n.Password==""||ssAEADKeySize(n.Cipher)==0||n.Flow!=""||n.UUID!=""||
-   n.Fingerprint!=""||n.PublicKey!=""||n.ShortID!=""||n.PQVerify!=""||
+   n.Fingerprint!=""||n.PublicKey!=""||n.ShortID!=""||n.PQVerify!=""||n.WSPath!=""||n.WSHost!=""||
    len(n.Pins)>0||len(n.Names)>0||len(n.ALPN)>0||n.Encryption!=""{
    return nil,fmt.Errorf("%w: Shadowsocks requires authenticated classic AEAD and protected raw carrier",ErrUnsupported)
   }
   return &Dialer{node:n,protected:protected},nil
  }
  if n.Port == 0 || n.Address == "" || n.ServerName == "" { return nil, fmt.Errorf("%w: incomplete node endpoint", ErrUnsupported) }
- if (n.Security!="tls"&&n.Security!="reality")||n.Transport!="raw"||n.Flow!="" {return nil,fmt.Errorf("%w: security/transport/flow",ErrUnsupported)}
+ if (n.Security!="tls"&&n.Security!="reality")||(n.Transport!="raw"&&n.Transport!="websocket")||n.Flow!="" {return nil,fmt.Errorf("%w: security/transport/flow",ErrUnsupported)}
+ if n.Transport=="websocket"{
+  if n.Security=="reality"||n.Protocol=="ss"{return nil,fmt.Errorf("%w: unsupported WebSocket security/protocol combination",ErrUnsupported)}
+  if n.WSPath!=""&&(!strings.HasPrefix(n.WSPath,"/")||!validWSHeader(n.WSPath)){return nil,fmt.Errorf("%w: WebSocket path",ErrUnsupported)}
+  if n.WSHost!=""&&!validWSHeader(n.WSHost){return nil,fmt.Errorf("%w: WebSocket host",ErrUnsupported)}
+  for _,v:=range n.ALPN{if v!="http/1.1"{return nil,fmt.Errorf("%w: WebSocket requires HTTP/1.1 ALPN",ErrUnsupported)}}
+ }else if n.WSPath!=""||n.WSHost!=""{return nil,fmt.Errorf("%w: WebSocket options without transport",ErrUnsupported)}
  if n.Security=="reality"{
   if n.Protocol!="vless"||n.PublicKey==""{return nil,fmt.Errorf("%w: REALITY requires VLESS and pinned public key",ErrUnsupported)}
   public,err:=nativeDecodeKey(n.PublicKey)
@@ -104,6 +112,11 @@ func (d *Dialer) DialStream(ctx context.Context, target netip.AddrPort) (net.Con
  if d.node.Protocol=="ss"{return d.dialShadowsocksStream(ctx,target)}
  conn,err:=d.secureCarrier(ctx)
  if err!=nil{return nil,err}
+ if d.node.Transport=="websocket"{
+  wrapped,e:=openWebSocket(ctx,conn,d.node)
+  if e!=nil{_=conn.Close();return nil,e}
+  conn=wrapped
+ }
  var frame []byte
  switch d.node.Protocol {
  case "vless": frame=vlessRequest(d.uuid,target)
