@@ -1,62 +1,91 @@
-# Native TUN Go-native migration — candidate, NOT a production core
+# Go-native TUN migration — isolated candidate, not a production release
 
-Branch: feature/native-tun-go-core
-Parent: cb86530eba8a83fcc6aad7c1083bdcd5643304a9
-This branch does not modify stable main, stable ABI2, or the existing Windows/Android applications.
+Branch: `feature/native-tun-go-core`
+Parent: `cb86530eba8a83fcc6aad7c1083bdcd5643304a9`
+Stable 0.4.11 / `main` / original Windows and Android applications are untouched.
 
-## What is implemented in this migration increment
+## Architecture implemented in this branch
 
-The new Go package, tls-provider/nativego, uses the pinned in-repository
-gVisor source for TCP/UDP/IPv4/IPv6 and communicates directly with an entirely
-Go-owned encrypted transport. There are no C++ or CGO calls in this new
-package. Packet-device ownership and routing/firewall setup remain the
-responsibility of the host. The existing ABI and original C++ path remain
-untouched so this work is completely opt-in.
+The experimental `tls-provider/nativego` is a pure Go TUN packet/data
+path. It uses the repository's pinned gVisor stack (TCP/UDP/IPv4/IPv6),
+Go workers, a Go protocol engine, and protected Go carrier sockets.
+The new package uses no C++ protocol engine or CGO API per packet. The
+existing C++ product path is preserved for safe rollback.
 
-* TCP: gVisor TCP forwarder -> Go relay -> authenticated Go TLS ->
-  **raw TLS VLESS (encryption=none, flow empty)** or
-  **raw TLS Trojan** -> remote. Strict SSL certificate/hostname checks.
-* DNS: Owned VPN DNS endpoints 198.18.0.53 and fd71:5650::53,
-  TCP length-framed and UDP DNS, tunneled DoH to 1.1.1.1:443 with
-  verified cloudflare-dns.com certificate and no physical fallback.
-* TCP/UDP ingress: bounded gVisor link ring, bounded concurrent flows,
-  source packet copies before the device read returns, cleanup on stop.
-* Node connections require an injected protected underlay dialer.
-  No direct network dial is permitted by the library.
+The embedding host remains responsible for real interface addresses, routes,
+link-local DNS policy, protected bootstrap resolution and fail-closed firewall.
+Go-only processing **does not replace an operating system kill switch**.
+The new code must never use an unprotected direct carrier fallback.
 
-## Hard gates and missing work — DO NOT SHIP
+### Functional coverage
 
-This is only the first implementation slice, not a complete migration:
+| Item | Go candidate |
+| --- | --- |
+| gVisor TCP/UDP forwarders, IPv4/IPv6 | Implemented; protected packet-device ownership |
+| TCP raw VLESS with encryption=none and no Vision | Implemented with strict TLS or REALITY |
+| TCP raw Trojan | Implemented with authenticated TLS |
+| TCP raw classic Shadowsocks AEAD | Implemented for AES-128/192/256-GCM and ChaCha20-IETF-Poly1305 |
+| DNS | Owned IPv4/IPv6 DNS port 53 via DoH through the selected encrypted node |
+| Non-DNS UDP | Go VLESS/Trojan UDP over authenticated raw TLS/REALITY carrier with strict reply destination; classic Shadowsocks UDP is not yet implemented |
+| REALITY | Go uTLS/X25519 authenticated source-derived handshake for raw VLESS; no Vision |
+| Node URIs | Strict subset VLESS/Trojan and SIP002 classic AEAD Shadowsocks; rejects unsupported options, insecure TLS, unknown transports and ambiguous query parameters |
+| Linux TUN | Borrowed FD or Go-created `/dev/net/tun`; Go Linux CLI with protected SO_MARK/SO_BINDTODEVICE carrier |
+| Windows Wintun | Go-only verified pinned-DLL packet adapter; no complete Go-owned WFP/routes/DNS host yet |
+| Android | Go borrowed-FD support, ARM cross-build; no native app/VpnService replacement or physical-phone acceptance |
 
-- A Go-only Windows Wintun packet adapter and Linux/Android borrowed-FD adapter
-  are present. Windows adapter build is verified, not its physical-device behavior.
-  Complete Windows WFP/routes/DNS ownership, Android VpnService lifecycle
-  integration and Linux firewall/route-owning host remain unimplemented.
-- No Go-native VMess, Shadowsocks, REALITY, Vision, WebSocket, XHTTP,
-  gRPC, QUIC, mKCP or alternate protocol transports yet.
-- No generic UDP proxy relay yet. Only the dedicated owned DNS UDP
-  endpoints are served; other UDP destinations fail closed.
-- No final live-node compatibility against stable 0.4.11 and
-  no true Windows/Android device tests of the new Go candidate.
-- Linux race tests, Windows package tests, Windows/Android cross-builds,
-  repeated gVisor lifecycle, framing, and a controlled authenticated TLS
-  VLESS/Trojan peer passed in GitHub Actions. These do not certify Internet
-  access, kill-switch behavior, release safety or production performance.
-- Config currently uses an explicit Go Node struct; no arbitrary
-  original URI should be silently rewritten or downgraded.
+For the Linux CLI, the `-policy-ready` flag is an **embedding contract**,
+not a verification of installed nftables rules. A privileged host must
+install and verify its fail-closed nftables/route/DNS policy independently.
+The CLI requires a real underlay interface, an allowed nonzero socket mark,
+a pre-resolved endpoint IP (for hostname nodes), and a private URI or JSON
+file. It does not alter routes or trust an insecure certificate.
 
-Before any application integration the feature must support the existing
-protocol/URI coverage, run physical OS integration and security gates and
-be proven to return genuine public Internet traffic. Do not switch production
-to this candidate or remove existing C++ until those gates pass.
+### Verification so far
 
-## Tests
+- Go-only Linux and Windows unit/race/build jobs and Windows/Android cross
+  compilation in `.github/workflows/native-go-candidate.yml`.
+- Strict TLS VLESS/Trojan controlled encrypted peers with valid certificates;
+  parallel encrypted TCP and UDP framing; Shadowsocks AEAD tamper rejection.
+- Tests of invalid REALITY public-key/short-ID inputs and rejection of
+  unsupported Vision modes. This does not prove public REALITY nodes connect.
+- Repeated in-memory gVisor lifecycle and a complete in-memory IPv4 UDP
+  TUN-packet -> Go DNS -> return-packet integration test.
+- Linux real `/dev/net/tun` DNS packet acceptance added and gated behind a
+  dedicated network namespace and `VPN_NATIVE_GO_PRIVILEGED_TEST=1`.
+  Consult the matching commit's GitHub Actions report for actual runtime
+  status; do not infer success merely from existence of the test.
 
-Run with the pinned Go 1.27.1 toolchain:
+All these tests use controlled/local endpoints and cannot establish true
+public Internet connectivity on a user's Windows or Android machine.
 
-    cd tls-provider
-    go test -v -tags=netstack -mod=vendor ./nativego
-    go vet -tags=netstack -mod=vendor ./nativego
-    CGO_ENABLED=0 go build -tags=netstack -mod=vendor ./nativego
+## Missing before replacement or production use
 
-These commands do not configure interfaces or modify host networking.
+1. Public Internet Full TUN acceptance on actual Windows, Linux and Android;
+   capture DNS/TCP/UDP/IPv6 routing, real website certificate verification,
+   app browsing, lifecycle, crash fail-close, system DNS and leakage evidence.
+2. Go-only Windows WFP/routes/DNS owner and Android VpnService host integration,
+   including verified socket protection and always-on/lockdown behavior.
+3. Remaining protocol and transport parity against stable 0.4.11:
+   VMess, SS2022/legacy stream ciphers, Shadowsocks UDP, Vision, WebSocket,
+   XHTTP/HTTPupgrade/gRPC/QUIC/mKCP and any other supported original URI.
+4. Full unchanged URI parser/identity comparison with original stable
+   inventories, controlled real-node regression and verified output hashes.
+5. Resource, throughput, RTT and security approval **after Internet works**.
+
+Keep unsupported features fail-closed rather than changing certificate
+verification, replacing a node URI or silently dropping to plaintext/TLS.
+
+## Build and test (Go 1.27.1; from tls-provider/)
+
+```sh
+go test -race -count=1 -v -tags=netstack -mod=vendor ./nativego
+go vet -tags=netstack -mod=vendor ./nativego
+CGO_ENABLED=0 go build -tags=netstack -mod=vendor ./nativego
+CGO_ENABLED=0 go build -tags=netstack -mod=vendor ./cmd/nativego-linux
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -tags=netstack -mod=vendor ./nativego
+GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build -tags=netstack -mod=vendor ./nativego
+```
+
+The privileged Linux acceptance must be run only in a throwaway network
+namespace (as CI does). Do not run elevated route/firewall experiments against
+an installed production VPN or a machine without independent network recovery.
