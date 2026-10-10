@@ -25,10 +25,12 @@ import (
 
 func main(){if err:=run();err!=nil{fmt.Fprintln(os.Stderr,"nativego-linux:",err);os.Exit(1)}}
 func run()error{
- var nodeFile, uplink string
+ var nodeFile,uriFile,bootstrapIP,uplink string
  var fd,mtu,limit,mark int
  var policyReady bool
  flag.StringVar(&nodeFile,"node","","path to a private native Go node JSON (never logged)")
+ flag.StringVar(&uriFile,"uri-file","","private original VLESS/Trojan URI file (never logged)")
+ flag.StringVar(&bootstrapIP,"bootstrap-ip","","optional pre-resolved protected node IP before routing")
  flag.StringVar(&uplink,"uplink","","physical interface required for protected node sockets")
  flag.IntVar(&fd,"tun-fd",-1,"already configured application-owned TUN descriptor")
  flag.IntVar(&mtu,"mtu",1500,"TUN MTU")
@@ -36,18 +38,32 @@ func run()error{
  flag.IntVar(&mark,"socket-mark",0,"nonzero socket mark allowed by owned nftables policy")
  flag.BoolVar(&policyReady,"policy-ready",false,"host certifies it installed an owned fail-closed policy")
  flag.Parse()
- if nodeFile==""||uplink==""||fd<0||mark<=0||!policyReady {
-  return errors.New("required: -node -uplink -tun-fd -socket-mark -policy-ready; no unprotected fallback")
+ if (nodeFile=="")== (uriFile=="") || uplink==""||fd<0||mark<=0||!policyReady {
+  return errors.New("required: exactly one of -node/-uri-file, plus -uplink -tun-fd -socket-mark -policy-ready; no unprotected fallback")
  }
  if len(uplink)>15||strings.IndexByte(uplink,0)>=0{return errors.New("invalid physical interface name")}
  if _,err:=net.InterfaceByName(uplink);err!=nil{return fmt.Errorf("physical interface unavailable: %w",err)}
- f,err:=os.Open(nodeFile);if err!=nil{return err}
- defer f.Close()
  var node nativego.Node
- dec:=json.NewDecoder(f);dec.DisallowUnknownFields()
- if err=dec.Decode(&node);err!=nil{return fmt.Errorf("private node config invalid: %w",err)}
- if _,err=netip.ParseAddr(node.Address);err!=nil {
-  return errors.New("node bootstrap address must be an IP literal; resolve protected bootstrap BEFORE routing")
+ if uriFile!=""{
+  info,err:=os.Stat(uriFile);if err!=nil{return err}
+  if info.Size()>65536{return errors.New("nativego: URI file too large")}
+  body,err:=os.ReadFile(uriFile);if err!=nil{return err}
+  node,err=nativego.ParseURI(strings.TrimSpace(string(body)))
+  if err!=nil{return err}
+ }else{
+  file,err:=os.Open(nodeFile);if err!=nil{return err}
+  defer file.Close()
+  decoder:=json.NewDecoder(file);decoder.DisallowUnknownFields()
+  if err=decoder.Decode(&node);err!=nil{return fmt.Errorf("private node config invalid: %w",err)}
+ }
+ actualIP:=node.Address
+ if bootstrapIP!=""{
+  ip,err:=nativego.EndpointIP(bootstrapIP);if err!=nil{return err}
+  actualIP=ip.String()
+ }else {
+  if _,err:=nativego.EndpointIP(actualIP);err!=nil {
+   return errors.New("hostname requires -bootstrap-ip, pre-resolved through protected physical network BEFORE VPN routing")
+  }
  }
  protected:=func(ctx context.Context,network,address string)(net.Conn,error){
   if network!="tcp"||address!=net.JoinHostPort(node.Address,fmt.Sprint(node.Port)) {
@@ -62,7 +78,7 @@ func run()error{
    });err!=nil{return err}
    return controlErr
   }
-  return dialer.DialContext(ctx,network,address)
+  return dialer.DialContext(ctx,network,net.JoinHostPort(actualIP,fmt.Sprint(node.Port)))
  }
  d,err:=nativego.NewDialer(node,protected);if err!=nil{return err}
  device,err:=nativego.OpenBorrowedTunFD(fd);if err!=nil{return err}
