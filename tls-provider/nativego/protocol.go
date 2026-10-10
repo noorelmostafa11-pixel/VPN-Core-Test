@@ -111,15 +111,13 @@ func vlessRequest(uuid [16]byte,target netip.AddrPort) []byte {
 func trojanRequest(passwordHash string,target netip.AddrPort) []byte {
  b:=make([]byte,0,120)
  b=append(b,passwordHash...)
- b=append(b,'','
-',1)
+ b=append(b,13,10,1)
  // Trojan uses SOCKS5 address ordering: atyp + IP + port.
  d:=destinationBytes(target)
  b=append(b,d[2])
  b=append(b,d[3:]...)
  b=append(b,d[:2]...)
- return append(b,'','
-')
+ return append(b,13,10)
 }
 
 type vlessResponseConn struct {
