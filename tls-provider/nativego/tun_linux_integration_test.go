@@ -33,6 +33,8 @@ func TestNativeGoLinuxRealTUNPacketDNS(t *testing.T){
  run("address","add","198.18.0.2/30","dev","nativegoci0")
  run("link","set","dev","nativegoci0","up")
  run("route","add","198.18.0.53/32","dev","nativegoci0")
+ run("-6","address","add","fd71:5650::2/126","dev","nativegoci0","nodad")
+ run("-6","route","add","fd71:5650::53/128","dev","nativegoci0")
  node:=Node{
   Protocol:"trojan",Address:"203.0.113.9",Port:443,ServerName:"example.com",
   Security:"tls",Transport:"raw",Password:"offline-prohibited",
@@ -53,6 +55,18 @@ func TestNativeGoLinuxRealTUNPacketDNS(t *testing.T){
  if err!=nil{cancel();t.Fatalf("real Linux TUN DNS reply was not received: %v",err)}
  if count<12||binary.BigEndian.Uint16(received[:2])!=0xabcd||received[2]&0x80==0{
   cancel();t.Fatalf("real TUN DNS response invalid (%d bytes): %s",count,strings.TrimSpace(fmt.Sprintf("%x",received[:count])))
+ }
+ // IPv6 DNS is a distinct OS packet path, not merely parser support.
+ v6,err:=net.DialTimeout("udp6","[fd71:5650::53]:53",5*time.Second)
+ if err!=nil{cancel();t.Fatalf("OS IPv6 UDP to owned TUN DNS: %v",err)}
+ _=v6.SetDeadline(time.Now().Add(8*time.Second))
+ query[0],query[1]=0xde,0xad
+ if _,err=v6.Write(query);err!=nil{_=v6.Close();cancel();t.Fatal(err)}
+ count,err=v6.Read(received)
+ _=v6.Close()
+ if err!=nil{cancel();t.Fatalf("real Linux IPv6 TUN DNS reply absent: %v",err)}
+ if count<12||binary.BigEndian.Uint16(received[:2])!=0xdead||received[2]&0x80==0{
+  cancel();t.Fatalf("real TUN IPv6 DNS response invalid: %x",received[:count])
  }
  cancel();_=device.Close()
  select{
