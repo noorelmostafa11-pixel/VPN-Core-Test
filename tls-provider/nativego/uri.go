@@ -2,6 +2,7 @@ package nativego
 
 import (
  "errors"
+ "encoding/base64"
  "fmt"
  "net"
  "net/netip"
@@ -20,18 +21,37 @@ func ParseURI(raw string)(Node,error){
  u,err:=url.Parse(strings.TrimSpace(raw))
  if err!=nil{return n,fmt.Errorf("nativego: invalid node URI: %w",err)}
  protocol:=strings.ToLower(u.Scheme)
- if protocol!="vless"&&protocol!="trojan"{return n,fmt.Errorf("%w: URI protocol",ErrUnsupported)}
+ if protocol!="vless"&&protocol!="trojan"&&protocol!="ss"{return n,fmt.Errorf("%w: URI protocol",ErrUnsupported)}
  if u.User==nil||u.User.Username()==""||u.Hostname()==""||u.Port()==""{
   return n,errors.New("nativego: incomplete URI credentials/endpoint")
  }
- if _,ok:=u.User.Password();ok{return n,errors.New("nativego: unexpected URI password component")}
+ if _,ok:=u.User.Password();ok&&protocol!="ss"{return n,errors.New("nativego: unexpected URI password component")}
  port,err:=strconv.Atoi(u.Port())
  if err!=nil||port<1||port>65535{return n,errors.New("nativego: invalid node port")}
  if strings.ContainsAny(u.Hostname()," \t\r\n"){return n,errors.New("nativego: invalid host")}
  // A hostname is retained exactly as given. The host MUST bootstrap-resolve
  // it on the protected physical network before activating VPN routes.
  n=Node{Protocol:protocol,Address:u.Hostname(),Port:uint16(port),Transport:"raw"}
- if protocol=="trojan"{n.Password=u.User.Username()}else{n.UUID=u.User.Username();n.Encryption="none"}
+ if protocol=="ss"{
+  var method,secret string
+  if rawSecret,has:=u.User.Password();has{
+   method,secret=u.User.Username(),rawSecret
+  }else{
+   rawUser:=u.User.Username()
+   // SIP002 userinfo is base64url(method:password). Standard-base64
+   // userinfo is also accepted for compatibility with the original parser.
+   for _,codec:=range []*base64.Encoding{base64.RawURLEncoding,base64.URLEncoding,base64.StdEncoding,base64.RawStdEncoding}{
+    if decoded,e:=codec.DecodeString(rawUser);e==nil{
+     if i:=strings.IndexByte(string(decoded),':');i>0{
+      method,secret=string(decoded[:i]),string(decoded[i+1:])
+      break
+     }
+    }
+   }
+  }
+  if ssAEADKeySize(method)==0||secret==""{return Node{},fmt.Errorf("%w: unsupported Shadowsocks URI cipher or password",ErrUnsupported)}
+  n.Cipher,n.Password=method,secret
+ }else if protocol=="trojan"{n.Password=u.User.Username()}else{n.UUID=u.User.Username();n.Encryption="none"}
  options:=make(map[string]string)
  parsed,err:=url.ParseQuery(u.RawQuery)
  if err!=nil{return Node{},fmt.Errorf("nativego: malformed URI query: %w",err)}
@@ -49,7 +69,10 @@ func ParseURI(raw string)(Node,error){
  }
  security:=strings.ToLower(get("security","tls"))
  if security==""&&protocol=="trojan"{security="tls"}
- if security!="tls"&&security!="reality"{return Node{},fmt.Errorf("%w: unsupported security",ErrUnsupported)}
+ if protocol=="ss"{
+  if security!=""&&security!="none"{return Node{},fmt.Errorf("%w: Shadowsocks URI cannot use TLS/REALITY",ErrUnsupported)}
+  security="none"
+ }else if security!="tls"&&security!="reality"{return Node{},fmt.Errorf("%w: unsupported security",ErrUnsupported)}
  n.Security=security
  typ:=strings.ToLower(get("type","network","net"))
  if typ!=""&&typ!="tcp"&&typ!="raw"{return Node{},fmt.Errorf("%w: unsupported transport",ErrUnsupported)}
@@ -57,7 +80,7 @@ func ParseURI(raw string)(Node,error){
  if n.ServerName=="" {
   if _,err:=netip.ParseAddr(n.Address);err!=nil{n.ServerName=n.Address}
  }
- if n.ServerName==""{return Node{},errors.New("nativego: explicit SNI required for IP node address")}
+ if protocol!="ss"&&n.ServerName==""{return Node{},errors.New("nativego: explicit SNI required for IP node address")}
  if strings.ContainsAny(n.ServerName," \t\r\n"){return Node{},errors.New("nativego: invalid TLS hostname")}
  n.Fingerprint=get("fp","fingerprint")
  n.PublicKey=get("pbk","publickey","public_key")
