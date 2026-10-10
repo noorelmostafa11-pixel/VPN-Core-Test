@@ -24,7 +24,7 @@ import (
 
 func main(){if err:=run();err!=nil{fmt.Fprintln(os.Stderr,"nativego-linux:",err);os.Exit(1)}}
 func run()error{
- var nodeFile,uriFile,bootstrapIP,uplink string
+ var nodeFile,uriFile,bootstrapIP,uplink,tunName string
  var fd,mtu,limit,mark int
  var policyReady bool
  flag.StringVar(&nodeFile,"node","","path to a private native Go node JSON (never logged)")
@@ -32,13 +32,14 @@ func run()error{
  flag.StringVar(&bootstrapIP,"bootstrap-ip","","optional pre-resolved protected node IP before routing")
  flag.StringVar(&uplink,"uplink","","physical interface required for protected node sockets")
  flag.IntVar(&fd,"tun-fd",-1,"already configured application-owned TUN descriptor")
+ flag.StringVar(&tunName,"tun-name","","create a named Linux TUN in Go instead of borrowing a TUN FD")
  flag.IntVar(&mtu,"mtu",1500,"TUN MTU")
  flag.IntVar(&limit,"max-flows",64,"maximum gVisor flows")
  flag.IntVar(&mark,"socket-mark",0,"nonzero socket mark allowed by owned nftables policy")
  flag.BoolVar(&policyReady,"policy-ready",false,"host certifies it installed an owned fail-closed policy")
  flag.Parse()
- if (nodeFile=="")== (uriFile=="") || uplink==""||fd<0||mark<=0||!policyReady {
-  return errors.New("required: exactly one of -node/-uri-file, plus -uplink -tun-fd -socket-mark -policy-ready; no unprotected fallback")
+ if (nodeFile=="")== (uriFile=="") || uplink==""||(fd<0&&tunName=="")||(fd>=0&&tunName!="")||mark<=0||!policyReady {
+  return errors.New("required: one of -node/-uri-file, one of -tun-fd/-tun-name, plus -uplink -socket-mark -policy-ready; no unprotected fallback")
  }
  if len(uplink)>15||strings.IndexByte(uplink,0)>=0{return errors.New("invalid physical interface name")}
  if _,err:=net.InterfaceByName(uplink);err!=nil{return fmt.Errorf("physical interface unavailable: %w",err)}
@@ -80,7 +81,9 @@ func run()error{
   return dialer.DialContext(ctx,network,net.JoinHostPort(actualIP,fmt.Sprint(node.Port)))
  }
  d,err:=nativego.NewDialer(node,protected);if err!=nil{return err}
- device,err:=nativego.OpenBorrowedTunFD(fd);if err!=nil{return err}
+ var device nativego.PacketDevice
+ if tunName!=""{device,err=nativego.OpenNamedLinuxTUN(tunName)}else{device,err=nativego.OpenBorrowedTunFD(fd)}
+ if err!=nil{return err}
  defer device.Close()
  ctx,stop:=signal.NotifyContext(context.Background(),os.Interrupt,syscall.SIGTERM)
  defer stop()
