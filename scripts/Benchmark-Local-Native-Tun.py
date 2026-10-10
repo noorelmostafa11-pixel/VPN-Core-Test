@@ -12,6 +12,10 @@ import test_expanded as peers
 from native_tun_peer import NativeTunPeer
 from native_tun_client import PacketTCPClient
 spec=importlib.util.spec_from_file_location('existing_benchmark',ROOT/'scripts/Benchmark-Native-Tun.py');bench=importlib.util.module_from_spec(spec);spec.loader.exec_module(bench)
+class LocalPerformancePeer(NativeTunPeer):
+    def handle(self,raw):
+        raw.setsockopt(socket.IPPROTO_TCP,socket.TCP_NODELAY,1)
+        super().handle(raw)
 
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--stable',type=pathlib.Path,required=True);p.add_argument('--baseline',type=pathlib.Path,required=True);p.add_argument('--candidate',type=pathlib.Path,required=True);p.add_argument('--output',type=pathlib.Path,required=True);p.add_argument('--rounds',type=int,default=3);p.add_argument('--bytes',type=int,default=8*1024*1024);p.add_argument('--labels',nargs='+');p.add_argument('--transports',nargs='+',choices=['raw','websocket'],default=['raw','websocket']);a=p.parse_args()
@@ -25,7 +29,7 @@ def main():
     try:
         for transport in a.transports:
             for repetition in range(a.rounds):
-                peer=NativeTunPeer('vless',transport=transport,tls_context=context)
+                peer=LocalPerformancePeer('vless',transport=transport,tls_context=context)
                 try:
                     ordered=labels[repetition%len(labels):]+labels[:repetition%len(labels)]
                     for label,build,mode in ordered:
@@ -44,8 +48,10 @@ def main():
                                             if process.poll() is not None or time.monotonic()>deadline:raise RuntimeError(log.read_text()[-8192:])
                                             time.sleep(.01)
                                         info=json.loads(ready.read_text())
+                                        clients=[]
                                         def connect():
-                                            if mode=='tun':return PacketTCPClient(app)
+                                            if mode=='tun':
+                                                client=PacketTCPClient(app);clients.append(client);return client
                                             s=socket.create_connection(('127.0.0.1',info['port']),10);s.sendall(b'\5\1\0');assert core.exact(s,2)==b'\5\0';s.sendall(b'\5\1\0\1'+socket.inet_aton('203.0.113.9')+b'\1\xbb');assert core.exact(s,10)[1]==0;return s
                                         bench.workload(connect,1024*1024)
                                         def sample(index):
@@ -56,6 +62,7 @@ def main():
                                             return json.loads(path.read_text())
                                         before=sample(1);result=bench.workload(connect,a.bytes);after=sample(2)
                                         result.update(label=label,transport=transport,repetition=repetition,cpu_seconds=after['cpu_seconds']-before['cpu_seconds'],rss_bytes=after['rss_bytes'],peak_rss_bytes=after['peak_rss_bytes'],status='PASS')
+                                        if mode=='tun':result['synthetic_retransmissions_including_warmup']=sum(client.retransmissions for client in clients)
                                         result.update({key:after[key]-before[key] for key in ('voluntary_context_switches','involuntary_context_switches')})
                                         rows.append(result);print(json.dumps(result),flush=True)
                                     finally:

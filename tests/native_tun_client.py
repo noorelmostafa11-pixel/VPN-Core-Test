@@ -13,6 +13,7 @@ class PacketTCPClient:
         self.app=app;self.port=next(_ports);self.timeout=30;self.lock=threading.Condition();self.send_lock=threading.Lock()
         self.next=1001;self.ack=1001;self.window=0;self.remote=None;self.established=False;self.eof=False;self.fin=None
         self.received=bytearray();self.out_of_order={};self.limit=524288;self.error=None;self.stopped=False
+        self.pending=[];self.last_byte=None;self.ack_at=time.monotonic();self.retransmissions=0
         self.app.settimeout(.25);self.reader=threading.Thread(target=self._read,name='synthetic-tcp-app');self.reader.start()
         self._send(self._packet(b'',1000,0,2))
         with self.lock:self._wait(lambda:self.established)
@@ -43,7 +44,17 @@ class PacketTCPClient:
         try:
             while not self.stopped:
                 try:p=self.app.recv(65535)
-                except socket.timeout:continue
+                except socket.timeout:
+                    reply=None
+                    with self.lock:
+                        if self.remote is not None and time.monotonic()-self.ack_at>=.25:
+                            if self.pending:
+                                seq,data=self.pending[0];reply=self._packet(data,seq,self.remote,24)
+                            elif self.window==0 and self.last_byte is not None:
+                                reply=self._packet(self.last_byte,self.next-1,self.remote,24)
+                            if reply:self.ack_at=time.monotonic();self.retransmissions+=1
+                    if reply:self._send(reply)
+                    continue
                 if len(p)<40 or p[0]>>4!=4 or p[9]!=6:continue
                 ip=(p[0]&15)*4
                 if len(p)<ip+20:raise RuntimeError('short TCP header')
@@ -52,12 +63,15 @@ class PacketTCPClient:
                 if checksum(p[:ip]) or checksum(p[12:20]+struct.pack('!BBH',0,6,len(p)-ip)+p[ip:]):raise RuntimeError('synthetic response checksum failed')
                 data=p[ip+(offset>>4)*4:];reply=None
                 with self.lock:
-                    if flags&4:raise ConnectionResetError('native TCP endpoint reset')
+                    if flags&4:raise ConnectionResetError(f'native TCP endpoint reset; next={self.next} ack={self.ack} remote={self.remote} queued={len(self.received)} out_of_order={[(k,len(v)) for k,v in self.out_of_order.items()]}')
                     if flags&2:
                         self.remote=(seq+1)&0xffffffff;self.established=True;self.window=window
                         reply=self._packet(b'',self.next,self.remote,16)
                     elif self.remote is not None:
-                        if flags&16 and self.ack<=ack<=self.next:self.ack=ack;self.window=window
+                        if flags&16 and self.ack<=ack<=self.next:
+                            if ack>self.ack:self.ack_at=time.monotonic()
+                            self.ack=ack;self.window=window
+                            self.pending=[(position,payload) for position,payload in self.pending if position+len(payload)>ack]
                         if data:
                             behind=(self.remote-seq)&0xffffffff
                             if behind<len(data):data=data[behind:];seq=self.remote
@@ -83,7 +97,10 @@ class PacketTCPClient:
                 if self.fin is not None:raise BrokenPipeError('application send direction closed')
                 self._wait(lambda:self.ack+self.window>self.next)
                 n=min(1200,len(payload)-position,self.ack+self.window-self.next)
-                seq=self.next;self.next+=n;p=self._packet(payload[position:position+n],seq,self.remote,24)
+                seq=self.next;data=bytes(payload[position:position+n]);self.next+=n
+                self.pending.append((seq,data));self.last_byte=data[-1:]
+                if sum(len(part) for _,part in self.pending)>65535+1200:raise RuntimeError('synthetic send memory limit')
+                p=self._packet(data,seq,self.remote,24)
             self._send(p);position+=n
     def recv(self,size):
         with self.lock:

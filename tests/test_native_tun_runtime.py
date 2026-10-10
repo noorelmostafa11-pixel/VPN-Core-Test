@@ -131,7 +131,7 @@ class NativeRuntimeTests(unittest.TestCase):
                 self.assertEqual(client.recv(1),b'') # server authenticated close_notify
                 payload=bytes(i%251 for i in range(1024*1024));client.sendall(payload);client.shutdown_write()
                 peer.wait(20);self.assertEqual(peer.returncode,0,peer.stderr.read().decode())
-                observed=json.loads(result.read_text());self.assertEqual(observed['status'],'PASS');self.assertEqual(observed['tls_version'],772)
+                observed=json.loads(result.read_text());self.assertEqual(observed['status'],'PASS',json.dumps(observed));self.assertEqual(observed['tls_version'],772)
                 self.assertEqual(observed['bytes'],len(payload));self.assertEqual(observed['sha256'],hashlib.sha256(payload).hexdigest())
                 host.drain();self.assertFalse(host.errors,host.errors)
             finally:

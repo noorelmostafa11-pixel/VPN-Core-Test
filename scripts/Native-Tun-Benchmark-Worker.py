@@ -33,6 +33,7 @@ if a.mode=='tun':
         host.stop()
         for event in host.events:
             if event.get('event')=='tun_flow_failure':print(json.dumps(event),flush=True)
+        print(json.dumps({'final_metrics':[e for e in host.events if e.get('event')=='tun_metrics'][-1:]}),flush=True)
         a.ready.with_suffix('.metrics.json').write_text(json.dumps([e for e in host.events if e.get('event')=='tun_metrics'][-1:]))
 else:
     # Same managed host, same callbacks/thread count, baseline packet-free entry.
