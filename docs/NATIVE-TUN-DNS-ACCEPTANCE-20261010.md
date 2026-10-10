@@ -34,8 +34,8 @@ been established by these tests. The confirmed DNS dependency is addressed here.
 The modified Windows Full TUN passed certificate-verified HTTPS, system DNS
 HTTPS and UDP DNS from both address families. Graceful exit returned zero,
 removed the owned WFP provider, and restored the original physical route/DNS
-fingerprint. Additional final-build acceptance includes TCP DNS, a 1 MiB
-verified download and explicit recovery after a deliberately crashed test owner.
+fingerprint. Additional final-build acceptance includes TCP DNS, a complete official archive
+verified by its published SHA256 and explicit recovery after a deliberately crashed test owner.
 These final results must be read from the matching build report, not assumed from
 this preliminary source report.
 

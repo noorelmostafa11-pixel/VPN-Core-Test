@@ -75,11 +75,14 @@ def query_tcp_dns(resolver):
         return {'status':'PASS','pipelined_queries':2,'response_bytes':sizes}
 
 def download():
+    # A complete, pinned official archive avoids a speed site's geo/bot policy.
+    url='https://www.wintun.net/builds/wintun-0.14.1.zip'
+    expected='07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51'
     opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),urllib.request.HTTPSHandler(context=ssl.create_default_context()))
-    with opener.open('https://speed.cloudflare.com/__down?bytes=1048576',timeout=15) as response:
-        data=response.read(1048577)
-        if response.status!=200 or len(data)!=1048576:raise ValueError('Verified download size mismatch')
-        return {'status':'PASS','http_status':200,'body_bytes':len(data),'body_sha256':hashlib.sha256(data).hexdigest(),'certificate_verified':True}
+    with opener.open(url,timeout=15) as response:
+        data=response.read(4194305);digest=hashlib.sha256(data).hexdigest()
+        if response.status!=200 or len(data)>4194304 or digest!=expected:raise ValueError('Official download hash mismatch')
+        return {'status':'PASS','http_status':200,'body_bytes':len(data),'body_sha256':digest,'certificate_verified':True,'official_sha256_verified':True}
 
 
 def observe(operation):
@@ -132,7 +135,7 @@ def main():
                     report['tests']['system_dns_https']=observe(lambda:https('https://example.com/',b'Example Domain'))
                     report['tests']['ipv4_tcp_dns']=observe(lambda:query_tcp_dns('9.9.9.9' if args.legacy_dns else '198.18.0.53'))
                     report['tests']['ipv6_tcp_dns']=observe(lambda:query_tcp_dns('2620:fe::fe' if args.legacy_dns else 'fd71:5650::53'))
-                    report['tests']['download_1mib']=observe(lambda:download())
+                    report['tests']['official_archive_download']=observe(lambda:download())
                     if args.crash_recovery:
                         process.kill();process.wait(timeout=10)
                         report['guard_survived_crash']=owns_guard()
