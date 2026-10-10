@@ -33,7 +33,10 @@ func ParseURI(raw string)(Node,error){
  n=Node{Protocol:protocol,Address:u.Hostname(),Port:uint16(port),Transport:"raw"}
  if protocol=="trojan"{n.Password=u.User.Username()}else{n.UUID=u.User.Username();n.Encryption="none"}
  options:=make(map[string]string)
- for key,values:=range u.Query(){
+ parsed,err:=url.ParseQuery(u.RawQuery)
+ if err!=nil{return Node{},fmt.Errorf("nativego: malformed URI query: %w",err)}
+ if u.Path!=""&&u.Path!="/"{return Node{},fmt.Errorf("%w: URI path",ErrUnsupported)}
+ for key,values:=range parsed{
   lower:=strings.ToLower(strings.TrimSpace(key))
   if lower==""||len(values)!=1{return Node{},errors.New("nativego: ambiguous URI option")}
   if _,exists:=options[lower];exists{return Node{},errors.New("nativego: duplicate URI option")}
