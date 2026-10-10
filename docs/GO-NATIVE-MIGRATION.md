@@ -28,16 +28,20 @@ untouched so this work is completely opt-in.
 
 This is only the first implementation slice, not a complete migration:
 
-- No Windows Wintun Go host implementation; no Android VpnService Go binding;
-  no Linux firewall/route-owning host implementation.
+- A Go-only Windows Wintun packet adapter and Linux/Android borrowed-FD adapter
+  are present. Windows adapter build is verified, not its physical-device behavior.
+  Complete Windows WFP/routes/DNS ownership, Android VpnService lifecycle
+  integration and Linux firewall/route-owning host remain unimplemented.
 - No Go-native VMess, Shadowsocks, REALITY, Vision, WebSocket, XHTTP,
   gRPC, QUIC, mKCP or alternate protocol transports yet.
 - No generic UDP proxy relay yet. Only the dedicated owned DNS UDP
   endpoints are served; other UDP destinations fail closed.
 - No final live-node compatibility against stable 0.4.11 and
   no true Windows/Android device tests of the new Go candidate.
-- Building and unit tests prove source-level behavior only. They cannot
-  certify Internet access, kill-switch behavior, release safety or performance.
+- Linux race tests, Windows package tests, Windows/Android cross-builds,
+  repeated gVisor lifecycle, framing, and a controlled authenticated TLS
+  VLESS/Trojan peer passed in GitHub Actions. These do not certify Internet
+  access, kill-switch behavior, release safety or production performance.
 - Config currently uses an explicit Go Node struct; no arbitrary
   original URI should be silently rewritten or downgraded.
 
