@@ -16,7 +16,7 @@ func TestUnsupportedFeaturesFailClosed(t *testing.T){
  good:=Node{Protocol:"vless",Address:"203.0.113.1",Port:443,ServerName:"example.com",Security:"tls",Transport:"raw",UUID:"00112233-4455-6677-8899-aabbccddeeff"}
  cases:=[]Node{}
  a:=good;a.Security="reality";cases=append(cases,a)
- a=good;a.Transport="websocket";cases=append(cases,a)
+ a=good;a.Transport="grpc";cases=append(cases,a)
  a=good;a.Flow="xtls-rprx-vision";cases=append(cases,a)
  a=good;a.Protocol="vmess";cases=append(cases,a)
  a=good;a.Protocol="ss";cases=append(cases,a)
