@@ -75,7 +75,16 @@ func ParseURI(raw string)(Node,error){
  }else if security!="tls"&&security!="reality"{return Node{},fmt.Errorf("%w: unsupported security",ErrUnsupported)}
  n.Security=security
  typ:=strings.ToLower(get("type","network","net"))
- if typ!=""&&typ!="tcp"&&typ!="raw"{return Node{},fmt.Errorf("%w: unsupported transport",ErrUnsupported)}
+ if typ=="ws"||typ=="websocket"{
+  n.Transport="websocket"
+ }else if typ!=""&&typ!="tcp"&&typ!="raw"{
+  return Node{},fmt.Errorf("%w: unsupported transport",ErrUnsupported)
+ }
+ n.WSPath=get("path")
+ n.WSHost=get("host")
+ if n.Transport!="websocket"&&(n.WSPath!=""||n.WSHost!=""){
+  return Node{},fmt.Errorf("%w: unexpected WebSocket options",ErrUnsupported)
+ }
  n.ServerName=get("sni","servername","peer")
  if n.ServerName=="" {
   if _,err:=netip.ParseAddr(n.Address);err!=nil{n.ServerName=n.Address}
