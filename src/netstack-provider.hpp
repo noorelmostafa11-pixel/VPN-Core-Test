@@ -109,7 +109,9 @@ public:
     uint64_t id()const noexcept{return id_;}
     std::mutex& calls()noexcept{return calls_;}
     NetstackAPI& api()noexcept{return api_;}
-    void inject(const Bytes& p){std::lock_guard<std::mutex> lock(calls_);if(api_.inject(id_,p.data(),int(p.size()))!=int(p.size()))throw Failure("PROTOCOL_FAILED: packet rejected","NETSTACK_PACKET_INPUT");}
+    void inject(const uint8_t* p,size_t size){std::lock_guard<std::mutex> lock(calls_);if(size>65535||api_.inject(id_,p,int(size))!=int(size))throw Failure("PROTOCOL_FAILED: packet rejected","NETSTACK_PACKET_INPUT");}
+    void inject(const Bytes& p){inject(p.data(),p.size());}
+    int packet(uint8_t* out,size_t capacity){std::lock_guard<std::mutex> lock(calls_);if(!capacity||capacity>65535)throw Failure("PROTOCOL_FAILED: packet output capacity","NETSTACK_PACKET_OUTPUT");int n=api_.packet(id_,out,int(capacity));if(n==-2)return 0;if(n<0)throw Failure("PROTOCOL_FAILED: packet output","NETSTACK_PACKET_OUTPUT");return n;}
     bool packet(Bytes& p){std::lock_guard<std::mutex> lock(calls_);p.resize(65535);int n=api_.packet(id_,p.data(),int(p.size()));if(n==-2){p.clear();return false;}if(n<0)throw Failure("PROTOCOL_FAILED: packet output","NETSTACK_PACKET_OUTPUT");p.resize(size_t(n));return true;}
     Json metrics(){std::lock_guard<std::mutex> lock(calls_);uint8_t b[4096];int n=api_.metrics(id_,b,sizeof(b));if(n<0)throw Failure("PROTOCOL_FAILED: stack metrics","NETSTACK_METRICS");return json_parse(std::string(reinterpret_cast<char*>(b),size_t(n)));}
 };

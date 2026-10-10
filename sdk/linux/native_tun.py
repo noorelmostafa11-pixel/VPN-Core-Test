@@ -20,8 +20,12 @@ class LinuxPolicy:
     @staticmethod
     def recover():
         result=subprocess.run(['nft','-j','list','table','inet',TABLE],capture_output=True,text=True)
-        if result.returncode:return
-        if COMMENT not in result.stdout:raise RuntimeError('Refusing to remove unowned nftables table')
+        if result.returncode:
+            if 'No such file or directory' in result.stderr:return
+            raise RuntimeError('Cannot inspect firewall ownership; policy retained')
+        document=json.loads(result.stdout)
+        owned=[entry['table'] for entry in document.get('nftables',[]) if isinstance(entry,dict) and 'table' in entry and entry['table'].get('family')=='inet' and entry['table'].get('name')==TABLE]
+        if len(owned)!=1 or owned[0].get('comment')!=COMMENT:raise RuntimeError('Refusing to remove unowned nftables table')
         command('nft','delete','table','inet',TABLE)
     def acquire(self):
         old=subprocess.run(['nft','list','table','inet',TABLE],capture_output=True)
@@ -92,6 +96,6 @@ def main():
         normal=host.result==0
     finally:
         result=host.stop()
-        if normal or result==0:policy.close()
-        else:print('Core failed: network remains blocked. Disconnect with --recover.',file=sys.stderr)
+        if normal and result==0:policy.close()
+        elif policy.acquired:print('Core or network setup failed: network remains blocked. Disconnect with --recover.',file=sys.stderr)
 if __name__=='__main__':main()

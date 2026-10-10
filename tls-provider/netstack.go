@@ -1,8 +1,9 @@
 //go:build netstack
 
 // Experimental packet stack only. Proxy parsing, encryption and transports
-// remain in the project-owned C++ core. All buffers are copied across the ABI;
-// no Go pointer is retained by C++ and no C++ buffer is retained by Go.
+// remain in the project-owned C++ core. Borrowed ABI memory is used only during
+// the call. gVisor copies uploads into owned buffers before returning; no Go
+// pointer is retained by C++ and no C++ buffer is retained by Go.
 package main
 
 /*
@@ -34,6 +35,7 @@ import "C"
 import (
     "bytes"
     "encoding/json"
+    "io"
     "runtime"
     "sync"
     "sync/atomic"
@@ -60,24 +62,33 @@ type tunFlow struct {
     // UDP is peeked before consumption, so an undersized ABI buffer never
     // silently truncates a datagram. Calls for one stack are serialized.
 }
+type tunLink struct {
+    *channel.Endpoint
+    unqueued atomic.Uint64
+}
+func (l *tunLink) WritePackets(packets stack.PacketBufferList) (int,tcpip.Error) {
+    n,err:=l.Endpoint.WritePackets(packets)
+    if n<packets.Len(){l.unqueued.Add(uint64(packets.Len()-n))}
+    return n,err // preserve the pinned link's congestion/error behavior
+}
 type tunStack struct {
     mu sync.Mutex
     stack *stack.Stack
-    link *channel.Endpoint
+    link *tunLink
     closed bool
     limit int
     reserved int
     workers sync.WaitGroup
     flows map[uint64]*tunFlow
     pending []*tunFlow
-    packet []byte
-    scratch [65535]byte
+    packet *stack.PacketBuffer // one owned reference, including undersized-output retries
     next uint64
     copiedIn atomic.Uint64
     copiedOut atomic.Uint64
     calls atomic.Uint64
     totalCalls atomic.Uint64
     wakeSignals atomic.Uint64
+    rejectedFlows atomic.Uint64
     wakeMu sync.Mutex
     wakeHandle int64
     notification *channel.NotificationHandle
@@ -110,7 +121,8 @@ func vpn_tun_set_wakeup(id C.uint64_t, handle C.int64_t) C.int {
 func (t *tunStack) reserve() bool {
     t.mu.Lock()
     defer t.mu.Unlock()
-    if t.closed || len(t.flows)+t.reserved >= t.limit { return false }
+    if t.closed {return false}
+    if len(t.flows)+t.reserved >= t.limit {t.rejectedFlows.Add(1);return false}
     t.reserved++
     // Add is protected by the same lock as the close transition.
     t.workers.Add(1)
@@ -136,7 +148,7 @@ func vpn_tun_abi_version() C.int { return 1 }
 func vpn_tun_create(mtu C.int, maximum C.int) C.uint64_t {
     if mtu < 1280 || mtu > 65535 || maximum < 1 || maximum > 256 { return 0 }
     t := &tunStack{limit:int(maximum), flows:make(map[uint64]*tunFlow), wakeHandle:-1}
-    t.link = channel.New(256, uint32(mtu), "")
+    t.link = &tunLink{Endpoint:channel.New(256, uint32(mtu), "")}
     t.stack = stack.New(stack.Options{
         NetworkProtocols:[]stack.NetworkProtocolFactory{ipv4.NewProtocol, ipv6.NewProtocol},
         TransportProtocols:[]stack.TransportProtocolFactory{tcp.NewProtocol, udp.NewProtocol},
@@ -194,7 +206,8 @@ func vpn_tun_close(id C.uint64_t) {
     t.mu.Lock()
     t.closed=true
     for _,f:=range t.flows {f.endpoint.Abort()}
-    t.flows=nil; t.pending=nil; t.packet=nil
+    t.flows=nil; t.pending=nil
+    if t.packet!=nil {t.packet.DecRef();t.packet=nil}
     t.mu.Unlock()
     t.stack.Close()
     for _,ep:=range t.stack.CleanupEndpoints(){ep.Abort()}
@@ -209,7 +222,9 @@ func vpn_tun_inject(id C.uint64_t, data *C.uint8_t, size C.int) C.int {
     if t==nil || data==nil || size<20 || size>65535 {return -1}
     t.totalCalls.Add(1)
     // Never hold t.mu across synchronous transport handlers.
-    p:=C.GoBytes(unsafe.Pointer(data),size)
+    // MakeWithData copies into a pooled Go-owned View. An intermediate
+    // C.GoBytes allocation copied this entire packet a second time.
+    p:=unsafe.Slice((*byte)(unsafe.Pointer(data)),int(size))
     protocol:=header.IPv4ProtocolNumber
     switch p[0]>>4 {case 4: case 6: if size<40{return -1}; protocol=header.IPv6ProtocolNumber; default:return -1}
     pkt:=stack.NewPacketBuffer(stack.PacketBufferOptions{Payload:buffer.MakeWithData(p)})
@@ -226,13 +241,26 @@ func vpn_tun_packet(id C.uint64_t, out *C.uint8_t, capacity C.int) C.int {
     t.totalCalls.Add(1)
     t.mu.Lock();defer t.mu.Unlock()
     if t.closed{return -1}
-    if len(t.packet)==0 {
-        p:=t.link.Read(); if p==nil{return -2}
-        v:=p.ToView();t.packet=append([]byte(nil),v.AsSlice()...);v.Release();p.DecRef()
+    if t.packet==nil {t.packet=t.link.Read();if t.packet==nil{return -2}}
+    n:=copyTunPacket(t.packet,unsafe.Slice((*byte)(unsafe.Pointer(out)),int(capacity)))
+    if n==-3{return -3} // retain the packet, without changing output
+    t.packet.DecRef();t.packet=nil
+    if n<0{return -1}
+    t.calls.Add(1);t.copiedOut.Add(uint64(n));return C.int(n)
+}
+
+// Copy discontiguous headers/payload directly into the caller's output. Do not
+// flatten into ToView plus another []byte, or retain any foreign memory.
+func copyTunPacket(p *stack.PacketBuffer, out []byte) int {
+    size:=p.Size();if size>len(out){return -3}
+    views,skip:=p.AsViewList();written:=0
+    for v:=views.Front();v!=nil;v=v.Next() {
+        b:=v.AsSlice()
+        if skip>=len(b){skip-=len(b);continue}
+        b=b[skip:];skip=0
+        written+=copy(out[written:size],b)
     }
-    if len(t.packet)>int(capacity){return -3}
-    n:=copy(unsafe.Slice((*byte)(unsafe.Pointer(out)),int(capacity)),t.packet)
-    t.packet=nil;t.calls.Add(1);t.copiedOut.Add(uint64(n));return C.int(n)
+    if written!=size{return -1};return written
 }
 
 //export vpn_tun_accept
@@ -259,13 +287,13 @@ func vpn_tun_read(id C.uint64_t, flow C.uint64_t, out *C.uint8_t, capacity C.int
     t.totalCalls.Add(1)
     t.mu.Lock();defer t.mu.Unlock()
     f:=t.flows[uint64(flow)];if f==nil{return -1}
-    // A fixed-size Go-owned buffer bounds copying and does not expose C memory
-    // to a retained endpoint. UDP empty datagrams remain distinct from EOF.
-    b:=t.scratch[:int(capacity)];w:=tcpip.SliceWriter(b)
+    // Endpoint.Read synchronously writes into io.Writer; it never retains it.
+    // Peek only the UDP length, without modifying an undersized caller buffer.
+    b:=unsafe.Slice((*byte)(unsafe.Pointer(out)),int(capacity));w:=tcpip.SliceWriter(b)
     opts:=tcpip.ReadOptions{}
     if f.protocol==17 {
         opts.Peek=true
-        peek,err:=f.endpoint.Read(&w,opts)
+        peek,err:=f.endpoint.Read(io.Discard,opts)
         if _,ok:=err.(*tcpip.ErrWouldBlock);ok{return -2}
         if err!=nil{return -1}
         if peek.Total>int(capacity){return -3}
@@ -275,7 +303,6 @@ func vpn_tun_read(id C.uint64_t, flow C.uint64_t, out *C.uint8_t, capacity C.int
     if _,ok:=err.(*tcpip.ErrWouldBlock);ok{return -2}
     if _,ok:=err.(*tcpip.ErrClosedForReceive);ok{return -4}
     if err!=nil{return -1}
-    copy(unsafe.Slice((*byte)(unsafe.Pointer(out)),int(capacity)),b[:r.Count])
     t.calls.Add(1);t.copiedOut.Add(uint64(r.Count));return C.int(r.Count)
 }
 
@@ -289,7 +316,9 @@ func vpn_tun_write(id C.uint64_t, flow C.uint64_t, data *C.uint8_t, size C.int) 
         maximum:=65507;if len(f.address)==16 {maximum=65527}
         if int(size)>maximum{return -3} // complete UDP record; never truncate
     }
-    p:=C.GoBytes(unsafe.Pointer(data),size)
+    // Both pinned TCP/UDP endpoints synchronously read Payloader into their
+    // own buffer.Buffer before queuing data. No borrowed slice escapes Write.
+    p:=unsafe.Slice((*byte)(unsafe.Pointer(data)),int(size))
     n,err:=f.endpoint.Write(bytes.NewReader(p),tcpip.WriteOptions{Atomic:f.protocol==17})
     if _,ok:=err.(*tcpip.ErrWouldBlock);ok{return -2}
     if _,ok:=err.(*tcpip.ErrNoBufferSpace);ok{return -2}
@@ -326,7 +355,8 @@ func vpn_tun_metrics(id C.uint64_t, out *C.uint8_t, capacity C.int) C.int {
     t:=tunLookup(id);if t==nil || out==nil || capacity<1{return -1}
     var memory runtime.MemStats;runtime.ReadMemStats(&memory)
     t.mu.Lock();active:=len(t.flows);reserved:=t.reserved;t.mu.Unlock()
-    b,_:=json.Marshal(map[string]uint64{"wakeup_notifications":t.wakeSignals.Load(),"abi_calls":t.calls.Load(),"abi_total_calls":t.totalCalls.Load(),"copied_to_go_bytes":t.copiedIn.Load(),"copied_to_cpp_bytes":t.copiedOut.Load(),"active_flows":uint64(active),"pending_handshakes":uint64(reserved),"go_heap_alloc_bytes":memory.HeapAlloc,"go_heap_sys_bytes":memory.HeapSys,"go_total_alloc_bytes":memory.TotalAlloc,"go_goroutines":uint64(runtime.NumGoroutine()),"go_gc_count":uint64(memory.NumGC)})
+    stats:=t.stack.Stats()
+    b,_:=json.Marshal(map[string]uint64{"wakeup_notifications":t.wakeSignals.Load(),"abi_calls":t.calls.Load(),"abi_total_calls":t.totalCalls.Load(),"copied_to_go_bytes":t.copiedIn.Load(),"copied_to_cpp_bytes":t.copiedOut.Load(),"active_flows":uint64(active),"pending_handshakes":uint64(reserved),"go_heap_alloc_bytes":memory.HeapAlloc,"go_heap_sys_bytes":memory.HeapSys,"go_total_alloc_bytes":memory.TotalAlloc,"go_goroutines":uint64(runtime.NumGoroutine()),"go_gc_count":uint64(memory.NumGC),"go_rejected_flows":t.rejectedFlows.Load(),"go_udp_receive_dropped_records":stats.UDP.ReceiveBufferErrors.Value(),"go_link_output_unqueued_packets":t.link.unqueued.Load(),"go_transport_dropped_packets":stats.DroppedPackets.Value()})
     if len(b)>int(capacity){return -3}
     return C.int(copy(unsafe.Slice((*byte)(unsafe.Pointer(out)),int(capacity)),b))
 }

@@ -10,6 +10,7 @@ from collections import deque
 
 Protect=c.CFUNCTYPE(c.c_int,c.c_int64,c.c_void_p)
 Resolve=c.CFUNCTYPE(c.c_int,c.c_char_p,c.c_void_p,c.c_int,c.c_void_p)
+_run_lease=threading.Lock() # one managed host owns run/Stop/events through join
 class Options(c.Structure):
     _fields_=[('size',c.c_uint32),('abi',c.c_uint32),('fd',c.c_int64),('kind',c.c_uint32),('mtu',c.c_uint32),('maximum_flows',c.c_uint32),('reserved',c.c_uint32),('interface_name',c.c_char_p),('wintun_path',c.c_char_p)]
 class TunHost:
@@ -41,6 +42,7 @@ class TunHost:
             except Exception:return -1
         self.protect_callback=Protect(p);self.resolve_callback=Resolve(r)
         self.thread=threading.Thread(target=self._run,name='vpn-native-tun')
+        self._lease=False;self._joined=False
     def bootstrap_targets(self):
         self.core.vpn_core_bootstrap_targets.argtypes=[c.c_char_p,c.c_void_p,c.c_uint32]
         size=self.core.vpn_core_bootstrap_targets(self.config,None,0)
@@ -57,15 +59,25 @@ class TunHost:
             event=json.loads(data.raw[:n]);self.events.append(event)
             if 'failure' in event.get('event',''):self.errors.append(event)
     def start(self,timeout=10):
-        self.thread.start();deadline=time.monotonic()+timeout
+        if not _run_lease.acquire(blocking=False):raise RuntimeError('Another managed core run still owns its worker/hooks')
+        self._lease=True
+        if self.core.vpn_core_get_state()!=0:
+            self._release_lease();raise RuntimeError('Core already active; this host owns no run')
+        try:self.thread.start()
+        except BaseException:self._release_lease();raise
+        deadline=time.monotonic()+timeout
         while not self.core.vpn_core_tun_ready():
             self.drain()
             if not self.thread.is_alive() or time.monotonic()>deadline:
                 self.stop();raise RuntimeError('TUN startup failed: '+str(self.errors))
             time.sleep(.005)
         self.drain();return next(e for e in self.events if e.get('event')=='tun_ready')
-    def request_stop(self):self.core.vpn_core_stop()
+    def _release_lease(self):
+        if self._lease:self._lease=False;_run_lease.release()
+    def request_stop(self):
+        if self.result is None and self.thread.is_alive():self.core.vpn_core_stop()
     def stop(self,timeout=10):
+        if self._joined or self.thread.ident is None:return self.result
         deadline=time.monotonic()+timeout
         self.request_stop()
         # A worker can still be entering the blocking C ABI after the first
@@ -73,6 +85,9 @@ class TunHost:
         while self.thread.ident and self.thread.is_alive() and time.monotonic()<deadline:
             self.request_stop();self.thread.join(min(.02,max(0,deadline-time.monotonic())))
         if self.thread.is_alive():raise RuntimeError('Stop timed out; keep descriptor and hooks alive')
+        if self.result==2:
+            self._joined=True;self._release_lease();return self.result
         self.drain()
         if self.core.vpn_core_pending_callbacks()!=0:raise RuntimeError('Undrained network hook leases')
+        self._joined=True;self._release_lease()
         return self.result

@@ -39,6 +39,7 @@ public:
         // No response datagram can precede the first UDP payload.
         if(!initial.empty())process(initial);
     }
+    Handle carrier_handle()const noexcept{return provider_?invalid_socket:server_.get();}
     size_t pending_bytes(){return up_.size()+pending_.size()+tls_.pending_bytes()+transport_.pending_bytes()+protocol_.pending_bytes();}
     void send(const Bytes& payload){auto wire=codec_.encode(protocol_,payload);
         if(provider_){if(pending_.size()+wire.size()>524288)throw Failure("RELAY_FAILED: UDP upload buffer","UDP_BUFFER_LIMIT");append(pending_,wire);}

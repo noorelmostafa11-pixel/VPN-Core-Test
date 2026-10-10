@@ -21,6 +21,7 @@ class NativeTunDevice {
     void close()noexcept{if(session_){api_->end_session(session_);session_=nullptr;}if(adapter_){api_->close_adapter(adapter_);adapter_=nullptr;}}
 #else
     int fd_=-1;
+    std::array<uint8_t,65535> input_; // initialized by read, never zero-filled per packet
     void close()noexcept{if(fd_>=0){::close(fd_);fd_=-1;}}
 #endif
     std::string name_;
@@ -62,24 +63,28 @@ public:
     NativeTunDevice(const NativeTunDevice&)=delete;
     const std::string& name()const noexcept{return name_;}
     uint64_t luid()const noexcept{return luid_;}
-    bool read(Bytes& p,unsigned wait_ms=5,int64_t wake_handle=-1) {
-        p.clear();check_cancelled();
+    template<class Consume>bool read_packet(Consume&& consume,unsigned wait_ms=5,int64_t wake_handle=-1) {
+        check_cancelled();
 #ifdef _WIN32
         DWORD size=0;BYTE* data=api_->receive_packet(session_,&size);
         if(!data){DWORD error=GetLastError();if(error==ERROR_NO_MORE_ITEMS){HANDLE events[]{api_->read_event(session_),reinterpret_cast<HANDLE>(uintptr_t(wake_handle))};auto r=wake_handle>=0?WaitForMultipleObjects(2,events,FALSE,wait_ms):WaitForSingleObject(events[0],wait_ms);if(r==WAIT_FAILED)throw Failure("RELAY_FAILED: Wintun wait","TUN_READ_WAIT",GetLastError());return false;}throw Failure("RELAY_FAILED: Wintun receive","TUN_READ",error);}
-        try{p.assign(data,data+size);}catch(...){api_->release_packet(session_,data);throw;}api_->release_packet(session_,data);return true;
+        // Wintun lends the ring slot until release. The synchronous consumer
+        // copies into gVisor-owned storage before the slot is returned.
+        try{consume(data,size);}catch(...){api_->release_packet(session_,data);throw;}api_->release_packet(session_,data);return true;
 #else
         pollfd events[2]{{fd_,POLLIN,0},{int(wake_handle),POLLIN,0}};int ready=::poll(events,wake_handle>=0?2:1,int(wait_ms));if(ready<0){if(errno==EINTR)return false;throw Failure("RELAY_FAILED: TUN wait","TUN_READ_WAIT",errno);}if(!ready||!(events[0].revents&(POLLIN|POLLERR|POLLHUP)))return false;
-        p.resize(65535);auto n=::read(fd_,p.data(),p.size());if(n<0){p.clear();if(errno==EAGAIN||errno==EWOULDBLOCK||errno==EINTR)return false;throw Failure("RELAY_FAILED: TUN read","TUN_READ",errno);}if(n==0)throw Failure("RELAY_FAILED: TUN device closed","TUN_DEVICE_CLOSED");p.resize(size_t(n));return true;
+        auto n=::read(fd_,input_.data(),input_.size());if(n<0){if(errno==EAGAIN||errno==EWOULDBLOCK||errno==EINTR)return false;throw Failure("RELAY_FAILED: TUN read","TUN_READ",errno);}if(n==0)throw Failure("RELAY_FAILED: TUN device closed","TUN_DEVICE_CLOSED");consume(input_.data(),size_t(n));return true;
 #endif
     }
-    bool write(const Bytes& p) {
-        check_cancelled();if(p.empty()||p.size()>65535)throw Failure("RELAY_FAILED: TUN packet size","TUN_PACKET_SIZE");
+    bool read(Bytes& p,unsigned wait_ms=5,int64_t wake_handle=-1){p.clear();return read_packet([&](const uint8_t* data,size_t size){p.assign(data,data+size);},wait_ms,wake_handle);}
+    bool write(const uint8_t* p,size_t size) {
+        check_cancelled();if(!p||!size||size>65535)throw Failure("RELAY_FAILED: TUN packet size","TUN_PACKET_SIZE");
 #ifdef _WIN32
-        BYTE* data=api_->allocate_packet(session_,DWORD(p.size()));if(!data){DWORD e=GetLastError();if(e==ERROR_BUFFER_OVERFLOW)return false;throw Failure("RELAY_FAILED: Wintun allocate","TUN_WRITE",e);}std::memcpy(data,p.data(),p.size());api_->send_packet(session_,data);return true;
+        BYTE* data=api_->allocate_packet(session_,DWORD(size));if(!data){DWORD e=GetLastError();if(e==ERROR_BUFFER_OVERFLOW)return false;throw Failure("RELAY_FAILED: Wintun allocate","TUN_WRITE",e);}std::memcpy(data,p,size);api_->send_packet(session_,data);return true;
 #else
-        auto n=::write(fd_,p.data(),p.size());if(n<0){if(errno==EAGAIN||errno==EWOULDBLOCK||errno==EINTR)return false;throw Failure("RELAY_FAILED: TUN write","TUN_WRITE",errno);}if(n!=ssize_t(p.size()))throw Failure("RELAY_FAILED: partial TUN datagram","TUN_WRITE_PARTIAL");return true;
+        auto n=::write(fd_,p,size);if(n<0){if(errno==EAGAIN||errno==EWOULDBLOCK||errno==EINTR)return false;throw Failure("RELAY_FAILED: TUN write","TUN_WRITE",errno);}if(n!=ssize_t(size))throw Failure("RELAY_FAILED: partial TUN datagram","TUN_WRITE_PARTIAL");return true;
 #endif
     }
+    bool write(const Bytes& p){return write(p.data(),p.size());}
 };
 }

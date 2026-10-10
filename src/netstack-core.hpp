@@ -68,13 +68,15 @@ public:
     const Bytes& received()const noexcept{return down_;}
     void consume(size_t n){if(n>down_.size())throw std::logic_error("receive accounting");down_.erase(down_.begin(),down_.begin()+std::ptrdiff_t(n));}
     bool eof()const noexcept{return eof_;}
-    void poll() {
-        check_cancelled();
+    bool upload_drained(){return upload_closed_&&finished_&&up_.empty()&&pending_.empty()&&!protocol_.pending_bytes();}
+    Handle carrier_handle()const noexcept{return provider_path_?invalid_socket:server_.get();}
+    bool poll() {
+        check_cancelled();bool progress=false;const auto before_down=down_.size(),before_up=up_.size(),before_pending=pending_.size();const bool before_eof=eof_;
         if(provider_path_) {
             if(down_.size()<524288-65536)decode(provider_.read());
             if(!pending_.empty()&&provider_.write(pending_))pending_.clear();
             if(upload_closed_&&!finished_&&pending_.empty()&&!protocol_.pending_bytes()){provider_.finish();finished_=true;}
-            eof_=provider_.closed()||protocol_.closed();return;
+            eof_=provider_.closed()||protocol_.closed();return down_.size()!=before_down||pending_.size()!=before_pending||eof_!=before_eof;
         }
         if(down_.size()<524288-65536)decode(tls_.feed(nullptr,0));
         if(upload_closed_&&!finished_&&!protocol_.pending_bytes()) {
@@ -95,9 +97,10 @@ public:
         if(!eof_)for(unsigned i=0;i<16&&down_.size()<524288-65536;++i) {
             uint8_t b[16384];int n=server_.receive(b,sizeof(b));if(n==-2)break;
             if(n==0){eof_=true;if(tls_.secure()&&!tls_.direct_receive()&&!tls_.closed())throw Failure("TLS_FAILED: truncated stream","TLS_TRUNCATED");break;}
-            decode(tls_.feed(b,size_t(n)));
+            progress=true;decode(tls_.feed(b,size_t(n)));
         }
         eof_=eof_||tls_.closed()||transport_.closed()||protocol_.closed();
+        return progress||down_.size()!=before_down||up_.size()!=before_up||eof_!=before_eof;
     }
 };
 
@@ -111,12 +114,26 @@ class NetstackCoreBridge {
         std::condition_variable wake;
 #ifdef _WIN32
         HANDLE packet_event=nullptr,idle_timer=nullptr;
+        WSAEVENT carrier_event=WSA_INVALID_EVENT;
+        Handle carrier=invalid_socket;
         Session(){
             packet_event=CreateEventW(nullptr,FALSE,FALSE,nullptr);
-            idle_timer=CreateWaitableTimerExW(nullptr,nullptr,0x00000002,TIMER_MODIFY_STATE|SYNCHRONIZE);
-            if(!packet_event||!idle_timer){auto error=GetLastError();if(packet_event)CloseHandle(packet_event);if(idle_timer)CloseHandle(idle_timer);throw Failure("STARTUP_FAILED: precise flow wait","NETSTACK_FLOW_WAIT",error);}
+            if(!packet_event)throw Failure("STARTUP_FAILED: flow wake event","NETSTACK_FLOW_WAIT",GetLastError());
         }
 #endif
+        void watch_carrier(Handle socket){
+#ifdef _WIN32
+            if(socket==invalid_socket){ // asynchronous providers retain bounded polling
+                idle_timer=CreateWaitableTimerExW(nullptr,nullptr,0x00000002,TIMER_MODIFY_STATE|SYNCHRONIZE);
+                if(!idle_timer)throw Failure("STARTUP_FAILED: precise flow wait","NETSTACK_FLOW_WAIT",GetLastError());return;
+            }
+            carrier_event=WSACreateEvent();if(carrier_event==WSA_INVALID_EVENT)throw Failure("STARTUP_FAILED: carrier event","NETSTACK_CARRIER_EVENT",WSAGetLastError());
+            if(WSAEventSelect(socket,carrier_event,FD_READ|FD_WRITE|FD_CLOSE))throw Failure("STARTUP_FAILED: carrier readiness","NETSTACK_CARRIER_EVENT",WSAGetLastError());
+            carrier=socket;
+#else
+            (void)socket;
+#endif
+        }
         void notify()noexcept{
 #ifdef _WIN32
             SetEvent(packet_event);
@@ -127,6 +144,14 @@ class NetstackCoreBridge {
         void idle(uint64_t observed){
 #ifdef _WIN32
             if(stop||stopping||packet_wakes.load()!=observed)return;
+            if(carrier!=invalid_socket){
+                // Network readiness and injected packets wake this specific
+                // worker. The timeout only bounds cancellation/idle checks.
+                HANDLE events[]{packet_event,carrier_event};auto result=WaitForMultipleObjects(2,events,FALSE,20);
+                if(result==WAIT_FAILED)throw Failure("RELAY_FAILED: carrier wait","NETSTACK_FLOW_WAIT",GetLastError());
+                if(result==WAIT_OBJECT_0+1){WSANETWORKEVENTS network{};if(WSAEnumNetworkEvents(carrier,carrier_event,&network))throw Failure("RELAY_FAILED: carrier events","NETSTACK_CARRIER_EVENT",WSAGetLastError());}
+                return;
+            }
             LARGE_INTEGER due{};due.QuadPart=-10000; // one-shot 1 ms; no global timer-resolution change
             if(!SetWaitableTimer(idle_timer,&due,0,nullptr,nullptr,FALSE))throw Failure("RELAY_FAILED: flow timer","NETSTACK_FLOW_TIMER",GetLastError());
             HANDLE events[]{packet_event,idle_timer};auto result=WaitForMultipleObjects(2,events,FALSE,INFINITE);CancelWaitableTimer(idle_timer);
@@ -138,7 +163,8 @@ class NetstackCoreBridge {
         }
         ~Session(){stop=true;notify();if(worker.joinable())worker.join();
 #ifdef _WIN32
-            CloseHandle(idle_timer);CloseHandle(packet_event);
+            if(carrier_event!=WSA_INVALID_EVENT)WSACloseEvent(carrier_event);
+            if(idle_timer)CloseHandle(idle_timer);CloseHandle(packet_event);
 #endif
         }
     };
@@ -147,7 +173,7 @@ class NetstackCoreBridge {
     size_t maximum_;
     std::map<uint64_t,std::unique_ptr<Session>> sessions_;
     std::function<void(uint64_t,const std::string&)> diagnostic_;
-    std::atomic<uint64_t> upload_{0},download_{0},udp_dropped_{0},failures_{0},cancelled_{0};
+    std::atomic<uint64_t> upload_{0},download_{0},udp_dropped_{0},failures_{0},cancelled_{0},rejected_{0};
     template<class F>auto call(F f){std::lock_guard<std::mutex> lock(packets_.calls());return f(packets_.api(),packets_.id());}
     void worker(Session& s)noexcept {
         bool graceful=false,cancelled=false;
@@ -160,6 +186,7 @@ class NetstackCoreBridge {
             if(s.flow.protocol==6)stream=std::make_unique<PacketProtocolStream>(config_,destination);
             else if(s.flow.protocol==17){if(config_.protocol=="ss"){socket=connect_udp_server(config_);ss=std::make_unique<ShadowsocksUdp>(config_);}else udp=std::make_unique<UdpTunnel>(config_,destination,s.flow.address_size==16?65527:65507);}
             else throw Failure("PROTOCOL_FAILED: flow protocol","NETSTACK_FLOW_PROTOCOL");
+            s.watch_carrier(stream?stream->carrier_handle():udp?udp->carrier_handle():socket.get());
             Bytes upload,ss_wire;bool upload_present=false,input_eof=false,output_eof=false;
             std::deque<Bytes> replies;size_t reply_bytes=0;auto last=Clock::now();
             while(!s.stop&&!stopping) {
@@ -175,14 +202,14 @@ class NetstackCoreBridge {
                 }
                 if(stream) {
                     if(upload_present&&stream->write(upload)){upload_+=upload.size();upload.clear();upload_present=false;progress=true;}
-                    stream->poll();const auto& data=stream->received();
+                    progress=stream->poll()||progress;const auto& data=stream->received();
                     if(!data.empty()) {
                         int n=call([&](NetstackAPI& a,uint64_t id){return a.write(id,s.flow.id,data.data(),int(std::min(data.size(),size_t(65507))));});
                         if(n>0){stream->consume(size_t(n));download_+=uint64_t(n);progress=true;}
                         else if(n!=-2&&n!=0)throw Failure("RELAY_FAILED: flow write","NETSTACK_FLOW_WRITE");
                     }
                     if(stream->eof()&&stream->received().empty()&&!output_eof){if(call([&](NetstackAPI& a,uint64_t id){return a.shutdown_write(id,s.flow.id);}))throw Failure("RELAY_FAILED: half-close","NETSTACK_HALF_CLOSE");output_eof=true;progress=true;}
-                    if(input_eof&&output_eof){graceful=true;break;}
+                    if(input_eof&&output_eof&&stream->upload_drained()){graceful=true;break;}
                 } else {
                     if(upload_present) {
                         if(ss) {
@@ -194,7 +221,7 @@ class NetstackCoreBridge {
                     }
                     std::vector<Datagram> incoming;
                     if(ss){uint8_t b[65535];int n=socket.receive(b,sizeof(b));if(n>=0)incoming.push_back(ss->decode(Bytes(b,b+n)));}
-                    else incoming=udp->poll();
+                    else {auto queued=udp->pending_bytes();incoming=udp->poll();if(udp->pending_bytes()!=queued)progress=true;}
                     for(auto& d:incoming) {
                         if(d.address!=destination)throw Failure("PROTOCOL_FAILED: wrong UDP endpoint","NETSTACK_UDP_ENDPOINT");
                         // UDP cannot backpressure its remote sender. Drop newest
@@ -237,14 +264,14 @@ public:
         for(auto& pair:sessions_){++pair.second->packet_wakes;pair.second->notify();}
     }
     size_t active_sessions()const noexcept{return sessions_.size();}
-    Json metrics(){Json j=packets_.metrics();j["cpp_uploaded_bytes"]=Json::integer(upload_.load());j["cpp_downloaded_bytes"]=Json::integer(download_.load());j["udp_queue_dropped_records"]=Json::integer(udp_dropped_.load());j["flow_failures"]=Json::integer(failures_.load());j["cancelled_flows"]=Json::integer(cancelled_.load());j["maximum_workers"]=Json::integer(maximum_);return j;}
+    Json metrics(){Json j=packets_.metrics();j["cpp_uploaded_bytes"]=Json::integer(upload_.load());j["cpp_downloaded_bytes"]=Json::integer(download_.load());j["udp_queue_dropped_records"]=Json::integer(udp_dropped_.load());j["flow_failures"]=Json::integer(failures_.load());j["cancelled_flows"]=Json::integer(cancelled_.load());j["cpp_rejected_flows"]=Json::integer(rejected_.load());j["maximum_workers"]=Json::integer(maximum_);return j;}
     void poll() {
         check_cancelled();
         for(auto it=sessions_.begin();it!=sessions_.end();)if(it->second->done){it=sessions_.erase(it);}else ++it;
         for(unsigned i=0;i<16;++i) {
             NetstackFlow flow;int n=call([&](NetstackAPI& a,uint64_t id){return a.accept(id,&flow);});
             if(n==-2)break;if(n!=1)throw Failure("PROTOCOL_FAILED: accept flow","NETSTACK_ACCEPT");
-            if(sessions_.size()>=maximum_){call([&](NetstackAPI& a,uint64_t id){a.drop(id,flow.id);return 0;});continue;}
+            if(sessions_.size()>=maximum_){++rejected_;call([&](NetstackAPI& a,uint64_t id){a.drop(id,flow.id);return 0;});continue;}
             auto s=std::make_unique<Session>();s->flow=flow;auto* state=s.get();
             try{state->worker=std::thread([this,state]{worker(*state);});sessions_.emplace(flow.id,std::move(s));}
             catch(...){call([&](NetstackAPI& a,uint64_t id){a.drop(id,flow.id);return 0;});throw;}

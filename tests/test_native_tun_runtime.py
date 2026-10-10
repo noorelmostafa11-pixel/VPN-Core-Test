@@ -1,5 +1,5 @@
 """Native C ABI cancellation, FD ownership, and nonblocking packet dispatch."""
-import ctypes,os,pathlib,socket,ssl,struct,sys,tempfile,threading,time,unittest
+import ctypes,hashlib,json,os,pathlib,socket,ssl,struct,subprocess,sys,tempfile,threading,time,unittest
 import test_core as core
 import test_expanded as peers
 from native_tun_peer import NativeTunPeer
@@ -90,6 +90,55 @@ class NativeRuntimeTests(unittest.TestCase):
                 release.set();timer.cancel()
                 if host.thread.is_alive():host.stop()
                 app.close();tun.close()
+    def test_completed_host_stop_cannot_cancel_next_host(self):
+        with tempfile.TemporaryDirectory() as td:
+            cfg=pathlib.Path(td)/'node.ini';cfg.write_text(f'node_uri=vless://{peers.ID}@127.0.0.1:9?security=tls&sni=localhost&fp=chrome\n')
+            first_app,first_tun=socket.socketpair(type=socket.SOCK_DGRAM);second_app,second_tun=socket.socketpair(type=socket.SOCK_DGRAM)
+            first=self.host(cfg,first_tun.fileno(),lambda _:['127.0.0.1']);second=self.host(cfg,second_tun.fileno(),lambda _:['127.0.0.1'])
+            try:
+                first.start();self.assertEqual(first.stop(),0);second.start()
+                self.assertEqual(first.stop(),0);first.request_stop();time.sleep(.08)
+                self.assertTrue(second.thread.is_alive());self.assertEqual(second.core.vpn_core_tun_ready(),1)
+            finally:
+                second.stop();first.stop();first_app.close();first_tun.close();second_app.close();second_tun.close()
+    def test_busy_managed_host_rejected_without_stopping_owner(self):
+        with tempfile.TemporaryDirectory() as td:
+            cfg=pathlib.Path(td)/'node.ini';cfg.write_text(f'node_uri=vless://{peers.ID}@127.0.0.1:9?security=tls&sni=localhost&fp=chrome\n')
+            app,tun=socket.socketpair(type=socket.SOCK_DGRAM);host=self.host(cfg,tun.fileno(),lambda _:['127.0.0.1']);other=self.host(cfg,tun.fileno(),lambda _:['127.0.0.1'])
+            try:
+                host.start()
+                with self.assertRaisesRegex(RuntimeError,'owns'):other.start()
+                other.stop();other.request_stop();time.sleep(.08)
+                self.assertTrue(host.thread.is_alive());self.assertEqual(host.core.vpn_core_tun_ready(),1)
+            finally:host.stop();app.close();tun.close()
+    def test_tls13_remote_half_close_drains_backpressured_upload_before_join(self):
+        from native_tun_client import PacketTCPClient
+        with tempfile.TemporaryDirectory() as td:
+            td=pathlib.Path(td);fixture=td/'half-close-peer';ready=td/'ready.json';result=td/'result.json'
+            subprocess.run(['go','build','-o',str(fixture),str(core.ROOT/'tests/native_half_close_peer.go')],check=True,timeout=60)
+            peer=subprocess.Popen([str(fixture),'--cert',str(core.CoreTests.cert),'--key',str(core.CoreTests.key),'--ready',str(ready),'--result',str(result)],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+            deadline=time.monotonic()+10
+            while not ready.exists():
+                self.assertIsNone(peer.poll());self.assertLess(time.monotonic(),deadline);time.sleep(.01)
+            cfg=td/'node.ini';cfg.write_text(f'node_uri=vless://{peers.ID}@127.0.0.1:{json.loads(ready.read_text())["port"]}?security=tls&sni=localhost&fp=chrome\ntls_ca_file={core.CoreTests.ca}\n')
+            app,tun=socket.socketpair(type=socket.SOCK_DGRAM)
+            def protect(fd):
+                with socket.socket(fileno=os.dup(fd)) as sock:sock.setsockopt(socket.SOL_SOCKET,socket.SO_SNDBUF,8192)
+                return True
+            host=TunHost(BUILD,cfg,fd=tun.fileno(),protect=protect,resolve=lambda _:['127.0.0.1']);client=None
+            try:
+                host.start();client=PacketTCPClient(app);self.assertEqual(core.exact(client,len(peers.HELLO)),peers.HELLO)
+                self.assertEqual(client.recv(1),b'') # server authenticated close_notify
+                payload=bytes(i%251 for i in range(1024*1024));client.sendall(payload);client.shutdown_write()
+                peer.wait(20);self.assertEqual(peer.returncode,0,peer.stderr.read().decode())
+                observed=json.loads(result.read_text());self.assertEqual(observed['status'],'PASS');self.assertEqual(observed['tls_version'],772)
+                self.assertEqual(observed['bytes'],len(payload));self.assertEqual(observed['sha256'],hashlib.sha256(payload).hexdigest())
+                host.drain();self.assertFalse(host.errors,host.errors)
+            finally:
+                if client:client.close()
+                host.stop();app.close();tun.close()
+                if peer.poll() is None:peer.kill();peer.wait()
+                peer.stdout.close();peer.stderr.close()
     def test_ipv6_fragmented_udp_preserves_full_maximum_record(self):
         peer=NativeTunPeer('vless',tls_context=self.context)
         source=socket.inet_pton(socket.AF_INET6,'fd71:5650::2');target=socket.inet_pton(socket.AF_INET6,'2001:db8::9')

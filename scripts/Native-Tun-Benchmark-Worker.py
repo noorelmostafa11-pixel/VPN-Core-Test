@@ -4,17 +4,35 @@ No alternate engine or packet forwarding subprocess is used inside this host.
 import argparse,ctypes as c,json,os,pathlib,signal,socket,sys,threading,time
 ROOT=pathlib.Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'sdk/native'))
 from tun_host import TunHost,Protect,Resolve
-p=argparse.ArgumentParser();p.add_argument('--build',required=True,type=pathlib.Path);p.add_argument('--config',required=True,type=pathlib.Path);p.add_argument('--mode',choices=['tun','proxy'],required=True);p.add_argument('--ready',required=True,type=pathlib.Path);a=p.parse_args();a.build=a.build.resolve()
+def write_json(path,value):
+    temporary=path.with_suffix(path.suffix+'.tmp');temporary.write_text(json.dumps(value));temporary.replace(path)
+def sample_self():
+    if sys.platform!='linux':raise RuntimeError('Self-sampling is Linux-only; desktop CI uses the external OS sampler')
+    import resource
+    usage=resource.getrusage(resource.RUSAGE_SELF)
+    status=pathlib.Path('/proc/self/status').read_text().splitlines()
+    values={line.split(':')[0]:int(line.split()[1])*1024 for line in status if line.startswith(('VmRSS:','VmHWM:'))}
+    return {'cpu_seconds':usage.ru_utime+usage.ru_stime,'rss_bytes':values['VmRSS'],'peak_rss_bytes':values['VmHWM'],'voluntary_context_switches':usage.ru_nvcsw,'involuntary_context_switches':usage.ru_nivcsw}
+def control(stop):
+    for line in sys.stdin:
+        line=line.strip()
+        if line.startswith('sample '):
+            index=int(line.split()[1]);write_json(a.ready.with_suffix(f'.sample-{index}.json'),sample_self())
+        else:stop();return
+    stop()
+p=argparse.ArgumentParser();p.add_argument('--build',required=True,type=pathlib.Path);p.add_argument('--config',required=True,type=pathlib.Path);p.add_argument('--mode',choices=['tun','proxy'],required=True);p.add_argument('--fd',type=int,default=-1);p.add_argument('--ready',required=True,type=pathlib.Path);a=p.parse_args();a.build=a.build.resolve()
 if a.mode=='tun':
-    host=TunHost(a.build,a.config,name='vpnbbench',wintun=a.build/'wintun.dll' if os.name=='nt' else None,protect=lambda _:True,resolve=lambda _:['127.0.0.1']);info=host.start()
+    host=TunHost(a.build,a.config,fd=a.fd,name='vpnbbench',wintun=a.build/'wintun.dll' if os.name=='nt' else None,protect=lambda _:True,resolve=lambda _:['127.0.0.1']);info=host.start()
     def stop(*_):host.request_stop()
     signal.signal(signal.SIGTERM,stop);signal.signal(signal.SIGINT,stop)
-    threading.Thread(target=lambda:(sys.stdin.readline(),stop()),daemon=True).start()
-    a.ready.write_text(json.dumps({'mode':'tun','interface':'vpnbbench','pid':os.getpid(),'luid':info['luid']}))
+    threading.Thread(target=lambda:control(stop),daemon=True).start()
+    write_json(a.ready,{'mode':'tun','interface':'vpnbbench','pid':os.getpid(),'luid':info['luid']})
     try:
         while host.thread.is_alive():host.drain();time.sleep(.02)
     finally:
         host.stop()
+        for event in host.events:
+            if event.get('event')=='tun_flow_failure':print(json.dumps(event),flush=True)
         a.ready.with_suffix('.metrics.json').write_text(json.dumps([e for e in host.events if e.get('event')=='tun_metrics'][-1:]))
 else:
     # Same managed host, same callbacks/thread count, baseline packet-free entry.
@@ -28,12 +46,12 @@ else:
     thread=threading.Thread(target=lambda:result.append(core.vpn_core_run_config(os.fsencode(a.config.resolve()),protect,resolve,None)));thread.start()
     def stop(*_):core.vpn_core_stop()
     signal.signal(signal.SIGTERM,stop);signal.signal(signal.SIGINT,stop)
-    threading.Thread(target=lambda:(sys.stdin.readline(),stop()),daemon=True).start()
+    threading.Thread(target=lambda:control(stop),daemon=True).start()
     deadline=time.monotonic()+10
     while not core.vpn_core_get_listen_port():
         if not thread.is_alive() or time.monotonic()>deadline:stop();thread.join();raise RuntimeError('Benchmark proxy startup failed')
         time.sleep(.01)
-    a.ready.write_text(json.dumps({'mode':'proxy','port':core.vpn_core_get_listen_port(),'pid':os.getpid()}))
+    write_json(a.ready,{'mode':'proxy','port':core.vpn_core_get_listen_port(),'pid':os.getpid()})
     try:
         while thread.is_alive():time.sleep(.02)
     finally:stop();thread.join()

@@ -182,14 +182,14 @@ int run(int argc,char** argv,const vpn::NetworkHooks* hooks=nullptr,const vpn_co
             NetstackCoreBridge bridge(config,packets,tun->maximum_flows,[](uint64_t id,const std::string& reason){Json event=Json::obj();diagnostic_identity(event,id);event["event"]=Json(reason=="CANCELLED"?"tun_flow_cancelled":"tun_flow_failure");event["reason_code"]=Json(reason);publish_event(event);});
             struct StopTunBeforeJoin {~StopTunBeforeJoin(){tun_ready=false;stopping=true;core_state.store(VPN_CORE_STOPPING);try{cancel_provider_network();}catch(...){}}} stop_tun;
             tun_ready=true;core_state.store(VPN_CORE_RUNNING);Json ready=Json::obj();ready["event"]=Json("tun_ready");ready["interface"]=Json(device.name());ready["luid"]=Json::integer(device.luid());ready["mtu"]=Json::integer(tun->mtu);publish_event(ready);
-            Bytes input,pending;auto report_at=Clock::now();
+            std::array<uint8_t,65535> pending;size_t pending_size=0;auto report_at=Clock::now();
             try {while(!stopping) {
                 // One bounded pending output packet plus the netstack link ring.
                 // No protocol/TLS creation runs on this packet I/O owner.
                 packets.consume_wakeup();
                 bool output_progress=false,input_progress=false;
-                for(unsigned i=0;i<64;++i){if(pending.empty()&&!packets.packet(pending))break;if(!device.write(pending))break;pending.clear();output_progress=true;}
-                for(unsigned i=0;i<32;++i){if(!device.read(input,(i||output_progress)?0:50,packets.wake_handle()))break;packets.inject(input);input_progress=true;}
+                for(unsigned i=0;i<64;++i){if(!pending_size)pending_size=size_t(packets.packet(pending.data(),pending.size()));if(!pending_size)break;if(!device.write(pending.data(),pending_size))break;pending_size=0;output_progress=true;}
+                for(unsigned i=0;i<32;++i){if(!device.read_packet([&](const uint8_t* data,size_t size){packets.inject(data,size);},(i||output_progress)?0:50,packets.wake_handle()))break;input_progress=true;}
                 bridge.poll();if(input_progress)bridge.notify_packets();
                 if(Clock::now()-report_at>=std::chrono::seconds(1)){Json event=bridge.metrics();event["event"]=Json("tun_metrics");publish_event(event);report_at=Clock::now();}
             }}catch(const Failure& e){if(e.code!="CANCELLED"||!stopping)throw;}
