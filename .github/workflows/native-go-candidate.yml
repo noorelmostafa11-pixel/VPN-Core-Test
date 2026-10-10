@@ -29,3 +29,8 @@ jobs:
       - name: Ensure Go-only package can build without CGO
         working-directory: tls-provider
         run: CGO_ENABLED=0 go build -tags=netstack -mod=vendor ./nativego
+      - name: Cross-compile Windows and Android Go core without CGO
+        working-directory: tls-provider
+        run: |
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -tags=netstack -mod=vendor ./nativego
+          GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build -tags=netstack -mod=vendor ./nativego
