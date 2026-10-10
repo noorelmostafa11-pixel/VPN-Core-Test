@@ -37,6 +37,12 @@ type Node struct {
  Password string `json:"password,omitempty"`
  Flow string `json:"flow,omitempty"`
  Fingerprint string `json:"fingerprint,omitempty"`
+ ALPN []string `json:"alpn,omitempty"`
+ PublicKey string `json:"public_key,omitempty"`
+ ShortID string `json:"short_id,omitempty"`
+ PQVerify string `json:"pq_verify,omitempty"`
+ Pins []string `json:"pins,omitempty"`
+ Names []string `json:"names,omitempty"`
  Encryption string `json:"encryption,omitempty"`
 }
 
@@ -53,7 +59,13 @@ type Dialer struct {
 func NewDialer(n Node, protected ProtectedDial) (*Dialer, error) {
  if protected == nil { return nil, ErrUnprotected }
  if n.Port == 0 || n.Address == "" || n.ServerName == "" { return nil, fmt.Errorf("%w: incomplete node endpoint", ErrUnsupported) }
- if n.Security != "tls" || n.Transport != "raw" || n.Flow != "" || n.Fingerprint != "" { return nil, fmt.Errorf("%w: security/transport/flow", ErrUnsupported) }
+ if (n.Security!="tls"&&n.Security!="reality")||n.Transport!="raw"||n.Flow!="" {return nil,fmt.Errorf("%w: security/transport/flow",ErrUnsupported)}
+ if n.Security=="reality"{
+  if n.Protocol!="vless"||n.PublicKey==""{return nil,fmt.Errorf("%w: REALITY requires VLESS and pinned public key",ErrUnsupported)}
+ }else if n.PublicKey!=""||n.ShortID!=""||n.PQVerify!=""||len(n.Pins)>0||len(n.Names)>0 {
+  return nil,fmt.Errorf("%w: REALITY verification fields on ordinary TLS",ErrUnsupported)
+ }
+ if _,err:=nativeTLSProfile(n.Fingerprint);err!=nil{return nil,fmt.Errorf("%w: TLS fingerprint",ErrUnsupported)}
  if n.Protocol != "vless" && n.Protocol != "trojan" { return nil, fmt.Errorf("%w: protocol %q", ErrUnsupported, n.Protocol) }
  if n.Protocol == "vless" && n.Encryption != "" && n.Encryption != "none" { return nil, fmt.Errorf("%w: VLESS encryption", ErrUnsupported) }
  d := &Dialer{node:n,protected:protected}
@@ -74,13 +86,8 @@ func NewDialer(n Node, protected ProtectedDial) (*Dialer, error) {
 // HTTPS and VPN TLS verification cannot be disabled via configuration.
 func (d *Dialer) DialStream(ctx context.Context, target netip.AddrPort) (net.Conn,error) {
  if !target.IsValid() || target.Port()==0 {return nil,errors.New("nativego: bad target")}
- nodeAddress:=net.JoinHostPort(d.node.Address,fmt.Sprint(d.node.Port))
- raw,err:=d.protected(ctx,"tcp",nodeAddress)
- if err!=nil{return nil,fmt.Errorf("nativego: protected connect: %w",err)}
- conn:=tls.Client(raw,&tls.Config{ServerName:d.node.ServerName,MinVersion:tls.VersionTLS12})
- if deadline,ok:=ctx.Deadline();ok{_ = conn.SetDeadline(deadline)}
- if err=conn.HandshakeContext(ctx);err!=nil{_ = conn.Close();return nil,fmt.Errorf("nativego: TLS authentication: %w",err)}
- _ = conn.SetDeadline(time.Time{})
+ conn,err:=d.secureCarrier(ctx)
+ if err!=nil{return nil,err}
  var frame []byte
  switch d.node.Protocol {
  case "vless": frame=vlessRequest(d.uuid,target)
@@ -89,6 +96,27 @@ func (d *Dialer) DialStream(ctx context.Context, target netip.AddrPort) (net.Con
  }
  if err=writeFull(conn,frame);err!=nil{_=conn.Close();return nil,err}
  if d.node.Protocol=="vless"{return &vlessResponseConn{Conn:conn},nil}
+ return conn,nil
+}
+
+// secureCarrier centralizes the only allowed underlay path for TCP and UDP.
+// Protected socket creation precedes strict TLS/REALITY authentication.
+func(d *Dialer)secureCarrier(ctx context.Context)(net.Conn,error){
+ if d==nil||d.protected==nil{return nil,ErrUnprotected}
+ address:=net.JoinHostPort(d.node.Address,fmt.Sprint(d.node.Port))
+ raw,err:=d.protected(ctx,"tcp",address)
+ if err!=nil{return nil,fmt.Errorf("nativego: protected connect: %w",err)}
+ if deadline,ok:=ctx.Deadline();ok{_=raw.SetDeadline(deadline)}
+ var conn net.Conn
+ if d.node.Security=="tls"&&d.node.Fingerprint==""&&len(d.node.ALPN)==0{
+  secure:=tls.Client(raw,&tls.Config{ServerName:d.node.ServerName,MinVersion:tls.VersionTLS12})
+  err=secure.HandshakeContext(ctx)
+  conn=secure
+ }else{
+  conn,err=nativeHandshake(ctx,raw,d.node)
+ }
+ if err!=nil{_=raw.Close();return nil,fmt.Errorf("nativego: authenticated TLS/REALITY handshake: %w",err)}
+ _=conn.SetDeadline(time.Time{})
  return conn,nil
 }
 
