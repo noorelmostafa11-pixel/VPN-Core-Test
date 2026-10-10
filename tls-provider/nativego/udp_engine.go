@@ -3,6 +3,7 @@ package nativego
 import (
  "bytes"
  "context"
+ "fmt"
  "io"
  "net/netip"
  "sync"
@@ -35,7 +36,7 @@ func(e *Engine)serveTunnelUDP(ctx context.Context,ep tcpip.Endpoint,q *waiter.Qu
    if _,ok:=readErr.(*tcpip.ErrWouldBlock);ok{
     select{case <-ctx.Done():return;case <-stop:return;case <-ch:continue}
    }
-   if readErr!=nil{errorEvents<-readErr;return}
+   if readErr!=nil{errorEvents<-fmt.Errorf("nativego: UDP packet read: %v",readErr);return}
    // Each individual UDP datagram is written as one framed record. No
    // unbounded queue exists between gVisor and the encrypted node.
    if err=session.writeDeadline();err!=nil{errorEvents<-err;return}
@@ -55,8 +56,8 @@ func(e *Engine)serveTunnelUDP(ctx context.Context,ep tcpip.Endpoint,q *waiter.Qu
     if writeErr==nil&&int(n)==len(reply){break}
     if _,ok:=writeErr.(*tcpip.ErrWouldBlock);!ok{
      if _,ok=writeErr.(*tcpip.ErrNoBufferSpace);!ok{
-      if writeErr==nil{writeErr=io.ErrShortWrite}
-      errorEvents<-writeErr;return
+      if writeErr==nil{errorEvents<-io.ErrShortWrite}else{errorEvents<-fmt.Errorf("nativego: UDP packet write: %v",writeErr)}
+      return
      }
     }
     select{case <-ctx.Done():return;case <-stop:return;case <-ch:continue}
