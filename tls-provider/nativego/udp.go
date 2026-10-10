@@ -3,10 +3,8 @@ package nativego
 import (
  "bytes"
  "context"
- "crypto/tls"
  "encoding/binary"
  "errors"
- "fmt"
  "io"
  "net"
  "net/netip"
@@ -30,11 +28,8 @@ func (s *DatagramSession) Close() error { return s.conn.Close() }
 func (d *Dialer) DialDatagram(ctx context.Context, target netip.AddrPort) (*DatagramSession, error) {
  if d==nil || d.protected==nil {return nil,ErrUnprotected}
  if !target.IsValid() || target.Port()==0 {return nil,errors.New("nativego: invalid UDP destination")}
- address:=net.JoinHostPort(d.node.Address,fmt.Sprint(d.node.Port))
- raw,err:=d.protected(ctx,"tcp",address)
- if err!=nil{return nil,fmt.Errorf("nativego: protected UDP carrier: %w",err)}
- conn:=tls.Client(raw,&tls.Config{ServerName:d.node.ServerName,MinVersion:tls.VersionTLS12})
- if err=conn.HandshakeContext(ctx);err!=nil{_=conn.Close();return nil,fmt.Errorf("nativego: UDP TLS authentication: %w",err)}
+ conn,err:=d.secureCarrier(ctx)
+ if err!=nil{return nil,err}
  var initial []byte
  switch d.node.Protocol {
  case "vless":
