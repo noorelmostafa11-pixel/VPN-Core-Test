@@ -87,7 +87,7 @@ func (d *Dialer) DialStream(ctx context.Context, target netip.AddrPort) (net.Con
  case "trojan": frame=trojanRequest(d.passwordHash,target)
  default: _=conn.Close();return nil,ErrUnsupported
  }
- if _,err=conn.Write(frame);err!=nil{_=conn.Close();return nil,err}
+ if err=writeFull(conn,frame);err!=nil{_=conn.Close();return nil,err}
  if d.node.Protocol=="vless"{return &vlessResponseConn{Conn:conn},nil}
  return conn,nil
 }
@@ -139,4 +139,14 @@ func (c *vlessResponseConn) Read(b []byte)(int,error) {
 func(c *vlessResponseConn) CloseWrite()error{
  if cw,ok:=c.Conn.(interface{CloseWrite()error});ok{return cw.CloseWrite()}
  return nil // TLS 1.3 half-close is managed by the transport's lifecycle.
+}
+
+func writeFull(w io.Writer,data []byte) error {
+ for len(data)>0 {
+  n,err:=w.Write(data)
+  if n>0{data=data[n:]}
+  if err!=nil{return err}
+  if n==0{return io.ErrShortWrite}
+ }
+ return nil
 }

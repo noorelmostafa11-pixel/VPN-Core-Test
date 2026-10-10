@@ -84,7 +84,7 @@ func serveDNSStream(ctx context.Context,conn net.Conn,res Resolver){
   if err!=nil{answer=dnsFailure(query)}
   if len(answer)>65535{return}
   binary.BigEndian.PutUint16(lenBuf[:],uint16(len(answer)))
-  if _,err:=conn.Write(lenBuf[:]);err!=nil{return}
-  if _,err:=conn.Write(answer);err!=nil{return}
+  if err:=writeFull(conn,lenBuf[:]);err!=nil{return}
+  if err:=writeFull(conn,answer);err!=nil{return}
  }
 }
