@@ -30,6 +30,11 @@ func (d *Dialer) DialDatagram(ctx context.Context, target netip.AddrPort) (*Data
  if !target.IsValid() || target.Port()==0 {return nil,errors.New("nativego: invalid UDP destination")}
  conn,err:=d.secureCarrier(ctx)
  if err!=nil{return nil,err}
+ if d.node.Transport=="websocket"{
+  wrapped,e:=openWebSocket(ctx,conn,d.node)
+  if e!=nil{_=conn.Close();return nil,e}
+  conn=wrapped
+ }
  var initial []byte
  switch d.node.Protocol {
  case "vless":
