@@ -4,6 +4,7 @@ on:
     branches: [feature/native-tun-go-core]
     paths:
       - 'tls-provider/nativego/**'
+      - 'tls-provider/cmd/nativego-linux/**'
       - '.github/workflows/native-go-candidate.yml'
   workflow_dispatch:
 permissions:
@@ -29,6 +30,9 @@ jobs:
       - name: Ensure Go-only package can build without CGO
         working-directory: tls-provider
         run: CGO_ENABLED=0 go build -tags=netstack -mod=vendor ./nativego
+      - name: Compile the standalone Go-native Linux TUN host
+        working-directory: tls-provider
+        run: CGO_ENABLED=0 go build -tags=netstack -mod=vendor ./cmd/nativego-linux
       - name: Cross-compile Windows and Android Go core without CGO
         working-directory: tls-provider
         run: |
