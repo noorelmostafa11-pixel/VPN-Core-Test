@@ -67,8 +67,8 @@ func (e *Engine) Run(parent context.Context, dev PacketDevice) error {
    if err!=nil{req.Complete(true);return}
    req.Complete(false)
    defer ep.Close()
-   target,err:=flowTarget(id)
-   if err!=nil{return}
+   target,targetErr:=flowTarget(id)
+   if targetErr!=nil{return}
    e.serveTCP(ctx,ep,&q,target)
   }()
  })
@@ -80,8 +80,8 @@ func (e *Engine) Run(parent context.Context, dev PacketDevice) error {
   var q waiter.Queue
   ep,err:=req.CreateEndpoint(&q)
   if err!=nil{release();return false}
-  target,err:=flowTarget(req.ID())
-  if err!=nil{ep.Close();release();return false}
+  target,targetErr:=flowTarget(req.ID())
+  if targetErr!=nil{ep.Close();release();return false}
   workers.Add(1)
   go func(){
    defer workers.Done();defer release();defer ep.Close()
