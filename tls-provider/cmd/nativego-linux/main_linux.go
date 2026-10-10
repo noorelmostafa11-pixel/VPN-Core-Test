@@ -13,7 +13,6 @@ import (
  "flag"
  "fmt"
  "net"
- "net/netip"
  "os"
  "os/signal"
  "strings"
