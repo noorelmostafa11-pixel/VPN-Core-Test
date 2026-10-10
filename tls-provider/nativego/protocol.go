@@ -62,6 +62,11 @@ func NewDialer(n Node, protected ProtectedDial) (*Dialer, error) {
  if (n.Security!="tls"&&n.Security!="reality")||n.Transport!="raw"||n.Flow!="" {return nil,fmt.Errorf("%w: security/transport/flow",ErrUnsupported)}
  if n.Security=="reality"{
   if n.Protocol!="vless"||n.PublicKey==""{return nil,fmt.Errorf("%w: REALITY requires VLESS and pinned public key",ErrUnsupported)}
+  public,err:=nativeDecodeKey(n.PublicKey)
+  if err!=nil||len(public)!=32{return nil,fmt.Errorf("%w: invalid REALITY public key",ErrUnsupported)}
+  short,err:=hex.DecodeString(n.ShortID)
+  if err!=nil||len(short)>8{return nil,fmt.Errorf("%w: invalid REALITY short ID",ErrUnsupported)}
+  if n.PQVerify!=""{b,e:=nativeDecodeKey(n.PQVerify);if e!=nil||len(b)==0{return nil,fmt.Errorf("%w: invalid REALITY PQ verification key",ErrUnsupported)}}
  }else if n.PublicKey!=""||n.ShortID!=""||n.PQVerify!=""||len(n.Pins)>0||len(n.Names)>0 {
   return nil,fmt.Errorf("%w: REALITY verification fields on ordinary TLS",ErrUnsupported)
  }
