@@ -5,6 +5,7 @@ package nativego
 // legacy stream/no-auth/2022 features must fail closed until separately tested.
 
 import (
+ "context"
  "crypto/aes"
  "crypto/cipher"
  "crypto/md5"
