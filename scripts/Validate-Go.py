@@ -11,7 +11,9 @@ if not a.skip_build:
  build('vpn-core','./cmd/vpn-core')
  for name,file in [('xhttp-peer','xhttp_peer.go'),('ech-peer','ech_peer.go'),('quic-peer','quic_peer.go'),('vless-encryption-peer','vless_encryption_peer.go'),('mldsa-signer','mldsa_signer.go')]:build(name,'tests/'+file)
  for name in ['crypto-probe','protocol-probe','uri-source-probe']:build(name,'./cmd/test-probe','testprobe')
+os.environ['QUIC_GO_DISABLE_RECEIVE_BUFFER_WARNING']='true'
+os.environ['PYTHONUTF8']='1'
 os.environ['VPN_CORE_TEST_BINARY']=str(binary);sys.path.insert(0,str(ROOT/'tests'))
-names=['test_core.CoreTests','test_expanded.ExpandedTests','test_pre_expansion.PreExpansionTests','test_reality.RealityTests','test_vision.VisionTests','test_legacy_xtls.LegacyXTLSTests','test_ws_plugins.WebSocketPluginTests','test_xhttp_modes.XHttpTests','test_mkcp.MKCPTests','test_ech.ECHTests','test_quic_carrier.QUICCarrierTests','test_support_additions.SupportAdditionTests','test_vless_encryption.VlessEncryptionTests','test_udp_sdk.UdpSdkTests','test_uri_compatibility.UriCompatibilityTests','test_compat_repairs.CompatibilityRepairTests']
+names=['test_core.CoreTests','test_expanded.ExpandedTests','test_pre_expansion.PreExpansionTests','test_reality.RealityTests','test_vision.VisionTests','test_legacy_xtls.LegacyXTLSTests','test_ws_plugins.WebSocketPluginTests','test_xhttp_modes.XHttpTests','test_mkcp.MKCPTests','test_ech.ECHTests','test_quic_carrier.QUICCarrierTests','test_support_additions.SupportAdditionTests','test_vless_encryption.VlessEncryptionTests','test_udp_sdk.UdpSdkTests','test_uri_compatibility.UriCompatibilityTests','test_compat_repairs.CompatibilityRepairTests','test_repair_transport_042.RepairTransportTests']
 suite=unittest.defaultTestLoader.loadTestsFromNames(names)
 result=unittest.TextTestRunner(verbosity=2).run(suite);raise SystemExit(not result.wasSuccessful())

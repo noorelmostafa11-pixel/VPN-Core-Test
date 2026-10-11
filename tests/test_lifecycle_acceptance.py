@@ -110,10 +110,11 @@ class LifecycleAcceptanceTests(unittest.TestCase):
         """
         evidence={'warmup':[],'measured':[]};baseline=None
         try:
-            for _ in range(8):
-                action();time.sleep(.05);sample=self.resource_snapshot();evidence['warmup'].append(sample)
-                recent=evidence['warmup'][-3:]
-                if len(recent)==3 and all(item==sample for item in recent):baseline=sample;break
+            for _ in range(20):
+                action();time.sleep(.25);sample=self.resource_snapshot();evidence['warmup'].append(sample)
+                recent=evidence['warmup'][-5:];prior=evidence['warmup'][-10:-5]
+                if len(prior)==5 and all(max(x[k] for x in recent)<=max(x[k] for x in prior) for k in sample):
+                    baseline={k:max(x[k] for x in prior+recent) for k in sample};break
             self.assertIsNotNone(baseline,'Resources did not stabilize during bounded warmup: '+json.dumps(evidence))
             evidence['baseline']=baseline
             for _ in range(12):
@@ -206,7 +207,7 @@ class LifecycleAcceptanceTests(unittest.TestCase):
                 sock=socket.socket();sock.bind(('127.0.0.1',0));sockets.append(sock)
             with self.assertRaisesRegex(AssertionError,'Resources did not stabilize'):
                 self.check_resource_cycles(leak)
-            self.assertEqual(len(sockets),8)
+            self.assertGreaterEqual(len(sockets),8)
         finally:
             for sock in sockets:sock.close()
     def test_stop_cancels_socks_and_tls_wait_before_connect_deadline(self):

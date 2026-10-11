@@ -17,6 +17,9 @@ def main():
  version=subprocess.check_output([a.go,'version'],text=True).strip()
  commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip();dirty=bool(subprocess.check_output(['git','status','--porcelain'],cwd=ROOT,text=True))
  if a.require_clean and dirty:p.error('release builds require a clean checkout')
+ if target=='android' and (arch!='arm64' or a.shared):
+  if not a.ndk:p.error('this Android architecture requires --ndk or ANDROID_NDK_HOME')
+  host='windows-x86_64' if os.name=='nt' else 'darwin-x86_64' if platform.system()=='Darwin' else 'linux-x86_64';clang=pathlib.Path(a.ndk)/'toolchains/llvm/prebuilt'/host/'bin'/('clang.exe' if os.name=='nt' else 'clang');env['CC']=f'"{clang}" --target={triple}{a.android_api}';env['CGO_ENABLED']='1';env['CGO_LDFLAGS']='-Wl,-z,max-page-size=16384'
  exe='vpn-core.exe' if target=='windows' else 'vpn-core'
  call([a.go,'build','-mod=vendor','-trimpath','-ldflags=-s -w','-o',output/exe,'./cmd/vpn-core'],env=env)
  if a.shared:

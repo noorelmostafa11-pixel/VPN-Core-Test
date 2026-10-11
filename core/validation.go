@@ -19,6 +19,9 @@ func (c Config) tlsSettings() (settings, error) {
 	if s.Fingerprint == "" && c.Security == "tls" {
 		s.Fingerprint = "native"
 	}
+	if (c.Transport == "websocket" || c.Transport == "httpupgrade") && contains(s.ALPN, "http/1.1") {
+		s.ALPN = []string{"http/1.1"}
+	}
 	if len(s.ALPN) == 0 {
 		switch c.Transport {
 		case "websocket", "httpupgrade":

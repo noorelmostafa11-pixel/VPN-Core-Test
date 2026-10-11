@@ -11,6 +11,17 @@ import (
 )
 
 func tlsErrorCode(err error, fallback int) int {
+	switch reasonCode(err) {
+	case "SOCKET_PROTECTION_FAILED":
+		return 453
+	case "BOOTSTRAP_DNS_FAILED":
+		return 454
+	case "BOOTSTRAP_DNS_TIMEOUT":
+		return 455
+	case "DNS_CALLBACK_BUSY":
+		return 456
+	}
+
 	var pe providerError
 	if errors.As(err, &pe) {
 		return int(pe)
@@ -81,6 +92,17 @@ func echLookupError(err error) error {
 }
 
 func xhttpErrorCode(err error) int {
+	switch reasonCode(err) {
+	case "SOCKET_PROTECTION_FAILED":
+		return 453
+	case "BOOTSTRAP_DNS_FAILED":
+		return 454
+	case "BOOTSTRAP_DNS_TIMEOUT":
+		return 455
+	case "DNS_CALLBACK_BUSY":
+		return 456
+	}
+
 	var pe providerError
 	if errors.As(err, &pe) {
 		return int(pe)

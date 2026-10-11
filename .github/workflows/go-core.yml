@@ -51,10 +51,11 @@ jobs:
         with: {go-version-file: go.mod, cache: false}
       - name: Build portable targets
         run: |
-          for target in windows linux darwin android freebsd openbsd; do
+          for target in windows linux darwin freebsd openbsd; do
             for arch in amd64 arm64; do
               if [ "$target" = android ]; then abi=arm64-v8a; [ "$arch" = amd64 ] && abi=x86_64; python3 scripts/Build-Go.py --target android --abi "$abi"; else python3 scripts/Build-Go.py --target "$target" --arch "$arch"; fi
             done
           done
+      - run: python3 scripts/Build-Go.py --target android --abi arm64-v8a
       - uses: actions/upload-artifact@v4
         with: {name: portable-go-core, path: build/, retention-days: 3}

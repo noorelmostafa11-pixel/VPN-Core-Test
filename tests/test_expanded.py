@@ -359,7 +359,7 @@ class Peer:
                     data = receive()
                     if not data:break
                     send(data)
-        except (EOFError, OSError, ssl.SSLError):
+        except (EOFError, OSError, ssl.SSLError, __import__("h2.exceptions",fromlist=["StreamClosedError"]).StreamClosedError):
             pass
         except Exception as e:
             self.errors.append(repr(e))

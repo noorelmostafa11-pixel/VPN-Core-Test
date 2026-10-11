@@ -15,7 +15,7 @@ BASE='vless://12345678-1234-4567-9234-567812345678@localhost:443?'
 class UriCompatibilityTests(unittest.TestCase):
     def probe(self,query):
         uri=BASE+query
-        process=subprocess.run([PROBE],input=json.dumps({'uri':uri})+'\n',capture_output=True,text=True,check=True,timeout=10)
+        process=subprocess.run([PROBE],input=json.dumps({'uri':uri})+'\n',capture_output=True,text=True,encoding="utf8",check=True,timeout=10)
         return json.loads(process.stdout)
 
     def extra(self,text):
