@@ -4,10 +4,12 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -37,6 +39,19 @@ func TestWindowsNativeDevice(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer tunnel.Close()
+	if os.Getenv("VPN_CORE_TEST_POLICY_PLAN") == "1" {
+		output, err := exec.Command("powershell", "-NoProfile", "-File", filepath.Join("scripts", "Set-Windows-Tunnel.ps1"), "-Mode", "Plan", "-TunName", name, "-UpstreamIPv4", "192.0.2.10").CombinedOutput()
+		if err != nil {
+			t.Fatalf("read-only Windows policy plan: %v %s", err, output)
+		}
+		var plan struct {
+			Schema, Phase      string
+			Routes, Rules, DNS []json.RawMessage
+		}
+		if err = json.Unmarshal(output, &plan); err != nil || plan.Schema != "vpn-windows-session-v1" || plan.Phase != "Plan" || len(plan.Routes) != 3 || len(plan.Rules) != 4 || len(plan.DNS) < 2 {
+			t.Fatalf("invalid Windows policy plan: %v", err)
+		}
+	}
 	output, e := exec.Command("netsh", "interface", "ipv4", "set", "address", "name="+name, "source=static", "address=10.248.231.1", "mask=255.255.255.252", "gateway=none", "store=active").CombinedOutput()
 	if e != nil {
 		t.Fatalf("isolated interface address: %v %s", e, output)

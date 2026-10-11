@@ -48,7 +48,7 @@ $metric=Get-NetIPInterface -InterfaceIndex $tun.ifIndex -AddressFamily IPv4
 $dns=@()
 foreach ($a in @($interfaces)+@($tun)) {
     $inputObject=Get-DnsClientServerAddress -InterfaceIndex $a.ifIndex -AddressFamily IPv4
-    $registry=Get-ItemProperty -LiteralPath ('HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\'+$a.InterfaceGuid.ToString('B'))
+    $registry=Get-ItemProperty -LiteralPath ('HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\'+([Guid]$a.InterfaceGuid).ToString('B'))
     $static=$registry.PSObject.Properties['NameServer']
     $dns+=@{Index=[int]$a.ifIndex;Guid=[string]$a.InterfaceGuid;Static=($null -ne $static -and ![string]::IsNullOrWhiteSpace([string]$static.Value));Servers=@($inputObject.ServerAddresses)}
 }
@@ -70,7 +70,7 @@ $ports=@()
 if ($UpstreamPort -gt 1) { $ports+=('1-'+($UpstreamPort-1)) }
 if ($UpstreamPort -lt 65535) { $ports+=(($UpstreamPort+1).ToString()+'-65535') }
 foreach ($protocol in @('TCP','UDP')) { $rules+=@{Name=$group+'-'+$protocol;Group=$group;Interfaces=$aliases;Addresses=@($UpstreamIPv4);Protocol=$protocol;Ports=$ports} }
-$state=@{Schema='vpn-windows-session-v1';Phase='Plan';Group=$group;TunIndex=[int]$tun.ifIndex;TunGuid=[string]$tun.InterfaceGuid;TunAddress=$TunAddress;TunMetric=@{Automatic=[string]$metric.AutomaticMetric;Value=[int]$metric.InterfaceMetric};DNS=$dns;DnsIPv4=$DnsIPv4;Routes=$routes;Rules=$rules}
+$state=@{Schema='vpn-windows-session-v1';Phase='Plan';Group=$group;TunIndex=[int]$tun.ifIndex;TunGuid=[string]$tun.InterfaceGuid;TunAddress=$TunAddress;TunMetric=@{Automatic=[string]$metric.AutomaticMetric;Value=[int]$metric.InterfaceMetric;DHCP=[string]$metric.Dhcp};DNS=$dns;DnsIPv4=$DnsIPv4;Routes=$routes;Rules=$rules}
 if ($Mode -eq 'Plan') { $state | ConvertTo-Json -Depth 12; return }
 New-Item -ItemType Directory -Path (Split-Path $StateFile -Parent) -Force | Out-Null
 Invoke-VpnWindowsPlan $state $StateFile

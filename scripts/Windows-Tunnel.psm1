@@ -34,7 +34,7 @@ function Get-VpnWindowsOperations {
         AddAddress = { param($s) New-NetIPAddress -InterfaceIndex $s.TunIndex -IPAddress $s.TunAddress -PrefixLength 30 -PolicyStore ActiveStore -ErrorAction Stop | Out-Null }
         RemoveAddress = { param($s) if (!(Test-VpnAdapterIdentity $s.TunIndex $s.TunGuid)) { return }; Get-NetIPAddress -InterfaceIndex $s.TunIndex -IPAddress $s.TunAddress -ErrorAction SilentlyContinue | Remove-NetIPAddress -Confirm:$false -ErrorAction Stop }
         SetMetric = { param($s) Set-NetIPInterface -InterfaceIndex $s.TunIndex -AddressFamily IPv4 -AutomaticMetric Disabled -InterfaceMetric 1 -ErrorAction Stop }
-        RestoreMetric = { param($s) if (!(Test-VpnAdapterIdentity $s.TunIndex $s.TunGuid)) { return }; Set-NetIPInterface -InterfaceIndex $s.TunIndex -AddressFamily IPv4 -AutomaticMetric $s.TunMetric.Automatic -InterfaceMetric $s.TunMetric.Value -ErrorAction Stop }
+        RestoreMetric = { param($s) if (!(Test-VpnAdapterIdentity $s.TunIndex $s.TunGuid)) { return }; Set-NetIPInterface -InterfaceIndex $s.TunIndex -AddressFamily IPv4 -AutomaticMetric $s.TunMetric.Automatic -InterfaceMetric $s.TunMetric.Value -Dhcp $s.TunMetric.DHCP -ErrorAction Stop }
         SetDNS = { param($d,$servers) $inputObject=Get-DnsClientServerAddress -InterfaceIndex $d.Index -AddressFamily IPv4 -ErrorAction Stop; Set-DnsClientServerAddress -InputObject $inputObject -ServerAddresses $servers -ErrorAction Stop }
         RestoreDNS = {
             param($d)
@@ -88,8 +88,8 @@ function Restore-VpnWindowsPlan($State, [string]$Path, [hashtable]$Operations = 
     # DNS/routes fails, retain the guard and state for an explicit recovery retry.
     foreach ($r in $State.Routes) { try { & $Operations.RemoveRoute $r } catch { $errors.Add('Route restoration failed') } }
     foreach ($d in $State.DNS) { try { & $Operations.RestoreDNS $d } catch { $errors.Add('DNS restoration failed') } }
-    try { & $Operations.RestoreMetric $State } catch { $errors.Add('Metric restoration failed') }
     try { & $Operations.RemoveAddress $State } catch { $errors.Add('Address restoration failed') }
+    try { & $Operations.RestoreMetric $State } catch { $errors.Add('Metric restoration failed') }
     try { & $Operations.FlushDNS } catch { $errors.Add('DNS cache restoration failed') }
     if ($errors.Count -gt 0) { throw ($errors -join '; ') }
     foreach ($r in $State.Rules) { try { & $Operations.RemoveRule $r } catch { $errors.Add('Firewall restoration failed') } }
