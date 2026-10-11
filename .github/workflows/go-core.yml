@@ -44,8 +44,12 @@ jobs:
           python scripts/Get-Wintun.py --build bin --arch amd64
           go test -c -o bin/native-tests.exe ./core
           $env:VPN_CORE_TEST_NATIVE_TUN='1'
-          & ./bin/native-tests.exe -test.run=TestWindowsNativeDevice -test.v -test.timeout=90s
+          & ./bin/native-tests.exe '-test.run=TestWindowsNativeDevice' '-test.v' '-test.timeout=90s'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check Windows policy transaction recovery without changing networking
+        if: runner.os == 'Windows' && !cancelled()
+        shell: pwsh
+        run: ./tests/test_windows_policy.ps1
       - uses: actions/upload-artifact@v4
         if: always()
         with:

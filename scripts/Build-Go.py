@@ -35,6 +35,10 @@ def main():
   call(['python','scripts/Get-Wintun.py','--build',output,'--arch',arch])
  for name in ('NOTICE.md','OWNERSHIP.md'):shutil.copy2(ROOT/name,output/name)
  allowed={exe,'NOTICE.md','OWNERSHIP.md'}
+ if target=='windows':
+  for name in ('Set-Windows-Tunnel.ps1','Windows-Tunnel.psm1'):
+   shutil.copy2(ROOT/'scripts'/name,output/name);allowed.add(name)
+  shutil.copy2(ROOT/'docs/WINDOWS-TUNNEL.md',output/'WINDOWS-TUNNEL.md');allowed.add('WINDOWS-TUNNEL.md')
  if a.shared:allowed.update({shared,pathlib.Path(shared).with_suffix('.h').name})
  if a.wintun:allowed.update({'wintun.dll','WINTUN-LICENSE.txt'})
  files=[{'file':x.name,'bytes':x.stat().st_size,'sha256':hashlib.sha256(x.read_bytes()).hexdigest()} for x in output.iterdir() if x.is_file() and x.name in allowed]
