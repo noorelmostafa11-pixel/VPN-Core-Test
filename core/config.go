@@ -37,7 +37,7 @@ type Config struct {
 }
 
 func defaults() Config {
-	return Config{Path: "/", Header: "none", Encryption: "none", EarlyHeader: "Sec-WebSocket-Protocol", ListenPort: 1080, MaxConnections: 32, ConnectTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
+	return Config{Path: "/", Header: "none", Encryption: "none", EarlyHeader: "Sec-WebSocket-Protocol", ListenPort: 1080, MaxConnections: 128, ConnectTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 }
 func option(m map[string]string, fallback string, keys ...string) string {
 	for _, k := range keys {
@@ -701,7 +701,7 @@ func ReadConfig(path string) (Config, error) {
 			hi = 65535
 		case "max_connections":
 			target = &c.MaxConnections
-			lo, hi = 1, 64
+			lo, hi = 1, 512
 		case "connect_timeout_ms":
 			duration = &c.ConnectTimeout
 			lo, hi = 1000, 120000

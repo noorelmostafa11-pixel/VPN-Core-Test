@@ -37,6 +37,15 @@ jobs:
         run: |
           go test -c -o bin/native-tests ./core
           sudo env VPN_CORE_TEST_NATIVE_TUN=1 ./bin/native-tests -test.run=TestLinuxNativeDevice -test.v -test.timeout=45s
+      - name: Test the real Windows Wintun device on an isolated network
+        if: runner.os == 'Windows' && !cancelled()
+        shell: pwsh
+        run: |
+          python scripts/Get-Wintun.py --build bin --arch amd64
+          go test -c -o bin/native-tests.exe ./core
+          $env:VPN_CORE_TEST_NATIVE_TUN='1'
+          & ./bin/native-tests.exe -test.run=TestWindowsNativeDevice -test.v -test.timeout=90s
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

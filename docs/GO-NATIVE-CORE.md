@@ -56,6 +56,23 @@ The first starts loopback SOCKS5 TCP/UDP. The other commands start packet
 forwarding; the host still sets the corresponding OS addresses/routes. A supplied
 descriptor is duplicated; closing the core does not close the app's original fd.
 
+## Browser concurrency and diagnostics
+
+The default connection budget is 128; `max_connections` accepts 1 through 512.
+Explicit existing settings, including 32/64, keep their values. The budget is
+shared by SOCKS control connections and native TCP/UDP flows. An exhausted budget
+rejects immediately with a `CONNECTION_LIMIT` event in phase `ADMISSION_FAILED`.
+No unbounded queue is created; closing a flow releases its slot.
+
+Relay idle retirement uses one timer per connection and activity in either
+direction. It no longer resets OS deadlines four times per payload chunk.
+Normal idle retirement is a `closed` event with `IDLE_TIMEOUT`, rather than a
+protocol failure. Close events include duration and transferred byte counts;
+all events include protocol, carrier, active count and limit, without destination
+names, server addresses, URIs, credentials or keys. Transport/authentication
+failures remain failures. These changes alone do not establish the cause of
+every timeout in earlier browser reports; repeat that workload on the new build.
+
 ## Embedding and mobile
 
 Go hosts use `core.ParseURI`, `core.NewEngine`, `StartSOCKS`, `StartTUN`, `Events`,

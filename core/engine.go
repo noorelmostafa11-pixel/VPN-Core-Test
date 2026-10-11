@@ -17,6 +17,13 @@ import (
 const Version = "0.5.0-go"
 
 type Event struct {
+	Protocol     string `json:"protocol,omitempty"`
+	Transport    string `json:"transport,omitempty"`
+	Active       uint64 `json:"active_connections"`
+	Limit        int    `json:"connection_limit"`
+	Uploaded     uint64 `json:"uploaded_bytes,omitempty"`
+	Downloaded   uint64 `json:"downloaded_bytes,omitempty"`
+	DurationMS   int64  `json:"duration_ms,omitempty"`
 	HTTPStatus   int    `json:"http_status,omitempty"`
 	NativeStatus uint32 `json:"native_status,omitempty"`
 	Timestamp    int64  `json:"timestamp_unix_ms"`
@@ -55,6 +62,8 @@ func NewEngine(parent context.Context, c Config, h Hooks) (*Engine, error) {
 func (e *Engine) Events() <-chan Event { return e.events }
 func (e *Engine) emit(v Event) {
 	v.Timestamp = time.Now().UnixMilli()
+	v.Protocol, v.Transport = e.config.Protocol, e.config.Transport
+	v.Active, v.Limit = e.active.Load(), e.config.MaxConnections
 	select {
 	case e.events <- v:
 	default:
@@ -91,6 +100,7 @@ func (e *Engine) acquire() bool {
 		return true
 	default:
 		e.rejected.Add(1)
+		e.emit(Event{Event: "failure", ConnectionID: e.next.Add(1), ReasonCode: "CONNECTION_LIMIT", Phase: "ADMISSION_FAILED"})
 		return false
 	}
 }
@@ -236,11 +246,15 @@ func (e *Engine) handleSOCKS(c net.Conn) {
 	version, alpn := connectionMeta(upstream)
 	e.emit(Event{Event: "negotiated", ConnectionID: id, TunnelReady: true, TLSVersion: version, ALPN: alpn})
 	c.SetDeadline(time.Time{})
-	err = e.relay(c, upstream)
-	if err != nil && reasonCode(err) != "CANCELLED" {
+	err, transferred := e.relayWithMetrics(c, upstream)
+	if err != nil && !errors.Is(err, errIdleTimeout) && reasonCode(err) != "CANCELLED" {
 		e.emit(Event{Event: "failure", ConnectionID: id, ReasonCode: reasonCode(err), TunnelReady: true, Phase: "PROTOCOL_FAILED"})
 	}
-	e.emit(Event{Event: "closed", ConnectionID: id, TunnelReady: true})
+	closed := Event{Event: "closed", ConnectionID: id, TunnelReady: true, Uploaded: transferred.uploaded, Downloaded: transferred.downloaded, DurationMS: transferred.duration.Milliseconds()}
+	if errors.Is(err, errIdleTimeout) {
+		closed.ReasonCode = "IDLE_TIMEOUT"
+	}
+	e.emit(closed)
 }
 func reasonCode(err error) string {
 	for _, code := range []string{"SOCKET_PROTECTION_FAILED", "BOOTSTRAP_DNS_TIMEOUT", "BOOTSTRAP_DNS_FAILED", "DNS_CALLBACK_BUSY"} {
@@ -272,19 +286,60 @@ func reasonCode(err error) string {
 	return "CONNECTION_FAILED"
 }
 func (e *Engine) relay(client, server net.Conn) error {
-	touch := func() { d := time.Now().Add(e.config.IdleTimeout); client.SetDeadline(d); server.SetDeadline(d) }
-	touch()
+	err, _ := e.relayWithMetrics(client, server)
+	return err
+}
+
+var errIdleTimeout = errors.New("IDLE_TIMEOUT")
+
+type relayMetrics struct {
+	uploaded, downloaded uint64
+	duration             time.Duration
+}
+
+func (e *Engine) relayWithMetrics(client, server net.Conn) (error, relayMetrics) {
+	start := time.Now()
+	var uploaded, downloaded, lastActivity atomic.Uint64
+	var expired atomic.Bool
+	finished := make(chan struct{})
+	watchDone := make(chan struct{})
+	// One timer per flow, rather than resetting four OS deadlines on every
+	// chunk. Activity in either direction keeps a bidirectional stream alive.
+	client.SetDeadline(time.Time{})
+	server.SetDeadline(time.Time{})
+	go func() {
+		defer close(watchDone)
+		timer := time.NewTimer(e.config.IdleTimeout)
+		defer timer.Stop()
+		for {
+			select {
+			case <-finished:
+				return
+			case <-timer.C:
+				idle := time.Since(start) - time.Duration(lastActivity.Load())
+				if idle >= e.config.IdleTimeout {
+					expired.Store(true)
+					client.Close()
+					server.Close()
+					return
+				}
+				timer.Reset(e.config.IdleTimeout - idle)
+			}
+		}
+	}()
 	done := make(chan error, 1)
-	copyDirection := func(dst, src net.Conn, counter *atomic.Uint64) error {
+	copyDirection := func(dst, src net.Conn, counter, flow *atomic.Uint64) error {
 		b := make([]byte, 32768)
 		for {
 			n, err := src.Read(b)
 			if n > 0 {
+				lastActivity.Store(uint64(time.Since(start)))
 				if ew := writeAll(dst, b[:n]); ew != nil {
 					return ew
 				}
 				counter.Add(uint64(n))
-				touch()
+				flow.Add(uint64(n))
+				lastActivity.Store(uint64(time.Since(start)))
 			}
 			if err != nil {
 				if errors.Is(err, io.EOF) {
@@ -298,24 +353,30 @@ func (e *Engine) relay(client, server net.Conn) error {
 		}
 	}
 	go func() {
-		err := copyDirection(server, client, &e.up)
+		err := copyDirection(server, client, &e.up, &uploaded)
 		if err != nil {
 			server.Close()
 			client.Close()
 		}
 		done <- err
 	}()
-	err := copyDirection(client, server, &e.down)
+	err := copyDirection(client, server, &e.down, &downloaded)
 	if err != nil {
 		server.Close()
 	}
 	client.Close()
 	server.Close()
 	uploadErr := <-done
-	if err != nil {
-		return err
+	close(finished)
+	<-watchDone
+	metrics := relayMetrics{uploaded.Load(), downloaded.Load(), time.Since(start)}
+	if expired.Load() {
+		return errIdleTimeout, metrics
 	}
-	return uploadErr
+	if err != nil {
+		return err, metrics
+	}
+	return uploadErr, metrics
 }
 
 func (e *Engine) serveUDP(control net.Conn, requested []byte) error {

@@ -245,6 +245,9 @@ func (c Config) xSettings() (xSettings, error) {
 
 // Validate refuses invalid or unsupported options before opening a socket.
 func (c Config) Validate() error {
+	if c.MaxConnections < 1 || c.MaxConnections > 512 || c.ConnectTimeout <= 0 || c.IdleTimeout <= 0 {
+		return errors.New("ENGINE_LIMIT_INVALID")
+	}
 	if !contains([]string{"vless", "vmess", "trojan", "ss"}, c.Protocol) || !hostValid(c.Server) || c.Port < 1 || c.Port > 65535 {
 		return errors.New("PARSE_INVALID: protocol or endpoint")
 	}

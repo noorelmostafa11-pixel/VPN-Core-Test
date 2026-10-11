@@ -20,11 +20,15 @@ node_uri=vless://12345678-1234-4567-9234-567812345678@example.test:443?security=
 listen_port=1080
 connect_timeout_ms=10000
 idle_timeout_ms=60000
-max_connections=32
+max_connections=128
 ```
 
 الناتج الافتراضي برنامج Go واحد. `--shared` يبني مكتبة Go اختيارية تحافظ على
 C ABI 2 لدمج التطبيقات. لا يحتاج التشغيل إلى `vpn-tls.dll` أو محرك C++.
+
+السقف الافتراضي 128 اتصالًا، ويمكن ضبط `max_connections` بين 1 و512.
+عند امتلائه يظهر `CONNECTION_LIMIT` في السجل، ويعود قبول الاتصالات بمجرد
+إغلاق اتصال. انتهاء الخمول يظهر `IDLE_TIMEOUT` مع حجم البيانات ومدة الاتصال.
 
 TUN داخل الكور يمرر الحزم مباشرة إلى البروتوكولات. لإنشاء جهاز:
 `vpn-core --config node.ini --tun vpn0 --tun-only`. التطبيق المضيف يضبط عناوين
