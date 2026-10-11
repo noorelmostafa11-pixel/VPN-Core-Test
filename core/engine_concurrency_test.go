@@ -6,9 +6,79 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"testing"
 	"time"
 )
+
+type blockingCloser struct {
+	entered, release chan struct{}
+	once             sync.Once
+}
+
+func (b *blockingCloser) Close() error {
+	b.once.Do(func() { close(b.entered) })
+	<-b.release
+	return nil
+}
+
+func TestConcurrentCloseWaitsAndUnlistensBeforeHooksRetire(t *testing.T) {
+	uri, stop := vlessOracle(t)
+	defer stop()
+	cfg, _ := ParseURI(uri)
+	cfg.ListenPort = 0
+	e, _ := NewEngine(context.Background(), cfg, Hooks{})
+	a, err := e.StartSOCKS()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := &blockingCloser{entered: make(chan struct{}), release: make(chan struct{})}
+	e.track(b)
+	var release sync.Once
+	defer release.Do(func() { close(b.release) })
+	closed := make(chan struct{}, 2)
+	go func() { e.Close(); closed <- struct{}{} }()
+	<-b.entered
+	go func() { e.Close(); closed <- struct{}{} }()
+	select {
+	case <-closed:
+		t.Fatal("Close returned before resource retirement")
+	case <-time.After(20 * time.Millisecond):
+	}
+	if c, err := net.DialTimeout("tcp", a.String(), 100*time.Millisecond); err == nil {
+		c.Close()
+		t.Fatal("listener remained open during slow cleanup")
+	}
+	release.Do(func() { close(b.release) })
+	for i := 0; i < 2; i++ {
+		select {
+		case <-closed:
+		case <-time.After(time.Second):
+			t.Fatal("concurrent Close did not join")
+		}
+	}
+}
+
+type untrackingCloser struct {
+	engine *Engine
+	done   chan struct{}
+}
+
+func (c *untrackingCloser) Close() error { c.engine.untrack(c); close(c.done); return nil }
+func TestRejectedResourceCanUntrackDuringClose(t *testing.T) {
+	uri, stop := vlessOracle(t)
+	defer stop()
+	cfg, _ := ParseURI(uri)
+	e, _ := NewEngine(context.Background(), cfg, Hooks{})
+	e.Close()
+	c := &untrackingCloser{engine: e, done: make(chan struct{})}
+	go func() { e.track(c) }()
+	select {
+	case <-c.done:
+	case <-time.After(time.Second):
+		t.Fatal("rejected closer deadlocked on engine lock")
+	}
+}
 
 func socksOracleConn(address string) (net.Conn, error) {
 	c, err := net.DialTimeout("tcp", address, 3*time.Second)

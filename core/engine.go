@@ -45,6 +45,8 @@ type Engine struct {
 	cancel                                     context.CancelFunc
 	mu                                         sync.Mutex
 	closed                                     bool
+	acceptingStopped                           bool
+	closeDone                                  chan struct{}
 	closers                                    map[io.Closer]bool
 	workers                                    sync.WaitGroup
 	slots                                      chan struct{}
@@ -57,7 +59,7 @@ func NewEngine(parent context.Context, c Config, h Hooks) (*Engine, error) {
 		return nil, e
 	}
 	ctx, cancel := context.WithCancel(WithHooks(parent, h))
-	return &Engine{config: c, ctx: ctx, cancel: cancel, closers: map[io.Closer]bool{}, slots: make(chan struct{}, c.MaxConnections), events: make(chan Event, 256)}, nil
+	return &Engine{config: c, ctx: ctx, cancel: cancel, closeDone: make(chan struct{}), closers: map[io.Closer]bool{}, slots: make(chan struct{}, c.MaxConnections), events: make(chan Event, 256)}, nil
 }
 func (e *Engine) Events() <-chan Event { return e.events }
 func (e *Engine) emit(v Event) {
@@ -74,19 +76,21 @@ func (e *Engine) Stats() Stats {
 }
 func (e *Engine) track(c io.Closer) bool {
 	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.closed {
+	_, listener := c.(net.Listener)
+	if e.closed || e.ctx.Err() != nil || (listener && e.acceptingStopped) {
+		e.mu.Unlock()
 		c.Close()
 		return false
 	}
 	e.closers[c] = true
+	e.mu.Unlock()
 	return true
 }
 func (e *Engine) untrack(c io.Closer) { e.mu.Lock(); delete(e.closers, c); e.mu.Unlock() }
 func (e *Engine) spawn(fn func()) bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.closed {
+	if e.closed || e.ctx.Err() != nil {
 		return false
 	}
 	e.workers.Add(1)
@@ -105,11 +109,28 @@ func (e *Engine) acquire() bool {
 	}
 }
 func (e *Engine) release() { <-e.slots; e.active.Add(^uint64(0)) }
+
+// StopAccepting synchronously closes listeners without waiting for host hooks
+// to return. A reported zero listen port must mean the socket is already closed.
+func (e *Engine) StopAccepting() {
+	e.mu.Lock()
+	e.acceptingStopped = true
+	var listeners []net.Listener
+	for c := range e.closers {
+		if l, ok := c.(net.Listener); ok {
+			listeners = append(listeners, l)
+		}
+	}
+	e.mu.Unlock()
+	for _, l := range listeners {
+		l.Close()
+	}
+}
 func (e *Engine) Close() error {
 	e.mu.Lock()
 	if e.closed {
 		e.mu.Unlock()
-		e.workers.Wait()
+		<-e.closeDone
 		return nil
 	}
 	e.closed = true
@@ -119,10 +140,24 @@ func (e *Engine) Close() error {
 		list = append(list, c)
 	}
 	e.mu.Unlock()
+	// Unlisten first. Slow TLS close-notify or a blocked host hook must not
+	// delay revoking listeners or closing other independently owned sockets.
 	for _, c := range list {
-		c.Close()
+		if l, ok := c.(net.Listener); ok {
+			l.Close()
+		}
 	}
+	var closed sync.WaitGroup
+	for _, c := range list {
+		if _, ok := c.(net.Listener); ok {
+			continue
+		}
+		closed.Add(1)
+		go func(c io.Closer) { defer closed.Done(); c.Close() }(c)
+	}
+	closed.Wait()
 	e.workers.Wait()
+	close(e.closeDone)
 	return nil
 }
 func (e *Engine) StartSOCKS() (net.Addr, error) {

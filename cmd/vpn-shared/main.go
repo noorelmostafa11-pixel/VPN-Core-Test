@@ -31,6 +31,7 @@ var runLock sync.Mutex
 var current = struct {
 	sync.Mutex
 	cancel context.CancelFunc
+	engine *core.Engine
 	events [][]byte
 }{}
 var state atomic.Int32
@@ -154,6 +155,7 @@ func runConfig(path string, h core.Hooks, fd, mtu int, name string) int {
 		cancel()
 		current.Lock()
 		current.cancel = nil
+		current.engine = nil
 		current.Unlock()
 		callbackWorkers.Wait()
 		port.Store(0)
@@ -168,6 +170,9 @@ func runConfig(path string, h core.Hooks, fd, mtu int, name string) int {
 		return 1
 	}
 	defer engine.Close()
+	current.Lock()
+	current.engine = engine
+	current.Unlock()
 	var tunnel *core.Tunnel
 	if fd >= 0 || name != "" {
 		var device core.PacketDevice
@@ -250,8 +255,12 @@ func vpn_core_pending_callbacks() C.uint32_t { return C.uint32_t(pending.Load())
 func vpn_core_stop() {
 	current.Lock()
 	cancel := current.cancel
+	engine := current.engine
 	current.Unlock()
 	if cancel != nil {
+		if engine != nil {
+			engine.StopAccepting()
+		}
 		state.Store(3)
 		port.Store(0)
 		cancel()

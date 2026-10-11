@@ -31,7 +31,7 @@ jobs:
         run: |
           if [ "$RUNNER_OS" = Windows ]; then cp build/windows-amd64/vpn-core.dll bin/vpn-core.dll; export VPN_CORE_TEST_BINARY="$GITHUB_WORKSPACE/bin/vpn-core.exe"; else python -c "import pathlib,shutil; p=next(p for p in pathlib.Path('build').glob('*/libvpn-core.*') if p.suffix in ('.so','.dylib'));shutil.copy2(p,'bin/libvpn-core.so')"; export VPN_CORE_TEST_BINARY="$GITHUB_WORKSPACE/bin/vpn-core"; fi
           cd tests
-          python -m unittest test_udp_sdk.NetworkHookTests -v
+          if [ "$RUNNER_OS" = macOS ]; then python -m unittest test_udp_sdk.NetworkHookTests -v; else python -m unittest test_lifecycle_acceptance.LifecycleAcceptanceTests test_udp_sdk.NetworkHookTests -v; fi
       - name: Test the real Linux TUN device on an isolated network
         if: runner.os == 'Linux' && !cancelled()
         run: |

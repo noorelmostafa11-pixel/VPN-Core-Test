@@ -47,7 +47,11 @@ if ((Get-NetFirewallProfile -PolicyStore ActiveStore | Where-Object Enabled -ne 
 $metric=Get-NetIPInterface -InterfaceIndex $tun.ifIndex -AddressFamily IPv4
 $dns=@()
 foreach ($a in @($interfaces)+@($tun)) {
-    $inputObject=Get-DnsClientServerAddress -InterfaceIndex $a.ifIndex -AddressFamily IPv4
+    $inputObject=Get-DnsClientServerAddress -InterfaceIndex $a.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue
+    if (!$inputObject) {
+        if ($a.ifIndex -eq $tun.ifIndex) { throw 'Wintun IPv4 DNS registration is not ready; retry the plan shortly' }
+        continue # active adapters with no IPv4 binding still receive firewall guards
+    }
     $registry=Get-ItemProperty -LiteralPath ('HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\'+([Guid]$a.InterfaceGuid).ToString('B'))
     $static=$registry.PSObject.Properties['NameServer']
     $dns+=@{Index=[int]$a.ifIndex;Guid=[string]$a.InterfaceGuid;Static=($null -ne $static -and ![string]::IsNullOrWhiteSpace([string]$static.Value));Servers=@($inputObject.ServerAddresses)}

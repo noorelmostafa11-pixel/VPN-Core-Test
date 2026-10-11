@@ -106,7 +106,9 @@ class LifecycleAcceptanceTests(unittest.TestCase):
         Go's Windows extra-M pool retains events/timers for reuse (runtime
         os_windows.go semacreate/minit/dropm). A cold process's aggregate handle
         count is not a per-session ownership counter. Require a demonstrated
-        plateau, then reject growth in both handles and threads over 12 cycles.
+        plateau, then reject handle growth over 12 cycles. OS-thread caches may
+        step up without retaining a session; require a final thread plateau in
+        bounded windows rather than treating one cached thread as a leaked flow.
         """
         evidence={'warmup':[],'measured':[]};baseline=None
         try:
@@ -116,18 +118,25 @@ class LifecycleAcceptanceTests(unittest.TestCase):
                 if len(prior)==5 and all(max(x[k] for x in recent)<=max(x[k] for x in prior) for k in sample):
                     baseline={k:max(x[k] for x in prior+recent) for k in sample};break
             self.assertIsNotNone(baseline,'Resources did not stabilize during bounded warmup: '+json.dumps(evidence))
-            # One fixed extra-M allowance handles Go's process-wide thread cache jitter.
-            baseline['threads']+=1;baseline['handles']+=8
+            # The fixed handle allowance remains independent of observed growth.
+            baseline['handles']+=8
             evidence['baseline']=baseline
             for _ in range(12):
                 action();end=time.monotonic()+3;stable=0
                 while stable<3:
                     sample=self.resource_snapshot()
-                    stable=stable+1 if all(sample[key]<=baseline[key] for key in baseline) else 0
+                    stable=stable+1 if sample['handles']<=baseline['handles'] else 0
                     if time.monotonic()>=end:
                         evidence['measured'].append(sample)
                         self.fail('Resource growth after warmup: '+json.dumps(evidence))
                     time.sleep(.02)
+                evidence['measured'].append(sample)
+            for settling in range(9):
+                samples=evidence['measured'];older=samples[-8:-4];recent=samples[-4:]
+                if max(x['threads'] for x in recent)<=max(x['threads'] for x in older):break
+                if settling==8:self.fail('OS threads did not reach a bounded plateau: '+json.dumps(evidence))
+                action();time.sleep(.25);sample=self.resource_snapshot()
+                self.assertLessEqual(sample['handles'],baseline['handles'],'Handle growth during thread-cache settling')
                 evidence['measured'].append(sample)
         finally:print('resource acceptance '+json.dumps(evidence,sort_keys=True),flush=True)
     def test_blocked_first_bootstrap_does_not_block_second_or_stop(self):
@@ -212,6 +221,17 @@ class LifecycleAcceptanceTests(unittest.TestCase):
             self.assertGreaterEqual(len(sockets),8)
         finally:
             for sock in sockets:sock.close()
+    def test_resource_monitor_rejects_retained_threads(self):
+        workers=[];release=threading.Event()
+        try:
+            def leak():
+                worker=threading.Thread(target=release.wait);worker.start();workers.append(worker)
+            with self.assertRaisesRegex(AssertionError,'Resources did not stabilize'):
+                self.check_resource_cycles(leak)
+            self.assertGreaterEqual(len(workers),8)
+        finally:
+            release.set()
+            for worker in workers:worker.join(2)
     def test_stop_cancels_socks_and_tls_wait_before_connect_deadline(self):
         @RESOLVE
         def resolve(host,out,cap,user):return self.answer(out,cap)
