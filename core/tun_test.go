@@ -296,3 +296,88 @@ func TestDefaultBootstrapDNSCannotBypassProtection(t *testing.T) {
 		t.Fatalf("default DNS bypassed protection: calls=%d err=%v", calls.Load(), err)
 	}
 }
+
+func TestNativeUDPDownloadActivityKeepsFlowAlive(t *testing.T) {
+	testNativeUDPActivityKeepsFlowAlive(t, false)
+}
+func TestNativeUDPUploadActivityKeepsFlowAlive(t *testing.T) {
+	testNativeUDPActivityKeepsFlowAlive(t, true)
+}
+func testNativeUDPActivityKeepsFlowAlive(t *testing.T, uploadOnly bool) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	peerDone := make(chan struct{})
+	go func() {
+		defer close(peerDone)
+		c, err := l.Accept()
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		c.SetDeadline(time.Now().Add(3 * time.Second))
+		header := make([]byte, 26)
+		if _, err = io.ReadFull(c, header); err != nil {
+			return
+		}
+		c.Write([]byte{0, 0})
+		initial := make([]byte, 4)
+		if _, err = io.ReadFull(c, initial); err != nil {
+			return
+		} // UDP length 2 + "go"
+		if uploadOnly {
+			for i := 1; i < 12; i++ {
+				if _, err = io.ReadFull(c, initial); err != nil {
+					return
+				}
+			}
+			return
+		}
+		for i := 0; i < 12; i++ {
+			if writeAll(c, []byte{0, 3, 'u', 'd', 'p'}) != nil {
+				return
+			}
+			time.Sleep(30 * time.Millisecond)
+		}
+	}()
+	cfg, err := ParseURI("vless://12345678-1234-4567-9234-567812345678@" + l.Addr().String() + "?security=none")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.IdleTimeout = 150 * time.Millisecond
+	e, _ := NewEngine(context.Background(), cfg, Hooks{})
+	defer e.Close()
+	tunnel := &Tunnel{engine: e, ctx: e.ctx}
+	client, app := net.Pipe()
+	defer app.Close()
+	defer client.Close()
+	flowDone := make(chan struct{})
+	go func() { tunnel.udpFlow(client, "192.0.2.10", 53); close(flowDone) }()
+	app.SetDeadline(time.Now().Add(3 * time.Second))
+	if _, err = app.Write([]byte("go")); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 12; i++ {
+		if uploadOnly {
+			if i > 0 {
+				if _, err = app.Write([]byte("go")); err != nil {
+					t.Fatalf("upload-only UDP retired despite activity at packet %d: %v", i, err)
+				}
+			}
+			time.Sleep(30 * time.Millisecond)
+			continue
+		}
+		var b [3]byte
+		if _, err = io.ReadFull(app, b[:]); err != nil || string(b[:]) != "udp" {
+			t.Fatalf("download-only UDP retired despite activity at packet %d: %v", i, err)
+		}
+	}
+	<-peerDone
+	select {
+	case <-flowDone:
+	case <-time.After(time.Second):
+		t.Fatal("UDP flow did not join")
+	}
+}

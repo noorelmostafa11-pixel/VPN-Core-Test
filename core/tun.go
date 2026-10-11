@@ -239,6 +239,7 @@ func (t *Tunnel) udpFlow(client net.Conn, host string, port int) {
 				client.Close()
 				return
 			}
+			client.SetReadDeadline(time.Now().Add(t.engine.config.IdleTimeout))
 			if _, err = client.Write(packet.Payload); err != nil {
 				return
 			}
@@ -252,6 +253,7 @@ func (t *Tunnel) udpFlow(client net.Conn, host string, port int) {
 		if err != nil {
 			break
 		}
+		server.SetDeadline(time.Now().Add(t.engine.config.IdleTimeout))
 		if err = server.WritePacket(b[:n]); err != nil {
 			break
 		}
