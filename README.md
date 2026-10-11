@@ -1,4 +1,4 @@
-# vpn-core 0.5.0 — Go
+# vpn-core 0.5.1 — Go
 
 فرع Go مستقل مبني من `main` عند
 `90a1853114de3e4bcb3deed6747801c10bc5b370`. الكور ينفذ VLESS وVMess وTrojan

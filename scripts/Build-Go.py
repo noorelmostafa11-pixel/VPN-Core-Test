@@ -42,6 +42,6 @@ def main():
  if a.shared:allowed.update({shared,pathlib.Path(shared).with_suffix('.h').name})
  if a.wintun:allowed.update({'wintun.dll','WINTUN-LICENSE.txt'})
  files=[{'file':x.name,'bytes':x.stat().st_size,'sha256':hashlib.sha256(x.read_bytes()).hexdigest()} for x in output.iterdir() if x.is_file() and x.name in allowed]
- meta={'version':'0.5.0-go','target':target,'arch':arch,'go':version,'source_commit':commit,'source_tree_dirty':dirty,'files':sorted(files,key=lambda x:x['file'])}
+ meta={'version':(ROOT/'VERSION').read_text().strip(),'target':target,'arch':arch,'go':version,'source_commit':commit,'source_tree_dirty':dirty,'files':sorted(files,key=lambda x:x['file'])}
  (output/'build-provenance.json').write_text(json.dumps(meta,indent=2)+'\n');(output/'build-hashes.json').write_text(json.dumps(meta['files'],indent=2)+'\n');print('Built',output)
 if __name__=='__main__':main()

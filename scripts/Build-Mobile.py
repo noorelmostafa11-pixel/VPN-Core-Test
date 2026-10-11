@@ -23,7 +23,7 @@ with tempfile.TemporaryDirectory(prefix='vpn-mobile-') as directory:
   subprocess.run(['go','mod','edit','-replace='+module+'='+destination.as_posix()],cwd=stage,check=True)
  stage_env={**env,'GOFLAGS':'-mod=mod','GOWORK':'off'}
  subprocess.run(['gomobile','bind','-target',a.target,'-androidapi',str(a.android_api),'-ldflags=-s -w','-o',str(a.output.resolve()),'./mobile'],cwd=stage,env=stage_env,check=True)
-provenance={'schema':'vpn-mobile-build-v1','version':'0.5.0-go','source_commit':commit,'source_tree_dirty':dirty,'target':a.target,'android_api':a.android_api,'gomobile':VERSION,'go':subprocess.check_output(['go','version'],text=True).strip(),'component_patch_manifest_sha256':hashlib.sha256((ROOT/'components/patches/manifest.json').read_bytes()).hexdigest()}
+provenance={'schema':'vpn-mobile-build-v1','version':(ROOT/'VERSION').read_text().strip(),'source_commit':commit,'source_tree_dirty':dirty,'target':a.target,'android_api':a.android_api,'gomobile':VERSION,'go':subprocess.check_output(['go','version'],text=True).strip(),'component_patch_manifest_sha256':hashlib.sha256((ROOT/'components/patches/manifest.json').read_bytes()).hexdigest()}
 licenses=[ROOT/'NOTICE.md',ROOT/'OWNERSHIP.md']
 for folder in ['vendor','core/thirdparty','third_party']:
  licenses.extend(f for f in (ROOT/folder).rglob('*') if f.is_file() and f.name.lower().startswith(('license','notice','copying')))

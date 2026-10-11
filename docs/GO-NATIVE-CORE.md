@@ -1,4 +1,4 @@
-# Go core 0.5.0
+# Go core 0.5.1
 
 The implementation in `core/`, `cmd/` and `mobile/` is Go. It does not invoke a
 C++ core, Xray/sing-box engine, external tun-to-socks process, or TLS helper DLL.
@@ -82,6 +82,10 @@ The optional C shared library retains ABI 2 exports, run/stop/state/listen-port,
 bounded diagnostic events, callback counting and single-run behavior. Its header
 is generated alongside the library. Additive `vpn_core_run_tun_fd_config` and
 `vpn_core_run_native_tun_config` exports start native TUN forwarding.
+
+Stop revokes the listener synchronously before publishing a zero port. Shutdown
+closes independent resources concurrently and joins all of them. Concurrent
+`Close` callers wait for the same complete shutdown, including packet pumps.
 
 `mobile/` is gomobile compatible:
 
