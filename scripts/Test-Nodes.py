@@ -38,11 +38,11 @@ def diagnostic(line):
     """Only numeric fields and bounded diagnostic symbols leave the log."""
     if len(line)>8192:return None
     match=DIAGNOSTIC.fullmatch(line)
-    if not match:return None
-    try:event=json.loads(match[2])
+    if not match and not line.lstrip().startswith('{'):return None
+    try:event=json.loads(match[2] if match else line)
     except (ValueError,TypeError):return None
     if not isinstance(event,dict) or event.get('event') not in ('failure','negotiated'):return None
-    connection=integer(int(match[1]),maximum=2**64-1)
+    connection=integer(int(match[1]) if match else event.get("connection_id"),maximum=2**64-1)
     if connection is None:return None
     if 'connection_id' in event and integer(event['connection_id'],maximum=2**64-1)!=connection:return None
     safe={'event':event['event'],'connection_id':connection,

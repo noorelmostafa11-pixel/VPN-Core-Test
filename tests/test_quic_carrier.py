@@ -34,7 +34,7 @@ class QUICCarrierTests(unittest.TestCase):
                 if plugin:
                     options='v2ray-plugin;mode=quic;host=localhost;mux=8'
                     if cert_raw:options+=';certRaw='+cert_raw
-                    if cert_path:options+=';cert='+str(cert_path)
+                    if cert_path:options+=';cert='+pathlib.Path(cert_path).as_posix()
                     uri+='&plugin='+quote(options,safe='')
                 if legacy:
                     node={'v':'2','add':'127.0.0.1','port':port,'id':str(old.ID),'aid':'0','scy':cipher,'net':'quic','tls':'tls','sni':'localhost','host':outer,'path':'fixture-quic-key','type':header}

@@ -1,5 +1,5 @@
 // .NET 6+ embedding adapter. Keep these DLLs beside the application:
-// vpn-core.dll, vpn-tls.dll. Run() blocks; call it on an owned worker thread.
+// vpn-core.dll. Run() blocks; call it on an owned worker thread.
 using System;
 using System.Collections.Generic;
 using System.IO;

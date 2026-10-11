@@ -266,7 +266,7 @@ class CoreTests(unittest.TestCase):
                 s.sendall(b'never-direct')
                 try:
                     self.assertEqual(s.recv(1024), b'')
-                except ConnectionResetError:
+                except (ConnectionResetError,ConnectionAbortedError):
                     pass
 
     def test_10_unsupported_command(self):

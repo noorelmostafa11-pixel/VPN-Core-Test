@@ -1,48 +1,50 @@
-# vpn-core 0.4.11
+# vpn-core 0.5.0 — Go
 
-المستودع هو المصدر الأساسي لتطوير الكور واختباره. تنفيذ البروتوكولات VLESS وTrojan وVMess وShadowsocks خاص بالمشروع؛ المكونات الخارجية وتراخيصها محفوظة كما هي. السورس يدعم مسارات بناء Windows وLinux وAndroid من اللاب ومن GitHub. الكور يعرض SOCKS5 TCP وUDP وواجهة C ABI 2، مع الحفاظ على ABI 1 ودعم الروابط السابق. Android يخرج مكتبات الكور وجسر JNI وحزمة AAR؛ التطبيق يربطها بخدمة VPN وطبقة TUN-to-SOCKS. لا يوجد TUN inbound داخل الكور. تعليمات الدمج في [docs/SDK-INTEGRATION.md](docs/SDK-INTEGRATION.md).
+فرع Go مستقل مبني من `main` عند
+`90a1853114de3e4bcb3deed6747801c10bc5b370`. الكور ينفذ VLESS وVMess وTrojan
+وShadowsocks داخل Go، مع وسائل النقل والتشفير والبصمات التي يدعمها main.
+يعمل كملف واحد، ويحتوي مسار TUN أصلي لـTCP/UDP وIPv4/IPv6. تنفيذ البروتوكولات
+خاص بالمشروع، مع مكونات TLS/QUIC والتشفير وgVisor والتعريفات المرخصة محفوظة.
 
-## البناء من الريبو على اللاب
+البناء والتشغيل:
 
-اسحب الريبو وحدد هدف البناء: `windows` أو `linux` أو `android`، أو `auto` للنظام المحلي. مثال PowerShell: `.\build.ps1 -Target windows`. مثال Linux: `bash build.sh --target linux`. للبناء لأندرويد مرر `-Target android -Abi arm64-v8a -Ndk <مسار NDK>`. الهدف مستقل عن نظام اللاب؛ الأدوات وإصداراتها والأوامر الكاملة وحدود دمج Android في [docs/BUILDING.md](docs/BUILDING.md).
+```text
+python scripts/Build-Go.py --target windows --arch amd64 --wintun
+build/windows-amd64/vpn-core.exe --config node.ini
+```
 
-## التطوير والاختبار على GitHub
+صيغة `node.ini` السابقة محفوظة:
 
-دعم لقطة Pre بتاريخ 7 أكتوبر 2026 مثبت على `ab54b99dbca41be020facfcb35569ebfdf730f59`: **70,787 إعدادًا مدعومًا** من **71,755 رابطًا**، و**968 إعدادًا غير صالح**. أُضيفت بصمة `randomizednoalpn` مع اختبارات نقل بيانات ورفض الشهادة الخاطئة. أُضيف لفحوص CI على Linux وWindows فحص كل سطر من هذه اللقطة مع التحقق من SHA256 وهوية العقدة، ويفشل فحص التغطية إذا تراجع عدد الدعم المتوقع. هذا حصر دعم؛ نجاح عقد الإنترنت له اختبار منفصل. التفاصيل في [docs/PRE-COVERAGE-0.4.5.md](docs/PRE-COVERAGE-0.4.5.md).
+```ini
+node_uri=vless://12345678-1234-4567-9234-567812345678@example.test:443?security=tls&type=tcp
+listen_port=1080
+connect_timeout_ms=10000
+idle_timeout_ms=60000
+max_connections=32
+```
 
-لتحميل هذه اللقطة من PowerShell: `.\scripts\Get-Pre-Inventory.ps1 -Snapshot current`؛ يحفظها في `nodes/pre-current/protocols`. يمكن تحميل اللقطة القديمة صراحةً باختيار `-Snapshot baseline`؛ تشغيل `main` يستخدم أحدث Pre.
+الناتج الافتراضي برنامج Go واحد. `--shared` يبني مكتبة Go اختيارية تحافظ على
+C ABI 2 لدمج التطبيقات. لا يحتاج التشغيل إلى `vpn-tls.dll` أو محرك C++.
 
-كل Workflows يدوي؛ رفع السورس وحده لا يبدأ Build أو اختبار عقد أو نشر إصدار. اختَر التشغيل الذي تحتاجه:
+TUN داخل الكور يمرر الحزم مباشرة إلى البروتوكولات. لإنشاء جهاز:
+`vpn-core --config node.ini --tun vpn0 --tun-only`. التطبيق المضيف يضبط عناوين
+الجهاز والمسارات وDNS وحماية الاتصال بالشبكة الأصلية. Windows يحتاج صلاحيات
+Administrator وتعريف Wintun الرسمي. لا يغيّر الكور المسار الافتراضي للجهاز.
 
-- **Core Source Validation**: جولة اختبارات Linux وWindows وحصر دعم أحدث Pre؛ لا تشغّل فحص الشبكة العامة.
-- **Build Selected Core Target**: بناء هدف واحد افتراضيًا Linux. Android يبني ABI واحدًا افتراضيًا؛ اختيار `all` صريح. تحقق Android من جهاز Windows اختياري.
-- **Test Selected Core Against Latest Pre**: اختبار عادي لكل عقد أحدث Pre. حدد `core_ref` للنسخة المطلوبة و`platform`؛ الافتراضي Linux. يبني تلك النسخة مرة واحدة ثم تستخدم الشاردات نفس الملف والهاش، بتوازي 8 لكل shard.
-- **Review or Clean Old Build Artifacts**: يعرض الملفات القديمة المؤهلة للحذف، وينفذ الحذف فقط عند اختيار `apply`. يتجنب الرنز الجارية، ولا يمس Releases أو نسخة Windows المرجعية.
+يدعم SDK Go، وAndroid AAR عبر `mobile.StartFD` مع VpnService، وواجهة حزم
+`StartPackets` لدمج Android/iOS. بناء Apple يحتاج macOS/Xcode وصلاحية Network
+Extension في التطبيق. الحزم الافتراضية تستهدف معمارية واحدة لتقليل الحجم.
 
-كل اختبار عقد يقرأ أحدث commit من `VPN-Nodes-Pre/main` مرة واحدة، ويحمل ملفات البروتوكولات الأربعة بنفس الكوميت. الملفات الأصلية لا يعاد تحريرها. يسجل التقرير commit الكور وPre وSHA256 لكل ملف. يجرب فحص الشبكة `https://example.com/` ثم `http://connectivitycheck.gstatic.com/generate_204` ثم `https://www.microsoft.com/robots.txt` بالترتيب، داخل مهلة إجمالية 10 ثوانٍ موزعة بالتساوي على المحاولات. أول نجاح ينهي الفحص فورًا؛ الفشل السريع ينتقل للرابط التالي فورًا. يشترط نجاح curl ورد HTTP من 200 إلى 299، ويظل تحقق TLS والشهادة إلزاميًا لروابط HTTPS؛ نجاح رابط Google عبر HTTP يسجل صراحةً كفحص HTTP. تجهيز الكور وتنظيفه منفصلان عن مهلة طلبات الشبكة. تفاصيل السياسة والتشخيص في `docs/NODE-VERIFICATION-BUDGET.md`.
+```text
+python scripts/Build-Go.py --target linux --arch arm64
+python scripts/Build-Go.py --target darwin --arch arm64
+python scripts/Build-Mobile.py --target android/arm64 --output dist/vpn-core.aar
+python -m pip install -r tests/requirements-go.txt
+go test -race ./core ./mobile
+python scripts/Validate-Go.py
+```
 
-تقارير الشبكة تقارن node IDs المشتركة مع مرجع 0.4.2 الموجود؛ عقد Pre الجديدة تدخل إجمالي الاختبار. راجع `completed` و`finished` و`runner_failures` وأسباب FAIL؛ الرن الأخضر وحده لا يعني نجاح كل العقد. نجاح الفحص المحلي لا يثبت نتائج عقد الإنترنت.
-
-## تحميل النسخة وتقليل التخزين
-
-`main` يحتفظ بالسورس والتراخيص وأدلة التحقق؛ لا تضاف إليه نواتج البناء أو ZIP لكل تعديل. اعمل Clone على اللاب وحدد SHA/Tag والهدف ثم ابنِ النسخة المطلوبة. ملفات تشغيل Actions المؤقتة وحزم الهدف مدتها يوم، وتقارير التحقق 14 يومًا وتقارير التجميع 30 يومًا. السياسة الجديدة لا تحذف الملفات التاريخية فور رفع السورس؛ تنظيفها يحتاج تشغيل workflow التنظيف يدويًا. Releases السابقة، وبالأخص نسخة Windows المرجعية 0.4.7، محفوظة حتى تثبت النسخة الجديدة. لا يوجد نشر تلقائي لمجرد نجاح Build.
-
-أوامر البناء في [docs/BUILDING.md](docs/BUILDING.md)، وحدود دورة حياة callbacks وتشخيص الأخطاء في [docs/SDK-INTEGRATION.md](docs/SDK-INTEGRATION.md). نتائج 0.4.11 وما بقي غير متحقق في [docs/ACCEPTANCE-0.4.11.md](docs/ACCEPTANCE-0.4.11.md).
-
-## ما تغيّر
-
-إضافات 0.4.9: معالجة أسماء WebSocket/gRPC الملتصقة بوسم، وقوائم ALPN الملتصقة في XHTTP، ولاحقة Vision `udp443` المكررة. يحتفظ HTTP/2 القديم بحقل XHTTP extra غير القابل للقراءة دون تمريره للتحقق أو التشغيل، مع بقاء دعم كائنات extra الصحيحة الموجود بالفعل. فحص 71,656 رابطًا أثبت 16 إعدادًا مقبولًا إضافيًا وصفر فقد دعم سابق أو تغيير لهوية المصدر. تفاصيل التحقق في [docs/SUPPORT-0.4.9.md](docs/SUPPORT-0.4.9.md).
-
-إضافات 0.4.8: دعم صيغ استيراد XHTTP extra البديلة، والبيانات الملتصقة بقيمة VLESS `none` واسم نقل REALITY `tcp`، وأسماء حقول REALITY المسبوقة بـ`;`، مع حفظ الرابط والحقول الأصلية. مقارنة كل 71,656 عقدة أثبتت 147 إعدادًا مقبولًا إضافيًا وصفر فقد دعم سابق. تفاصيل التحقق وحدوده في [docs/SUPPORT-0.4.8.md](docs/SUPPORT-0.4.8.md).
-
-إضافات 0.4.7: ترويسات mKCP، وHTTP/2 cleartext (h2c)، وQUIC stream و`v2ray-plugin` QUIC، وخوارزميات Shadowsocks القديمة وXChaCha20-Poly1305، و`simple-obfs` HTTP/TLS، وشهادات plugin المرفقة. تفاصيل التحقق وحدوده في [docs/SUPPORT-0.4.7.md](docs/SUPPORT-0.4.7.md). هذه إضافات لمسارات الاتصال؛ الأصل والهاش وهوية كل رابط تبقى كما هي.
-
-- مشغّل الدفعات يقرأ stdout/stderr بقراءتين مستقلتين، ويتيح `OutputDrainSeconds` بقيمة افتراضية 10 بدل سقف 3 ثوانٍ، ويسجل زمن التفريغ وحالة المهمات وحجم المخرجات.
-- يحفظ تكرار حقول HTTP غير المفسرة دون دمج قيمها أو رفض الترقية بسببها، مع استمرار رفض تكرار حقول الترقية والتأطير الحساسة.
-- يميز أخطاء Schannel الرقمية، ويسجل هل وصل الاتصال إلى إرسال نجاح SOCKS، ويترك سبب فشل HTTPS غير المحسوم واضحًا.
-
-تفاصيل الأدلة وحدود الإصلاح في [docs/REPAIRS-0.4.3.md](docs/REPAIRS-0.4.3.md). النسخة الأصلية محفوظة على [`baseline/0.4.2`](https://github.com/noorelmostafa11-pixel/VPN-Core-Test/tree/baseline/0.4.2). لا توجد إعادة كتابة لـHost/Path/SNI/UUID أو مفاتيح REALITY أو إعدادات ALPN، ولا تجاوز للتحقق من الشهادات.
-
-## الملكية
-
-الريبو Public لتشغيل الاختبارات حسب قرار المالك. الكود الأصلي محفوظ الحقوق كما هو موضح في [NOTICE.md](NOTICE.md) و[OWNERSHIP.md](OWNERSHIP.md)؛ لم نضف MIT أو ترخيصًا عامًا للكود الأصلي. الريبو العام قابل للعرض والنسخ وFork، وإشعار الملكية وبصمات البناء يوفران توثيقًا للمصدر، وليس منعًا تقنيًا للنسخ. تراخيص المكونات الخارجية مستمرة دون تغيير.
+تفاصيل البروتوكولات والمنصات ودورة الحياة والبناء في
+[دليل Go وTUN](docs/GO-NATIVE-CORE.md). تقارير الإصدارات السابقة في `docs/` تخص
+النسخة التاريخية على main. يحتفظ هذا الفرع بالملكية والتراخيص السابقة؛ لم نضف
+ترخيصًا عامًا للكود الأصلي.

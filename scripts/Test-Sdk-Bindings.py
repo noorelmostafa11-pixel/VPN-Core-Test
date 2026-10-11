@@ -8,6 +8,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='vpn-sdk-') as td:
         td=pathlib.Path(td);cfg=td/'node-مرحبا.ini';cfg.write_text('node_uri=vless://12345678-1234-4567-9234-567812345678@bootstrap.invalid:443?security=none&type=raw\nlisten_port=0\nconnect_timeout_ms=1000\n',encoding='utf-8')
         if not a.dotnet_only:
+            p.error('Use gomobile SDK from scripts/Build-Mobile.py for Java/Android')
             if windows:p.error('JNI host smoke is Linux; Android JNI is built by its NDK target')
             if not jni_home:p.error('Set JAVA_HOME to a JDK 17+ for the JNI host smoke')
             native=td/'native';native.mkdir();classes=td/'classes';classes.mkdir()
@@ -20,6 +21,6 @@ def main():
             output=td/'dotnet'
             run(['dotnet','build',ROOT/'tests/dotnet/SdkSmoke.csproj','-o',output])
             shutil.copy2(build/('vpn-core.dll' if windows else 'libvpn-core.so'),output/'vpn-core.dll')
-            provider='vpn-tls.dll' if windows else 'libvpn-tls.so';shutil.copy2(build/provider,output/provider)
+            # Go shared core has no separate TLS provider.
             run(['dotnet',output/'SdkSmoke.dll',cfg])
 if __name__=='__main__':main()

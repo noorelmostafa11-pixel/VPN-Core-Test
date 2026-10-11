@@ -1,7 +1,8 @@
-param([ValidateSet('auto','windows','linux','android')][string]$Target='auto',
-      [ValidateSet('arm64-v8a','armeabi-v7a','x86_64','x86')][string]$Abi='arm64-v8a',
-      [string]$Ndk=$env:ANDROID_NDK_HOME)
-$arguments=@((Join-Path $PSScriptRoot 'scripts/Build.py'),'--target',$Target,'--abi',$Abi)
-if ($Ndk) { $arguments+=@('--ndk',$Ndk) }
+param([ValidateSet('auto','windows','linux','darwin','android','freebsd','openbsd')][string]$Target='auto',
+ [string]$Arch='amd64',[string]$Abi='arm64-v8a',[string]$Ndk=$env:ANDROID_NDK_HOME,[switch]$Shared,[switch]$Wintun)
+$arguments=@((Join-Path $PSScriptRoot 'scripts/Build-Go.py'),'--target',$Target,'--arch',$Arch,'--abi',$Abi)
+if($Ndk){$arguments+=@('--ndk',$Ndk)}
+if($Shared){$arguments+='--shared'}
+if($Wintun){$arguments+='--wintun'}
 & python @arguments
-if ($LASTEXITCODE -ne 0) { throw 'Core build failed.' }
+if($LASTEXITCODE -ne 0){throw 'Go core build failed.'}
