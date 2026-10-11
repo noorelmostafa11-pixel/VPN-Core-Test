@@ -348,8 +348,11 @@ func tlsRoots(c settings) (*x509.CertPool, error) {
 	}
 	if c.CAFile != "" {
 		pem, err := os.ReadFile(c.CAFile)
-		if err != nil || !roots.AppendCertsFromPEM(pem) {
-			return nil, providerError(301)
+		if err != nil {
+			return nil, errors.New("TLS_CA_READ_FAILED")
+		}
+		if !roots.AppendCertsFromPEM(pem) {
+			return nil, errors.New("TLS_CA_FORMAT_INVALID")
 		}
 	}
 	if c.CAPEM != "" && !roots.AppendCertsFromPEM([]byte(c.CAPEM)) {

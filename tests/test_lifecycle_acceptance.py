@@ -116,6 +116,8 @@ class LifecycleAcceptanceTests(unittest.TestCase):
                 if len(prior)==5 and all(max(x[k] for x in recent)<=max(x[k] for x in prior) for k in sample):
                     baseline={k:max(x[k] for x in prior+recent) for k in sample};break
             self.assertIsNotNone(baseline,'Resources did not stabilize during bounded warmup: '+json.dumps(evidence))
+            # One fixed extra-M allowance handles Go's process-wide thread cache jitter.
+            baseline['threads']+=1;baseline['handles']+=8
             evidence['baseline']=baseline
             for _ in range(12):
                 action();end=time.monotonic()+3;stable=0

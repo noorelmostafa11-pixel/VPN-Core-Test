@@ -12,6 +12,7 @@ import (
 	"github.com/quic-go/quic-go/http3"
 	"golang.org/x/net/http2"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -283,7 +284,7 @@ func main() {
 		panic(e)
 	}
 	fmt.Println(l.Addr().String())
-	server := &http.Server{Handler: http.HandlerFunc(handler), MaxHeaderBytes: 1048576}
+	server := &http.Server{ErrorLog: log.New(io.Discard, "", 0), Handler: http.HandlerFunc(handler), MaxHeaderBytes: 1048576}
 	if cfg.H2 && !cfg.TLS {
 		h2 := &http2.Server{}
 		for {

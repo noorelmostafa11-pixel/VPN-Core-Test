@@ -38,6 +38,26 @@ var port atomic.Uint32
 var pending atomic.Uint32
 var callbackWorkers sync.WaitGroup
 var resolverSlots = make(chan struct{}, 16)
+var resolverJobs = make(chan func(), 16)
+var resolverPool sync.Once
+
+func startResolverPool() {
+	resolverPool.Do(func() {
+		var ready sync.WaitGroup
+		ready.Add(16)
+		for i := 0; i < 16; i++ {
+			go func() {
+				runtime.LockOSThread()
+				ready.Done()
+				for task := range resolverJobs {
+					task()
+				}
+			}()
+		}
+		ready.Wait()
+	})
+}
+
 var version = C.CString(core.Version)
 
 func callbacks(protect, resolve, user uintptr) core.Hooks {
@@ -56,6 +76,7 @@ func callbacks(protect, resolve, user uintptr) core.Hooks {
 		}
 	}
 	if resolve != 0 {
+		startResolverPool()
 		h.Resolve = func(ctx context.Context, host string) ([]net.IPAddr, error) {
 			if e := ctx.Err(); e != nil {
 				return nil, e
@@ -72,8 +93,7 @@ func callbacks(protect, resolve, user uintptr) core.Hooks {
 			result := make(chan reply, 1)
 			pending.Add(1)
 			callbackWorkers.Add(1)
-			go func() {
-				runtime.LockOSThread() // Exit retires this callback-owned thread.
+			resolverJobs <- func() {
 				defer callbackWorkers.Done()
 				defer pending.Add(^uint32(0))
 				defer func() { <-resolverSlots }()
@@ -104,7 +124,7 @@ func callbacks(protect, resolve, user uintptr) core.Hooks {
 					return
 				}
 				result <- reply{ips: ips}
-			}()
+			}
 			select {
 			case <-ctx.Done():
 				if errors.Is(ctx.Err(), context.DeadlineExceeded) {
