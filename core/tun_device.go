@@ -78,6 +78,10 @@ func OpenTUN(name string, mtu int) (PacketDevice, string, error) {
 	if e != nil {
 		return nil, "", e
 	}
+	if e := configurePacketDevice(d); e != nil {
+		d.Close()
+		return nil, "", e
+	}
 	n, e := d.Name()
 	if e != nil {
 		d.Close()

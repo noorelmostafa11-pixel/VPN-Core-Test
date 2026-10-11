@@ -43,6 +43,14 @@ jobs:
           name: go-${{ runner.os }}-${{ github.run_id }}
           path: build/
           retention-days: 3
+  native-device:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.27.1', cache: false}
+      - run: go test -c -o native-tests ./core
+      - run: sudo env VPN_CORE_TEST_NATIVE_TUN=1 ./native-tests -test.run=TestLinuxNativeDevice -test.v -test.timeout=45s
   portable:
     runs-on: ubuntu-24.04
     steps:
