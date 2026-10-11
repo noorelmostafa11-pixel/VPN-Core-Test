@@ -323,6 +323,6 @@ def run(a):
 
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--core',required=True);p.add_argument('--nodes',required=True);p.add_argument('--pre-manifest',required=True);p.add_argument('--output',required=True);p.add_argument('--source-commit',required=True);p.add_argument('--curl',default='curl');p.add_argument('--url',default=None,help='Override the ordered default targets with one HTTPS URL');p.add_argument('--timeout',type=int,default=10,help='Total network budget shared by all verification targets');p.add_argument('--concurrency',type=int,default=8);p.add_argument('--shard',type=int,default=0);p.add_argument('--shards',type=int,default=15);a=p.parse_args()
-    if not 1<=a.timeout<=120 or not 1<=a.concurrency<=32 or not 0<=a.shard<a.shards<=20:p.error('Invalid timeout, concurrency or shard')
+    if not 1<=a.timeout<=120 or not 1<=a.concurrency<=32 or not 0<=a.shard<a.shards<=16384:p.error('Invalid timeout, concurrency or shard')
     run(a)
 if __name__=='__main__':main()

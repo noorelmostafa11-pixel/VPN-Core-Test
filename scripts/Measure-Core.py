@@ -36,19 +36,19 @@ def measure(binary,cycles):
             with (td/'run.log').open('wb') as log:
                 process=subprocess.Popen([binary,'--config',config],stdout=log,stderr=subprocess.STDOUT)
                 try:
-                    end=time.monotonic()+5
+                    end=time.perf_counter()+5
                     while not ready.exists():
-                        if process.poll() is not None or time.monotonic()>end:raise RuntimeError('Core readiness failed')
+                        if process.poll() is not None or time.perf_counter()>end:raise RuntimeError('Core readiness failed')
                         time.sleep(.005)
                     port=json.loads(ready.read_text())['port'];snapshots=[resources(process.pid)]
                     for i in range(cycles+1):
-                        start=time.monotonic()
+                        start=time.perf_counter()
                         with socket.create_connection(('127.0.0.1',port),2) as client:
                             client.settimeout(2);client.sendall(b'\5\1\0');assert core.exact(client,2)==b'\5\0'
                             client.sendall(b'\5\1\0\1\x7f\0\0\1\0\x50');assert core.exact(client,10)[1]==0
                             assert core.exact(client,len(old.HELLO))==old.HELLO
                             payload=b'measured first transfer';client.sendall(payload);assert core.exact(client,len(payload))==payload
-                            elapsed=(time.monotonic()-start)*1000
+                            elapsed=(time.perf_counter()-start)*1000
                             if i:samples.append(elapsed)
                             # Verify the peer/core close path before counting the
                             # session as retired; close() alone can leave traffic
@@ -58,11 +58,11 @@ def measure(binary,cycles):
                                 if client.recv(1)!=b'':raise RuntimeError('Unexpected data after measured exchange')
                             except socket.timeout:eof_timeouts+=1
                         time.sleep(.06);snapshots.append(resources(process.pid))
-                    start=time.monotonic();process.terminate()
+                    start=time.perf_counter();process.terminate()
                     while process.poll() is None:
-                        if time.monotonic()-start>3:raise RuntimeError('Stop deadline exceeded')
+                        if time.perf_counter()-start>3:raise RuntimeError('Stop deadline exceeded')
                         time.sleep(.001)
-                    stop_times.append((time.monotonic()-start)*1000)
+                    stop_times.append((time.perf_counter()-start)*1000)
                 finally:
                     if process.poll() is None:process.kill();process.wait()
             import base64
@@ -71,16 +71,16 @@ def measure(binary,cycles):
             with (td/'udp.log').open('wb') as log:
                 process=subprocess.Popen([binary,'--config',config],stdout=log,stderr=subprocess.STDOUT)
                 try:
-                    end=time.monotonic()+5
+                    end=time.perf_counter()+5
                     while not ready.exists():
-                        if process.poll() is not None or time.monotonic()>end:raise RuntimeError('Core UDP readiness failed')
+                        if process.poll() is not None or time.perf_counter()>end:raise RuntimeError('Core UDP readiness failed')
                         time.sleep(.005)
                     port=json.loads(ready.read_text())['port']
                     with socket.create_connection(('127.0.0.1',port),2) as control,socket.socket(type=socket.SOCK_DGRAM) as client:
                         control.settimeout(2);client.settimeout(2);control.sendall(b'\5\1\0');assert core.exact(control,2)==b'\5\0';control.sendall(b'\5\3\0\1'+bytes(6));reply=core.exact(control,10);assert reply[1]==0
                         relay=('127.0.0.1',int.from_bytes(reply[-2:],'big'));packet=b'\0\0\0\1\x7f\0\0\1\0\x35measured UDP'
                         for _ in range(cycles):
-                            start=time.monotonic();client.sendto(packet,relay);assert client.recvfrom(4096)[0]==packet;udp_times.append((time.monotonic()-start)*1000)
+                            start=time.perf_counter();client.sendto(packet,relay);assert client.recvfrom(4096)[0]==packet;udp_times.append((time.perf_counter()-start)*1000)
                 finally:process.terminate();process.wait(3)
         return {'sha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'cycles':cycles,'tcp_first_transfer_ms':{'p50':statistics.median(samples),'p95':percentile(samples,.95)},'udp_roundtrip_ms':{'p50':statistics.median(udp_times),'p95':percentile(udp_times,.95)},'stop_ms':stop_times,'eof_wait_ms':250,'eof_timeouts':eof_timeouts,'resources':snapshots,'scope':'Local synthetic raw VLESS TCP / AES-128-GCM SS UDP; not device/VPN-route or internet performance'}
     finally:peer.close();udp_peer.close()
