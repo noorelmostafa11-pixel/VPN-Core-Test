@@ -17,6 +17,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -282,5 +283,16 @@ func TestEngineStopAndRestart(t *testing.T) {
 		if e.Stats().Active != 0 {
 			t.Fatal("leaked active flow")
 		}
+	}
+}
+
+func TestDefaultBootstrapDNSCannotBypassProtection(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	var calls atomic.Uint32
+	ctx = WithHooks(ctx, Hooks{Protect: func(context.Context, int64) error { calls.Add(1); return errors.New("denied") }})
+	_, err := bootstrapIPs(ctx, "bootstrap-protection-probe.invalid")
+	if calls.Load() == 0 || err == nil || reasonCode(err) != "SOCKET_PROTECTION_FAILED" {
+		t.Fatalf("default DNS bypassed protection: calls=%d err=%v", calls.Load(), err)
 	}
 }

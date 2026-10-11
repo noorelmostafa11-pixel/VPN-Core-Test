@@ -50,6 +50,15 @@ func bootstrapIPs(ctx context.Context, host string) ([]net.IPAddr, error) {
 		}
 		return ips, nil
 	}
+	if h.Protect != nil {
+		// Go's system resolver can use sockets that never pass the proxy dialer's
+		// Control hook. Protect fallback bootstrap DNS too, before any bytes leave.
+		resolver := &net.Resolver{PreferGo: true, Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			d := net.Dialer{ControlContext: socketControl}
+			return d.DialContext(ctx, network, address)
+		}}
+		return resolver.LookupIPAddr(ctx, host)
+	}
 	return net.DefaultResolver.LookupIPAddr(ctx, host)
 }
 func outboundDial(ctx context.Context, network, address string, timeout time.Duration) (net.Conn, error) {

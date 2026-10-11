@@ -37,7 +37,6 @@ var current = struct {
 var state atomic.Int32
 var port atomic.Uint32
 var pending atomic.Uint32
-var callbackWorkers sync.WaitGroup
 var resolverSlots = make(chan struct{}, 16)
 var resolverJobs = make(chan func(), 16)
 var resolverPool sync.Once
@@ -61,15 +60,37 @@ func startResolverPool() {
 
 var version = C.CString(core.Version)
 
-func callbacks(protect, resolve, user uintptr) core.Hooks {
+type callbackLease struct {
+	mu      sync.Mutex
+	closed  bool
+	workers sync.WaitGroup
+}
+
+func (l *callbackLease) begin(ctx context.Context) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.closed || ctx.Err() != nil {
+		return false
+	}
+	l.workers.Add(1)
+	pending.Add(1)
+	return true
+}
+func (l *callbackLease) done()  { pending.Add(^uint32(0)); l.workers.Done() }
+func (l *callbackLease) drain() { l.mu.Lock(); l.closed = true; l.mu.Unlock(); l.workers.Wait() }
+
+func callbacks(protect, resolve, user uintptr) (core.Hooks, *callbackLease) {
+	lease := &callbackLease{}
 	var h core.Hooks
 	if protect != 0 {
 		h.Protect = func(ctx context.Context, fd int64) error {
 			if e := ctx.Err(); e != nil {
 				return e
 			}
-			pending.Add(1)
-			defer pending.Add(^uint32(0))
+			if !lease.begin(ctx) {
+				return context.Canceled
+			}
+			defer lease.done()
 			if C.call_protect(C.uintptr_t(protect), C.int64_t(fd), C.uintptr_t(user)) != 1 {
 				return errors.New("SOCKET_PROTECTION_FAILED")
 			}
@@ -92,11 +113,12 @@ func callbacks(protect, resolve, user uintptr) core.Hooks {
 				err error
 			}
 			result := make(chan reply, 1)
-			pending.Add(1)
-			callbackWorkers.Add(1)
+			if !lease.begin(ctx) {
+				<-resolverSlots
+				return nil, context.Canceled
+			}
 			resolverJobs <- func() {
-				defer callbackWorkers.Done()
-				defer pending.Add(^uint32(0))
+				defer lease.done()
 				defer func() { <-resolverSlots }()
 				name := C.CString(host)
 				defer C.free(unsafe.Pointer(name))
@@ -138,10 +160,17 @@ func callbacks(protect, resolve, user uintptr) core.Hooks {
 		}
 	}
 
-	return h
+	return h, lease
 }
-func runConfig(path string, h core.Hooks, fd, mtu int, name string) int {
+func runWithCallbacks(path string, protect, resolve, user uintptr, fd, mtu int, name string) int {
+	h, lease := callbacks(protect, resolve, user)
+	return runConfig(path, h, fd, mtu, name, lease.drain)
+}
+func runConfig(path string, h core.Hooks, fd, mtu int, name string, drain func()) int {
 	if !runLock.TryLock() {
+		if drain != nil {
+			drain()
+		}
 		return 2
 	}
 	defer runLock.Unlock()
@@ -157,7 +186,9 @@ func runConfig(path string, h core.Hooks, fd, mtu int, name string) int {
 		current.cancel = nil
 		current.engine = nil
 		current.Unlock()
-		callbackWorkers.Wait()
+		if drain != nil {
+			drain()
+		}
 		port.Store(0)
 		state.Store(0)
 	}()
@@ -290,7 +321,7 @@ func vpn_core_run_config(path *C.char, protect C.uintptr_t, resolve C.uintptr_t,
 	if path == nil {
 		return 1
 	}
-	return C.int(runConfig(C.GoString(path), callbacks(uintptr(protect), uintptr(resolve), uintptr(user)), -1, 1500, ""))
+	return C.int(runWithCallbacks(C.GoString(path), uintptr(protect), uintptr(resolve), uintptr(user), -1, 1500, ""))
 }
 
 //export vpn_core_run_tun_fd_config
@@ -298,7 +329,7 @@ func vpn_core_run_tun_fd_config(path *C.char, fd, mtu C.int, protect, resolve, u
 	if path == nil {
 		return 1
 	}
-	return C.int(runConfig(C.GoString(path), callbacks(uintptr(protect), uintptr(resolve), uintptr(user)), int(fd), int(mtu), ""))
+	return C.int(runWithCallbacks(C.GoString(path), uintptr(protect), uintptr(resolve), uintptr(user), int(fd), int(mtu), ""))
 }
 
 //export vpn_core_run_native_tun_config
@@ -306,7 +337,7 @@ func vpn_core_run_native_tun_config(path, name *C.char, mtu C.int, protect, reso
 	if path == nil || name == nil {
 		return 1
 	}
-	return C.int(runConfig(C.GoString(path), callbacks(uintptr(protect), uintptr(resolve), uintptr(user)), -1, int(mtu), C.GoString(name)))
+	return C.int(runWithCallbacks(C.GoString(path), uintptr(protect), uintptr(resolve), uintptr(user), -1, int(mtu), C.GoString(name)))
 }
 
 //export vpn_core_run
@@ -342,6 +373,6 @@ func vpn_core_run(argc C.int, argv **C.char) C.int {
 	if path == "" {
 		return 1
 	}
-	return C.int(runConfig(path, core.Hooks{}, -1, 1500, ""))
+	return C.int(runConfig(path, core.Hooks{}, -1, 1500, "", nil))
 }
 func main() {}

@@ -42,6 +42,10 @@ or DNS settings. Configure them before sending system traffic into the device.
 Protect every upstream socket and resolve bootstrap names through the physical
 network with `Hooks`. A protection/resolver failure never falls back to a direct
 connection. Close the engine and wait for it before releasing callback resources.
+When a protector is supplied without a custom resolver, fallback Go bootstrap
+DNS sockets also pass that protector before sending bytes. The C ABI keeps both
+resolver and protector callback leases until their calls return, including DNS
+work that outlives a canceled lookup. It gates new callbacks before draining.
 Do not call `Close` synchronously from a callback that Close needs to join.
 
 Examples:
