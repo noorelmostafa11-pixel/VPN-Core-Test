@@ -3,6 +3,7 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net"
@@ -34,21 +35,33 @@ func TestLinuxNativeDevice(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tun.Close()
-	for _, args := range [][]string{{"addr", "add", "10.248.231.1/30", "dev", name}, {"link", "set", "dev", name, "up"}} {
+	for _, args := range [][]string{{"addr", "add", "10.248.231.1/30", "dev", name}, {"-6", "addr", "add", "fd77:231::1/126", "dev", name, "nodad"}, {"link", "set", "dev", name, "up"}} {
 		if output, err := exec.Command("ip", args...).CombinedOutput(); err != nil {
 			t.Fatalf("isolated device: %v %s", err, output)
 		}
 	}
-	conn, err := net.DialTimeout("tcp", "10.248.231.2:443", 3*time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(3 * time.Second))
-	payload := []byte("actual-linux-tun-packet-forwarding")
-	conn.Write(payload)
-	b := make([]byte, len(payload))
-	if _, err = io.ReadFull(conn, b); err != nil || string(b) != string(payload) {
-		t.Fatalf("native device data: %v", err)
+	for _, address := range []string{"10.248.231.2:443", "[fd77:231::2]:443"} {
+		for _, network := range []string{"tcp", "udp"} {
+			t.Run(network+address, func(t *testing.T) {
+				conn, err := net.DialTimeout(network, address, 3*time.Second)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer conn.Close()
+				conn.SetDeadline(time.Now().Add(5 * time.Second))
+				size := 128 * 1024 // exercises segmentation and offload conversion
+				if network == "udp" {
+					size = 1200
+				}
+				payload := bytes.Repeat([]byte{0x5a}, size)
+				if _, err = conn.Write(payload); err != nil {
+					t.Fatal(err)
+				}
+				b := make([]byte, len(payload))
+				if _, err = io.ReadFull(conn, b); err != nil || !bytes.Equal(b, payload) {
+					t.Fatalf("native device data: %v; tunnel: %v; stats: %+v", err, tun.Err(), e.Stats())
+				}
+			})
+		}
 	}
 }

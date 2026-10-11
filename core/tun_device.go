@@ -63,7 +63,7 @@ func (d *nativeDevice) WritePacket(b []byte) error {
 	defer d.writeMu.Unlock()
 	copy(d.writeBuffer[16:], b)
 	n, e := d.device.Write([][]byte{d.writeBuffer[:len(b)+16]}, 16)
-	if e == nil && n != 1 {
+	if e == nil && !nativeWriteComplete(n, len(b), d.device.BatchSize()) {
 		return errors.New("TUN_WRITE_COUNT")
 	}
 	return e
@@ -76,10 +76,6 @@ func (d *nativeDevice) Name() (string, error) { return d.device.Name() }
 func OpenTUN(name string, mtu int) (PacketDevice, string, error) {
 	d, e := tun.CreateTUN(name, mtu)
 	if e != nil {
-		return nil, "", e
-	}
-	if e := configurePacketDevice(d); e != nil {
-		d.Close()
 		return nil, "", e
 	}
 	n, e := d.Name()
