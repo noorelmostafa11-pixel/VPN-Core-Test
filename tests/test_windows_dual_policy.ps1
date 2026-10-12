@@ -49,6 +49,17 @@ Assert (@($taskV6Plan.Rules).Count -eq 0) 'Test mode unexpectedly enabled a fire
 Assert (@($taskV6Plan.DNS | Where-Object Family -eq 'IPv6' | ForEach-Object TargetServers | Where-Object { $_ }).Count -eq 0) 'Unverified IPv6 DNS resolvers are enabled by default.'
 Write-Output 'PASS: dual-stack plans, IPv6 upstream, DNS families, exact aliases, no hidden adapters, no IPv6 block, no plan mutations.'
 
+$taskOriginalRoutes=${function:Get-NetRoute}
+function Get-NetRoute {
+    param($AddressFamily,$DestinationPrefix,$PolicyStore,$InterfaceIndex,$ErrorAction)
+    if($DestinationPrefix -eq '192.0.2.10/32'){return [pscustomobject]@{InterfaceIndex=7;NextHop='192.0.2.1';RouteMetric=1}}
+    if($DestinationPrefix -eq '0.0.0.0/0'){return [pscustomobject]@{InterfaceIndex=7;NextHop='192.0.2.1';RouteMetric=10}}
+}
+$taskReuse=(& (Join-Path $taskNetwork 'Set-Windows-Tunnel.ps1') -Mode Plan -TunName VPN-Go-Test -UpstreamIPv4 192.0.2.10 -StateFile $taskStateFile) -join "`n"|ConvertFrom-Json
+Assert (@($taskReuse.Routes|Where-Object Prefix -eq '192.0.2.10/32').Count -eq 0) 'Pre-existing physical bypass was incorrectly claimed by the session.'
+${function:Get-NetRoute}=$taskOriginalRoutes
+Write-Output 'PASS: pre-existing valid physical bypass remains outside owned cleanup.'
+
 function Step { $script:step++; if($script:step -eq $script:fault) { throw 'injected operation failure' } }
 $taskApplySteps=@($taskPlan.Rules).Count+@($taskPlan.TunAddresses).Count+@($taskPlan.TunMetrics).Count+@($taskPlan.Routes).Count+@($taskPlan.DNS).Count+1
 for($fault=0;$fault -le $taskApplySteps;$fault++) {

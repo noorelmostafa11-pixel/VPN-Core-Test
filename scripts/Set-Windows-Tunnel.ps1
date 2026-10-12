@@ -66,9 +66,16 @@ foreach($family in @('IPv4','IPv6')) {
 }
 foreach($prefix in @('0.0.0.0/1','128.0.0.0/1')) { $routes+=@{Prefix=$prefix;Family='IPv4';Index=[int]$tun.ifIndex;Guid=[string]$tun.InterfaceGuid;NextHop='0.0.0.0'} }
 foreach($prefix in @('::/1','8000::/1')) { $routes+=@{Prefix=$prefix;Family='IPv6';Index=[int]$tun.ifIndex;Guid=[string]$tun.InterfaceGuid;NextHop='::'} }
+$ownedRoutes=@()
 foreach($r in $routes) {
-    if(Get-NetRoute -AddressFamily $r.Family -DestinationPrefix $r.Prefix -InterfaceIndex $r.Index -PolicyStore ActiveStore -ErrorAction SilentlyContinue) { throw 'A planned route already exists; restore its owner first.' }
+    $existing=@(Get-NetRoute -AddressFamily $r.Family -DestinationPrefix $r.Prefix -InterfaceIndex $r.Index -PolicyStore ActiveStore -ErrorAction SilentlyContinue)
+    if($existing.Count -gt 0) {
+        if($r.Index -ne $tun.ifIndex -and @($existing|Where-Object NextHop -ne $r.NextHop).Count -eq 0){continue} # Reuse a valid physical bypass without owning/removing it.
+        throw 'A planned route already exists; restore its owner first.'
+    }
+    $ownedRoutes+=$r
 }
+$routes=$ownedRoutes
 $addresses=@(@{Family='IPv4';Address=$TunAddress;Prefix=30},@{Family='IPv6';Address=$TunAddressIPv6;Prefix=64})
 foreach($a in $addresses) { if(Get-NetIPAddress -IPAddress $a.Address -ErrorAction SilentlyContinue) { throw 'A planned TUN address is already in use.' } }
 $metrics=@()
