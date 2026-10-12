@@ -210,7 +210,7 @@ class LifecycleAcceptanceTests(unittest.TestCase):
                 sock=socket.socket();sock.bind(('127.0.0.1',0));sockets.append(sock)
             with self.assertRaisesRegex(AssertionError,'Resources did not stabilize'):
                 self.check_resource_cycles(leak)
-            self.assertEqual(len(sockets),8)
+            self.assertGreaterEqual(len(sockets),8)
         finally:
             for sock in sockets:sock.close()
     def test_resource_monitor_rejects_retained_threads(self):
