@@ -1,83 +1,28 @@
-# بناء الكور من الريبو على اللاب وعلى GitHub
+# Building the original main core
 
-السورس الأصلي واحد. `scripts/Build.py` هو مدخل البناء المشترك للاب وActions. نظام جهاز البناء منفصل عن هدف البناء. اختيار `auto` يبني للنظام المحلي؛ Android يحتاج اختيارًا صريحًا ومعمارية ABI.
+Main retains the original C++ engine and Go TLS/QUIC provider. Go's rewrite
+has its own branch. scripts/toolchains.json pins Go, desktop GCC, Android NDK
+and the minimum Android API. Keep the vendored components and project patches.
 
-## الأدوات المثبتة
-
-Python 3.12؛ Go 1.27.1؛ Windows MinGW-w64 GCC 16.2.0؛ Linux GCC 13.3.0؛ Android NDK **30.0.16248370**، API 23 كحد أدنى. القيم في `scripts/toolchains.json`. السكربت يرفض إصدار Go/NDK/compiler مخالفًا؛ لا يغيّر أدوات جهازك أو يحمل تبعيات تلقائيًا. مكونات Go موجودة في vendor وتطبق ترقيعاتها المثبتة بالـSHA256.
-
-| جهاز البناء | الهدف | الأدوات الإضافية |
-| --- | --- | --- |
-| Windows amd64 | Windows amd64 | MinGW-w64 GCC في PATH |
-| Windows amd64 | Android، أي ABI من الأربعة | نسخة Windows من NDK |
-| Windows، داخل WSL2 Linux | Linux amd64 | Go وGCC وPython داخل WSL2 |
-| Linux amd64 | Linux amd64 | GCC |
-| Linux amd64 | Android، أي ABI من الأربعة | نسخة Linux من NDK |
-| Linux amd64 | Windows amd64 | أدوات x86_64-w64-mingw32 بإصدار GCC المثبت؛ بناء عابر لا يُشغّل تلقائيًا |
-
-## سحب السورس
-
-```sh
-git clone https://github.com/noorelmostafa11-pixel/VPN-Core-Test.git
-cd VPN-Core-Test
+```text
+python scripts/Build.py --target windows
+python scripts/Build.py --target linux
+python scripts/Build.py --target android --abi arm64-v8a --ndk /path/to/ndk
+python scripts/Package-Target.py --build build/windows-amd64
 ```
 
-لبناء إصدار محدد، استخدم `git checkout v0.4.5` بعد نشر هذا الـtag، أو SHA الكوميت المطلوب. `main` هو التطوير الحالي. تغيير الهدف لا يحتاج Fork.
+Desktop targets use amd64. Windows needs matching MinGW; Linux builds run on
+Linux. Android supports arm64-v8a, armeabi-v7a, x86_64 and x86, with SDK/NDK/JDK.
+A single ABI is the default. Build outputs remain untracked, with hashes and
+source provenance. Ownership and dependency notices accompany distributions.
 
-## Windows، من PowerShell
+GitHub has one **Build & Test** workflow. Select main or feature/go-native-core
+using GitHub's branch selector; targets follow the implementation automatically.
+There are no additional Run inputs. Public node testing is an explicit CLI action.
 
-```powershell
-.\build.ps1 -Target windows
+Full original Linux regressions are also available locally:
+
+```text
+bash scripts/build-linux-tests.sh
+bash scripts/build-linux-sanitizers.sh
 ```
-
-الناتج في `build/windows-amd64`: `vpn-core.exe` و`vpn-core.dll` و`vpn-tls.dll` والـheaders وملفات hashes/provenance. البناء المحلي يشغل self-test وفحص واجهات المكونات فقط؛ لا يبدأ اختبار عقد عامة.
-
-## Linux
-
-```sh
-bash build.sh --target linux
-```
-
-الناتج في `build/linux-amd64`: `vpn-core` و`libvpn-core.so` و`libvpn-tls.so`. TLS والتشفير من المزوّد المثبت ومكتبات Go القياسية؛ لا تستخدم نسخة OpenSSL الخاصة بالاختبارات كنسخة إنتاج. الشهادات تتحقق باستخدام جذور الثقة النظامية. يمكن إضافة شهادة CA موثوقة من اختيار صاحب التطبيق عبر `tls_ca_file=/absolute/path/ca.pem` في ملف INI؛ تبقى سلسلة الشهادة والاسم والصلاحية مطلوبة. تُقرأ هذه القيمة من ملف الإعداد المحلي، ولا نستنتجها أو نعيد كتابة URI العقدة.
-
-## Android، من لاب Windows أو Linux
-
-ثبّت NDK المحدد من Android Studio / SDK Manager، أو `sdkmanager "ndk;30.0.16248370"`. مرر مسار الإصدار نفسه:
-
-```powershell
-.\build.ps1 -Target android -Abi arm64-v8a -Ndk 'C:\Android\Sdk\ndk\30.0.16248370'
-```
-
-```sh
-bash build.sh --target android --abi arm64-v8a --ndk "$ANDROID_HOME/ndk/30.0.16248370"
-```
-
-يمكن اختيار `arm64-v8a` أو `armeabi-v7a` أو `x86_64` أو `x86`. كل ABI في مجلد `build/android-<abi>` مستقل. الناتج executable للاختبار بـadb، و`libvpn-core.so` و`libvpn-tls.so` و`libvpn-jni.so` وواجهة C وحزمة AAR للمعمارية. تجميع AAR يحتاج JDK 17+ و`javac`، ويمكن تحديد مساره بـ`--javac` عند استدعاء Build.py. مكتبات 64-bit تُبنى بمحاذاة صفحات 16 KiB. البناء العابر يُسجل `CROSS_COMPILED_NOT_RUN`؛ لا يعتبر نجاح التجميع إثبات اتصال على جهاز.
-
-مكتبات الكور تعرض SOCKS5 TCP CONNECT وUDP ASSOCIATE. الريبو ينتج AAR وجسر JNI وواجهة لحماية sockets وحل أسماء خوادم الكور عبر الشبكة الأساسية. التطبيق ينفذ callbacks الخاصة بـVPNService.protect وNetwork.getAllByName ويربط TUN-to-SOCKS بخدمة VPN الحالية. لا ينتج الريبو APK، ولا يتضمن TUN inbound أو واجهة لحزم TUN الخام. تفاصيل العمر والربط وتجميع المعماريات في [SDK-INTEGRATION.md](SDK-INTEGRATION.md).
-
-## استخدام المكتبة
-
-الواجهة في `src/core-api.h` تحتفظ بوظائف ABI 1 الأصلية `vpn_core_version` و`vpn_core_run(argc, argv)` و`vpn_core_stop`. ABI 2 يضيف `vpn_core_run_config` مع callbacks حماية sockets وحل أسماء الخوادم، والاستعلام عن الحالة والمنفذ الفعلي. شغّل run في thread مملوك للتطبيق، باستخدام `--config /absolute/path/node.ini`. يسمح تشغيلًا واحدًا؛ الثاني يعيد 2. Stop يطلب الإغلاق؛ انتظر خروج thread قبل أي عملية تحرير. لا تفك تحميل المكتبة أو مزوّد Go أثناء عمر العملية. المكتبة لا تثبت handlers للإشارات على حساب التطبيق المضيف. يحفظ الكور إعدادات العقد الأصلية وسياسة التحقق من TLS.
-
-احتفظ بالمزوّد بجانب executable أو مكتبة الكور. تحميله من مجلد المكوّن نفسه؛ لا نبحث عنه في مجلد العمل أو PATH. يرفض بناء الإنتاج `test_ca_file`. اختبارات الإنتاج المحلية تستخدم CA مؤقتة معروفة وتختبر رفض الاسم الخاطئ.
-
-## GitHub للاختبارات
-
-كل Workflows يبدأ يدويًا فقط؛ رفع commit لا يشغّل أي منها.
-
-- **Core Source Validation:** جولة مشتركة وWindows/PowerShell وحصر أحدث Pre، منفصلة عن اختبار الإنترنت.
-- **Build Selected Core Target:** اختر `linux` أو `windows` أو `android`؛ `all` صريح. Android ABI واحد افتراضيًا أو الأربع عند الطلب. بناء Android من Windows اختياري. لا محاكي ولا APK داخل هذا التشغيل.
-- **Test Selected Core Against Latest Pre:** اختر `core_ref` وLinux (الافتراضي) أو Windows. يبني نسخة واحدة ويجلب أحدث Pre مرة واحدة، ثم يوزع المدخلات المثبتة على 15 shard بنفس الهاش. لا يشغّل إصدارًا قديمًا بدل النسخة المختارة.
-- **Review or Clean Old Build Artifacts:** preview أو apply يدوي. المؤقت يوم، التقارير 14–30 يومًا؛ لا حذف لملفات Release المرجعية أو الرنز الجارية.
-- `build-hashes.json` يربط الملفات بـ`build-provenance.json`. المصدر هو Git HEAD الفعلي، مع `workflow_commit` مستقل عند البناء عبر Actions. استخدم `--require-clean` لمنع نشر ناتج مصدر معدل أو مجهول. AAR يحوي commit وبصمة السورس وNDK-NOTICE وتراخيص المكونات.
-
-لتجميع ZIP للهدف المبني:
-
-```sh
-python scripts/Package-Target.py --build build/linux-amd64
-```
-
-اختبارات شبكة العقد العامة على Linux أو Windows لها تقارير منفصلة عن اختبارات بناء وتشغيل Android/Linux. الرن الأخضر لا يعني أن جميع العقد ناجحة.
-
-مراجع أدوات البناء: [NDK other build systems](https://developer.android.com/ndk/guides/other_build_systems)، [NDK downloads](https://developer.android.com/ndk/downloads)، [Android page sizes](https://developer.android.com/guide/practices/page-sizes)، [Go x509 roots](https://go.dev/src/crypto/x509/root_linux.go). تم الرجوع إليها في 7 أكتوبر 2026؛ ثبات الأدوات في السكربت هو المرجع لهذا الإصدار.

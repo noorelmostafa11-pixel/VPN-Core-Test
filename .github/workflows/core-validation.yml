@@ -1,176 +1,98 @@
-name: Core Source Validation
-
+name: Build & Test
 on:
+  push:
+    branches: [main, feature/go-native-core]
   workflow_dispatch:
-
-  workflow_call:
-
-
 permissions:
   contents: read
-
 concurrency:
-  group: core-validation-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
-
+  group: build-test-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  pre:
-    name: Download latest Pre protocols for this run
+  source:
+    name: Select branch implementation
     runs-on: ubuntu-24.04
+    outputs:
+      engine: ${{ steps.source.outputs.engine }}
+      systems: ${{ steps.source.outputs.systems }}
     steps:
       - uses: actions/checkout@v4
-        with: {persist-credentials: false}
-      - run: python3 scripts/Prepare-Pre-Snapshot.py --latest --destination pre-run/protocols --manifest-out pre-run/manifest.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: pre-input-${{ github.run_id }}
-          overwrite: true
-          path: pre-run/
-          if-no-files-found: error
-          retention-days: 1
-
-  linux:
-    needs: pre
-    name: Linux protocol and component regression
-    runs-on: ubuntu-24.04
+      - id: source
+        shell: bash
+        run: |
+          if [ -f go.mod ]; then
+            echo 'engine=go' >> "$GITHUB_OUTPUT"
+            echo 'systems=["ubuntu-24.04","windows-2025","macos-15"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'engine=original' >> "$GITHUB_OUTPUT"
+            echo 'systems=["ubuntu-24.04","windows-2025"]' >> "$GITHUB_OUTPUT"
+          fi
+  runtime:
+    name: Build and test (${{ matrix.os }})
+    needs: source
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(needs.source.outputs.systems) }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
       - uses: actions/setup-go@v5
-        with:
-          go-version: '1.27.1'
-          cache-dependency-path: tls-provider/go.sum
+        with: {go-version: '1.27.1', cache: false}
       - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: msys2/setup-msys2@v2
+        if: runner.os == 'Windows' && needs.source.outputs.engine == 'original'
+        id: msys
+        with: {msystem: MINGW64, update: true, install: mingw-w64-x86_64-gcc, path-type: inherit}
+      - name: Set original Windows compiler path
+        if: runner.os == 'Windows' && needs.source.outputs.engine == 'original'
+        shell: pwsh
+        run: Add-Content -LiteralPath $env:GITHUB_PATH -Value '${{ steps.msys.outputs.msys2-location }}\mingw64\bin'
+      - name: Install test dependencies
+        shell: bash
+        run: |
+          if [ -f go.mod ]; then python -m pip install -r tests/requirements-go.txt; else python -m pip install -r tests/requirements.txt; fi
+      - name: Build, validate and package the selected branch
+        run: python scripts/CI.py runtime
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          python-version: '3.12'
+          name: core-${{ runner.os }}-${{ github.run_id }}
+          path: dist/
+          retention-days: 3
+  portable:
+    name: Portable Go builds
+    needs: source
+    if: needs.source.outputs.engine == 'go'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.27.1', cache: false}
+      - run: python3 scripts/CI.py portable
+      - uses: actions/upload-artifact@v4
+        with: {name: portable-go-core, path: build/, retention-days: 3}
+  mobile:
+    name: Android ARM64 SDK
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.27.1', cache: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
       - uses: actions/setup-java@v4
         with: {distribution: temurin, java-version: '17'}
-      - name: Install test dependencies
+      - name: Select pinned Android NDK
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y g++ libssl-dev openssl
-          # The independent HTTP/3 peer requires the documented 7 MiB UDP limit.
-          sudo sysctl -w net.core.rmem_max=7340032 net.core.wmem_max=7340032
-          python -m pip install -r tests/requirements.txt
-      - name: Build and run independent local protocol peers
-        env:
-          VPN_CORE_POWERSHELL: /usr/bin/pwsh
-        run: bash scripts/build-linux-tests.sh 2>&1 | tee validation-linux.log
-      - uses: actions/download-artifact@v4
-        with:
-          name: pre-input-${{ github.run_id }}
-          path: pre-run
-      - name: Verify support for this run's latest Pre configurations
-        run: python scripts/Audit-Pre-Support.py --core bin/vpn-core-test --nodes pre-run/protocols --manifest pre-run/manifest.json --output pre-current-support
-      - name: Production shared-core acceptance
-        run: |
-          python scripts/Build.py --target linux --require-clean
-          VPN_CORE_TEST_BINARY="$PWD/build/linux-amd64/vpn-core" python -m unittest -v test_lifecycle_acceptance.LifecycleAcceptanceTests test_dns_acceptance.DnsAcceptanceTests test_packaging_acceptance.PackagingAcceptanceTests
-        env:
-          PYTHONPATH: tests
-      - name: Preserve validation evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-validation-${{ github.sha }}
-          path: |
-            validation-linux.log
-            pre-current-support/
-          retention-days: 14
-
-  windows:
-    needs: pre
-    name: Windows production build and PowerShell 5.1 + 7
-    runs-on: windows-2022
-    timeout-minutes: 35
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.27.1'
-          cache-dependency-path: tls-provider/go.sum
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - uses: msys2/setup-msys2@v2
-        id: msys
-        with:
-          msystem: MINGW64
-          update: true
-          install: mingw-w64-x86_64-gcc
-          path-type: inherit
-      - name: Build core and diagnostic probe from repository source
-        shell: pwsh
-        env:
-          MSYS_LOCATION: ${{ steps.msys.outputs.msys2-location }}
-        run: |
-          $ErrorActionPreference='Stop'
-          $env:PATH=(Join-Path $env:MSYS_LOCATION 'mingw64\bin')+';'+$env:PATH
-          & .\scripts\Build-Windows.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Windows build failed' }
-          & g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -Wno-misleading-indentation -D_WIN32_WINNT=0x0A00 -static -static-libgcc -static-libstdc++ tests/repair_probe.cpp -o bin/repair-probe.exe -lws2_32 -lsecur32 -lcrypt32 -lbcrypt -pthread
-          if ($LASTEXITCODE -ne 0) { throw 'Diagnostic probe build failed' }
-          & g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -Wno-misleading-indentation -D_WIN32_WINNT=0x0A00 -static -static-libgcc -static-libstdc++ tests/dns_worker_probe.cpp -o bin/dns-worker-probe.exe -lws2_32 -lsecur32 -lcrypt32 -lbcrypt -pthread
-          if ($LASTEXITCODE -ne 0) { throw 'DNS worker probe build failed' }
-          & g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -Wno-misleading-indentation -D_WIN32_WINNT=0x0A00 -static -static-libgcc -static-libstdc++ tests/tls_write_probe.cpp -o bin/tls-write-probe.exe -lws2_32 -lsecur32 -lcrypt32 -lbcrypt -pthread
-          if ($LASTEXITCODE -ne 0) { throw 'TLS write-state component probe build failed' }
-          & python -m pip install -r tests/requirements.txt
-          if ($LASTEXITCODE -ne 0) { throw 'Test dependency setup failed' }
-          Push-Location tls-provider
-          & go build -mod=vendor -o ../bin/xhttp-peer.exe ../tests/xhttp_peer.go
-          Pop-Location
-          if ($LASTEXITCODE -ne 0) { throw 'Independent peer build failed' }
-      - name: PowerShell 5.1 process regression including 16 concurrent children
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop'
-          $env:VPN_CORE_POWERSHELL=(Get-Command powershell.exe).Source
-          $env:VPN_CORE_TEST_BINARY=(Resolve-Path bin/vpn-core.exe).Path
-          $env:VPN_CORE_REPAIR_PROBE=(Resolve-Path bin/repair-probe.exe).Path
-          $env:PYTHONPATH=(Resolve-Path tests).Path
-          & cmd.exe /d /c 'python -m unittest -v test_batch_exitcode.BatchExitCodeTests test_repairs_042.RepairTests test_repairs_043.RepositoryRepairTests test_ready_044.ReadyReadTests > validation-windows-51.log 2>&1'
-          $testExit=$LASTEXITCODE
-          Get-Content validation-windows-51.log
-          $global:LASTEXITCODE=$testExit
-          if ($LASTEXITCODE -ne 0) { throw 'Windows PowerShell 5.1 regression failed' }
-      - name: PowerShell 7 and verified production Schannel/provider WebSocket connections
-        shell: pwsh
-        run: |
-          $ErrorActionPreference='Stop'
-          $env:VPN_CORE_POWERSHELL=(Get-Command pwsh.exe).Source
-          $env:VPN_CORE_TEST_BINARY=(Resolve-Path bin/vpn-core.exe).Path
-          $env:VPN_CORE_REPAIR_PROBE=(Resolve-Path bin/repair-probe.exe).Path
-          $env:PYTHONPATH=(Resolve-Path tests).Path
-          & python -m unittest -v test_batch_exitcode.BatchExitCodeTests test_windows_043.WindowsRepairTransportTests test_ready_044.ReadyReadTests 2>&1 | Tee-Object validation-windows-7.log
-          if ($LASTEXITCODE -ne 0) { throw 'Windows production regression failed' }
-      - name: Windows shared core TCP, UDP, DNS and blocked-callback acceptance
-        shell: pwsh
-        env:
-          PYTHONPATH: tests
-          VPN_CORE_TEST_BINARY: ${{ github.workspace }}/bin/vpn-core.exe
-          VPN_CORE_TLS_WRITE_PROBE: ${{ github.workspace }}/bin/tls-write-probe.exe
-        run: |
-          & python -m unittest -v test_udp_sdk.UdpSdkTests test_lifecycle_acceptance.LifecycleAcceptanceTests test_dns_acceptance.DnsAcceptanceTests test_dns_worker.DnsWorkerTests test_tls_write_state.TLSWriteStateTests test_node_budget.NodeBudgetTests test_node_budget.NodeBudgetWireTests 2>&1 | Tee-Object validation-windows-sdk.log
-          if ($LASTEXITCODE -ne 0) { throw 'Windows shared core acceptance failed' }
-      - uses: actions/download-artifact@v4
-        with:
-          name: pre-input-${{ github.run_id }}
-          path: pre-run
-      - name: Verify Windows support for this run's latest Pre configurations
-        shell: pwsh
-        run: |
-          & python scripts/Audit-Pre-Support.py --core bin/vpn-core.exe --nodes pre-run/protocols --manifest pre-run/manifest.json --output pre-current-support
-          if ($LASTEXITCODE -ne 0) { throw 'Latest Pre support coverage failed' }
-      - name: Preserve Windows evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-validation-${{ github.sha }}
-          path: |
-            validation-windows-*.log
-            pre-current-support/
-          retention-days: 14
+          if [ -f go.mod ]; then ndk='28.2.13676358'; else ndk=$(python -c 'import json;print(json.load(open("scripts/toolchains.json"))["android_ndk"])'); fi
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$ndk"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ndk" >> "$GITHUB_ENV"
+      - run: python scripts/CI.py mobile
+      - uses: actions/upload-artifact@v4
+        with: {name: android-arm64-sdk, path: dist/, retention-days: 3}
