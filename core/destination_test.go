@@ -90,6 +90,7 @@ func forwardingPeer(t *testing.T, target, requiredHost string) string {
 				}
 				defer up.Close()
 				writeAll(c, []byte{0, 0})
+				c.SetDeadline(time.Time{}) // Bound header parsing, not the pooled HTTPS connection lifetime.
 				copyDone := make(chan struct{})
 				go func() { io.Copy(up, c); up.Close(); close(copyDone) }()
 				io.Copy(c, up)
