@@ -60,7 +60,7 @@ try{
         while(!(Test-Path -LiteralPath (Join-Path $Exchange 'stop'))){if($process.HasExited){throw 'Core stopped during the native session.'};if([DateTime]::UtcNow -ge $deadline){throw 'Acceptance coordinator timeout.'};Start-Sleep -Milliseconds 100}
     }else{
         Write-Host 'Native tunnel ready. DNS is inside the Go core. Press Ctrl+C to disconnect.'
-        $process.WaitForExit()
+        while(!$process.HasExited){Start-Sleep -Milliseconds 200}
     }
 }finally{
     try{Invoke-OwnedPolicy 'Restore' $null}catch{$restoreError=$_.Exception.Message;Write-Warning $restoreError}
