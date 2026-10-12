@@ -123,7 +123,11 @@ class UdpSdkTests(unittest.TestCase):
                     while not ready.exists():
                         if p.poll() is not None or time.monotonic()>deadline:raise AssertionError(log.read_text())
                         time.sleep(.01)
-                    yield json.loads(ready.read_text())['port'],log
+                    for retry in range(100):
+                        try:ready_data=json.loads(ready.read_text());break
+                        except (OSError,ValueError):time.sleep(.005)
+                    else:raise AssertionError('ready file did not become readable')
+                    yield ready_data['port'],log
                 except BaseException as error:
                     error.add_note(log.read_text());raise
                 finally:

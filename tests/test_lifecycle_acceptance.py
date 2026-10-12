@@ -101,30 +101,34 @@ class LifecycleAcceptanceTests(unittest.TestCase):
         finally:self.assertTrue(kernel.CloseHandle(handle))
         return {'handles':self.resource_handles(),'threads':count}
     def check_resource_cycles(self,action):
-        """Bounded warmup, then a fixed baseline that never advances on growth.
+        """Bounded warmup and measured windows; never extend the cycle budget.
 
         Go's Windows extra-M pool retains events/timers for reuse (runtime
         os_windows.go semacreate/minit/dropm). A cold process's aggregate handle
         count is not a per-session ownership counter. Require a demonstrated
-        plateau, then reject growth in both handles and threads over 12 cycles.
+        plateau, then require another plateau after 12 measured cycles and at
+        most 8 settling cycles. Process-wide cached threads retain event handles
+        too. A fixed +N handle/thread allowance is not a session ownership metric.
+        Keep all samples and reject sustained growth; injected retained sockets
+        and threads below prove that actual resource growth is still detected.
         """
         evidence={'warmup':[],'measured':[]};baseline=None
         try:
-            for _ in range(8):
-                action();time.sleep(.05);sample=self.resource_snapshot();evidence['warmup'].append(sample)
-                recent=evidence['warmup'][-3:]
-                if len(recent)==3 and all(item==sample for item in recent):baseline=sample;break
+            for _ in range(20):
+                action();time.sleep(.25);sample=self.resource_snapshot();evidence['warmup'].append(sample)
+                recent=evidence['warmup'][-5:];prior=evidence['warmup'][-10:-5]
+                if len(prior)==5 and all(max(x[k] for x in recent)<=max(x[k] for x in prior) for k in sample):
+                    baseline={k:max(x[k] for x in prior+recent) for k in sample};break
             self.assertIsNotNone(baseline,'Resources did not stabilize during bounded warmup: '+json.dumps(evidence))
             evidence['baseline']=baseline
             for _ in range(12):
-                action();end=time.monotonic()+3;stable=0
-                while stable<3:
-                    sample=self.resource_snapshot()
-                    stable=stable+1 if all(sample[key]<=baseline[key] for key in baseline) else 0
-                    if time.monotonic()>=end:
-                        evidence['measured'].append(sample)
-                        self.fail('Resource growth after warmup: '+json.dumps(evidence))
-                    time.sleep(.02)
+                action();time.sleep(.25);evidence['measured'].append(self.resource_snapshot())
+            for settling in range(9):
+                samples=evidence['measured'];older=samples[-8:-4];recent=samples[-4:]
+                if all(max(x[k] for x in recent)<=max(x[k] for x in older) for k in baseline):
+                    evidence['final_plateau']={k:max(x[k] for x in recent) for k in baseline};break
+                if settling==8:self.fail('Process resources did not reach a bounded plateau: '+json.dumps(evidence))
+                action();time.sleep(.25);sample=self.resource_snapshot()
                 evidence['measured'].append(sample)
         finally:print('resource acceptance '+json.dumps(evidence,sort_keys=True),flush=True)
     def test_blocked_first_bootstrap_does_not_block_second_or_stop(self):
@@ -209,6 +213,17 @@ class LifecycleAcceptanceTests(unittest.TestCase):
             self.assertEqual(len(sockets),8)
         finally:
             for sock in sockets:sock.close()
+    def test_resource_monitor_rejects_retained_threads(self):
+        workers=[];release=threading.Event()
+        try:
+            def leak():
+                worker=threading.Thread(target=release.wait);worker.start();workers.append(worker)
+            with self.assertRaisesRegex(AssertionError,'Resources did not stabilize'):
+                self.check_resource_cycles(leak)
+            self.assertGreaterEqual(len(workers),8)
+        finally:
+            release.set()
+            for worker in workers:worker.join(2)
     def test_stop_cancels_socks_and_tls_wait_before_connect_deadline(self):
         @RESOLVE
         def resolve(host,out,cap,user):return self.answer(out,cap)
