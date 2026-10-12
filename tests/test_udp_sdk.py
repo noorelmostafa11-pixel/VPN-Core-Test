@@ -125,8 +125,8 @@ class UdpSdkTests(unittest.TestCase):
                         time.sleep(.01)
                     for retry in range(100):
                         try:ready_data=json.loads(ready.read_text());break
-                        except PermissionError:time.sleep(.005)
-                    else:raise AssertionError('ready file remained locked')
+                        except (OSError,ValueError):time.sleep(.005)
+                    else:raise AssertionError('ready file did not become readable')
                     yield ready_data['port'],log
                 except BaseException as error:
                     error.add_note(log.read_text());raise
