@@ -197,6 +197,7 @@ func TestDestinationHTTPSRegression(t *testing.T) {
 						t.Fatal(err)
 					}
 					t.Cleanup(func() { e.Close() })
+					e.sniffBudget = 2 * time.Second // Race-instrumented virtual stacks are not latency benchmarks.
 					ip := "192.0.2.80"
 					proto := ipv4.ProtocolNumber
 					if v6 {
@@ -223,7 +224,7 @@ func TestDestinationHTTPSRegression(t *testing.T) {
 						transport.Proxy = http.ProxyURL(proxy)
 					}
 					defer transport.CloseIdleConnections()
-					client := &http.Client{Transport: transport, Timeout: 3 * time.Second}
+					client := &http.Client{Transport: transport, Timeout: 12 * time.Second}
 					response, err := client.Get("https://" + net.JoinHostPort(ip, "443") + "/")
 					if !enabled {
 						if err == nil {

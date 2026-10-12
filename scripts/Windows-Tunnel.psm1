@@ -67,7 +67,11 @@ function Get-VpnWindowsOperations {
         }
         RemoveAddress = { param($s)
             if (!(Test-VpnAdapterIdentity $s.TunIndex $s.TunGuid)) { return }
-            foreach ($a in $s.TunAddresses) { Get-NetIPAddress -InterfaceIndex $s.TunIndex -AddressFamily $a.Family -IPAddress $a.Address -ErrorAction SilentlyContinue | Remove-NetIPAddress -Confirm:$false -ErrorAction Stop }
+            foreach ($a in $s.TunAddresses) {
+                foreach($store in @('ActiveStore','PersistentStore')) {
+                    Get-NetIPAddress -InterfaceIndex $s.TunIndex -AddressFamily $a.Family -IPAddress $a.Address -PolicyStore $store -ErrorAction SilentlyContinue | Remove-NetIPAddress -Confirm:$false -ErrorAction Stop
+                }
+            }
         }
         SetMetric = { param($s)
             foreach ($m in $s.TunMetrics) { Set-NetIPInterface -InterfaceIndex $s.TunIndex -AddressFamily $m.Family -AutomaticMetric Disabled -InterfaceMetric 1 -ErrorAction Stop }

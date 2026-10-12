@@ -52,6 +52,7 @@ type Engine struct {
 	slots                                      chan struct{}
 	events                                     chan Event
 	dns                                        *dnsRelay
+	sniffBudget                                time.Duration
 	next, up, down, accepted, rejected, active atomic.Uint64
 }
 
@@ -60,7 +61,7 @@ func NewEngine(parent context.Context, c Config, h Hooks) (*Engine, error) {
 		return nil, e
 	}
 	ctx, cancel := context.WithCancel(WithHooks(parent, h))
-	e := &Engine{config: c, ctx: ctx, cancel: cancel, closeDone: make(chan struct{}), closers: map[io.Closer]bool{}, slots: make(chan struct{}, c.MaxConnections), events: make(chan Event, 256)}
+	e := &Engine{config: c, ctx: ctx, cancel: cancel, closeDone: make(chan struct{}), closers: map[io.Closer]bool{}, slots: make(chan struct{}, c.MaxConnections), events: make(chan Event, 256), sniffBudget: 150 * time.Millisecond}
 	if c.NativeDNS {
 		e.dns = newDNSRelay(e)
 		e.track(e.dns)

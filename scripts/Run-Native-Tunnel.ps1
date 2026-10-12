@@ -50,7 +50,11 @@ try{
     $up6=@($status.upstream_ipv6|Where-Object {$_})
     if(!(Get-NetRoute -AddressFamily IPv6 -DestinationPrefix '::/0' -ErrorAction SilentlyContinue)){$up6=@()}
     $dns6=if($status.dns_ipv6){@('::1')}else{@()}
-    $apply=@{Mode='Apply';TunName=$name;StateFile=$StateFile;UpstreamIPv4=@($status.upstream_ipv4|Where-Object {$_});UpstreamIPv6=$up6;UpstreamPort=$status.upstream_port;DnsIPv4=@('127.0.0.1');DnsIPv6=$dns6}
+    $tunAddress=$null
+    foreach($subnet in 190..254){$candidate="10.248.$subnet.1";if(!(Get-NetIPAddress -IPAddress $candidate -ErrorAction SilentlyContinue)){$tunAddress=$candidate;break}}
+    if(!$tunAddress){throw 'No free address in the private session pool.'}
+    $tunAddress6='fd48:248:'+([guid]::NewGuid().ToString('N').Substring(0,4))+'::1'
+    $apply=@{Mode='Apply';TunName=$name;StateFile=$StateFile;UpstreamIPv4=@($status.upstream_ipv4|Where-Object {$_});UpstreamIPv6=$up6;UpstreamPort=$status.upstream_port;DnsIPv4=@('127.0.0.1');DnsIPv6=$dns6;TunAddress=$tunAddress;TunAddressIPv6=$tunAddress6}
     Invoke-OwnedPolicy 'Apply' $apply
     $session=[ordered]@{CorePid=$process.Id;TunName=$name;Version=$status.version;ProxyPort=$status.port;Directory=$directory;StateFile=$StateFile;PhysicalInterface=$physical.Name;Time=[DateTime]::UtcNow.ToString('O')}
     if($Exchange){

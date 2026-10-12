@@ -44,7 +44,11 @@ func (e *Engine) destination(c net.Conn, host string, port int) (net.Conn, strin
 	}
 	scratch := sniffBuffers.Get().(*[sniffLimit]byte)
 	defer sniffBuffers.Put(scratch)
-	c.SetReadDeadline(time.Now().Add(150 * time.Millisecond))
+	budget := e.sniffBudget
+	if budget == 0 {
+		budget = 150 * time.Millisecond
+	}
+	c.SetReadDeadline(time.Now().Add(budget))
 	defer c.SetReadDeadline(time.Time{})
 	n := 0
 	for n < len(scratch) {

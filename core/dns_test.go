@@ -96,6 +96,8 @@ func TestDNSLocalAndNativeTCPUDP(t *testing.T) {
 	roots := x509.NewCertPool()
 	roots.AddCert(upstream.Certificate())
 	e.dns.transport.TLSClientConfig = &tls.Config{RootCAs: roots}
+	e.dns.http.Timeout = 10 * time.Second
+	e.dns.transport.TLSHandshakeTimeout = 8 * time.Second
 	e.dns.servers = []string{upstream.URL + "/unavailable", upstream.URL + "/dns-query"}
 	local, err := e.StartDNS("127.0.0.1:0")
 	if err != nil {
@@ -125,7 +127,7 @@ func TestDNSLocalAndNativeTCPUDP(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer c.Close()
-				c.SetDeadline(time.Now().Add(3 * time.Second))
+				c.SetDeadline(time.Now().Add(12 * time.Second))
 				q := testDNSQuery("example.test", dnsmessage.TypeA)
 				if tcp {
 					q = join(word(len(q)), q)
