@@ -1,0 +1,98 @@
+name: Build & Test
+on:
+  push:
+    branches: [main, feature/go-native-core]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: build-test-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  source:
+    name: Select branch implementation
+    runs-on: ubuntu-24.04
+    outputs:
+      engine: ${{ steps.source.outputs.engine }}
+      systems: ${{ steps.source.outputs.systems }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: source
+        shell: bash
+        run: |
+          if [ -f go.mod ]; then
+            echo 'engine=go' >> "$GITHUB_OUTPUT"
+            echo 'systems=["ubuntu-24.04","windows-2025","macos-15"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'engine=original' >> "$GITHUB_OUTPUT"
+            echo 'systems=["ubuntu-24.04","windows-2025"]' >> "$GITHUB_OUTPUT"
+          fi
+  runtime:
+    name: Build and test (${{ matrix.os }})
+    needs: source
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(needs.source.outputs.systems) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.27.1', cache: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: msys2/setup-msys2@v2
+        if: runner.os == 'Windows' && needs.source.outputs.engine == 'original'
+        id: msys
+        with: {msystem: MINGW64, update: true, install: mingw-w64-x86_64-gcc, path-type: inherit}
+      - name: Set original Windows compiler path
+        if: runner.os == 'Windows' && needs.source.outputs.engine == 'original'
+        shell: pwsh
+        run: Add-Content -LiteralPath $env:GITHUB_PATH -Value '${{ steps.msys.outputs.msys2-location }}\mingw64\bin'
+      - name: Install test dependencies
+        shell: bash
+        run: |
+          if [ -f go.mod ]; then python -m pip install -r tests/requirements-go.txt; else python -m pip install -r tests/requirements.txt; fi
+      - name: Build, validate and package the selected branch
+        run: python scripts/CI.py runtime
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: core-${{ runner.os }}-${{ github.run_id }}
+          path: dist/
+          retention-days: 3
+  portable:
+    name: Portable Go builds
+    needs: source
+    if: needs.source.outputs.engine == 'go'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.27.1', cache: false}
+      - run: python3 scripts/CI.py portable
+      - uses: actions/upload-artifact@v4
+        with: {name: portable-go-core, path: build/, retention-days: 3}
+  mobile:
+    name: Android ARM64 SDK
+    needs: source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.27.1', cache: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - name: Select pinned Android NDK
+        shell: bash
+        run: |
+          if [ -f go.mod ]; then ndk='28.2.13676358'; else ndk=$(python -c 'import json;print(json.load(open("scripts/toolchains.json"))["android_ndk"])'); fi
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$ndk"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ndk" >> "$GITHUB_ENV"
+      - run: python scripts/CI.py mobile
+      - uses: actions/upload-artifact@v4
+        with: {name: android-arm64-sdk, path: dist/, retention-days: 3}
