@@ -42,6 +42,7 @@ def runtime():
             else:
                 run(native, '-test.run=' + case, '-test.v', '-test.timeout=90s', env=env)
                 run('pwsh', '-NoProfile', '-File', ROOT / 'tests/test_windows_policy.ps1')
+                run('pwsh', '-NoProfile', '-File', ROOT / 'tests/test_windows_dual_policy.ps1')
         python('scripts/Package-Go.py', '--build', build)
     else:
         python('scripts/Apply-Component-Patches.py')

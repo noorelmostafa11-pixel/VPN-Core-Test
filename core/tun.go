@@ -108,7 +108,12 @@ func (e *Engine) StartTUN(device PacketDevice, mtu int) (*Tunnel, error) {
 			defer client.Close()
 			stopClient := context.AfterFunc(ctx, func() { client.Close() })
 			defer stopClient()
-			server, dialErr := Dial(ctx, e.config, net.IP(id.LocalAddress.AsSlice()).String(), int(id.LocalPort))
+			if id.LocalPort == 53 && e.dns != nil {
+				e.dns.tcp(ctx, client)
+				return
+			}
+			flow, host := e.destination(client, net.IP(id.LocalAddress.AsSlice()).String(), int(id.LocalPort))
+			server, dialErr := Dial(ctx, e.config, host, int(id.LocalPort))
 			if dialErr != nil {
 				e.emit(Event{Event: "failure", ReasonCode: reasonCode(dialErr)})
 				return
@@ -120,7 +125,7 @@ func (e *Engine) StartTUN(device PacketDevice, mtu int) (*Tunnel, error) {
 			defer server.Close()
 			stopServer := context.AfterFunc(ctx, func() { server.Close() })
 			defer stopServer()
-			e.relay(client, server)
+			e.relay(flow, server)
 		}) {
 			e.release()
 			r.Complete(true)
@@ -128,6 +133,11 @@ func (e *Engine) StartTUN(device PacketDevice, mtu int) (*Tunnel, error) {
 	})
 	t.stack.SetTransportProtocolHandler(tcp.ProtocolNumber, forward.HandlePacket)
 	t.stack.SetTransportProtocolHandler(udp.ProtocolNumber, func(id stack.TransportEndpointID, pkt *stack.PacketBuffer) bool {
+		// Opt-in TCP mode gives browsers an immediate ICMP port-unreachable
+		// response instead of waiting on QUIC when the node blocks UDP/443.
+		if e.config.PreferTCP && id.LocalPort == 443 {
+			return false
+		}
 		if !e.acquire() {
 			return false
 		}
@@ -213,6 +223,28 @@ func (e *Engine) StartTUN(device PacketDevice, mtu int) (*Tunnel, error) {
 	return t, nil
 }
 func (t *Tunnel) udpFlow(client net.Conn, host string, port int) {
+	if port == 53 && t.engine.dns != nil {
+		stop := context.AfterFunc(t.ctx, func() { client.Close() })
+		defer stop()
+		b := make([]byte, 4097)
+		for {
+			client.SetReadDeadline(time.Now().Add(t.engine.config.IdleTimeout))
+			n, err := client.Read(b)
+			if err != nil {
+				return
+			}
+			if n > 4096 {
+				continue
+			}
+			answer, err := t.engine.dns.answer(t.ctx, b[:n])
+			if err == nil {
+				client.SetWriteDeadline(time.Now().Add(4 * time.Second))
+				if _, err = client.Write(dnsDatagram(b[:n], answer)); err != nil {
+					return
+				}
+			}
+		}
+	}
 	server, err := DialPacket(t.ctx, t.engine.config, host, port)
 	if err != nil {
 		t.engine.emit(Event{Event: "failure", ReasonCode: reasonCode(err)})

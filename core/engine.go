@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const Version = "0.5.1-go"
+const Version = "0.5.2-go"
 
 type Event struct {
 	Protocol     string `json:"protocol,omitempty"`
@@ -51,6 +51,7 @@ type Engine struct {
 	workers                                    sync.WaitGroup
 	slots                                      chan struct{}
 	events                                     chan Event
+	dns                                        *dnsRelay
 	next, up, down, accepted, rejected, active atomic.Uint64
 }
 
@@ -59,7 +60,12 @@ func NewEngine(parent context.Context, c Config, h Hooks) (*Engine, error) {
 		return nil, e
 	}
 	ctx, cancel := context.WithCancel(WithHooks(parent, h))
-	return &Engine{config: c, ctx: ctx, cancel: cancel, closeDone: make(chan struct{}), closers: map[io.Closer]bool{}, slots: make(chan struct{}, c.MaxConnections), events: make(chan Event, 256)}, nil
+	e := &Engine{config: c, ctx: ctx, cancel: cancel, closeDone: make(chan struct{}), closers: map[io.Closer]bool{}, slots: make(chan struct{}, c.MaxConnections), events: make(chan Event, 256)}
+	if c.NativeDNS {
+		e.dns = newDNSRelay(e)
+		e.track(e.dns)
+	}
+	return e, nil
 }
 func (e *Engine) Events() <-chan Event { return e.events }
 func (e *Engine) emit(v Event) {
@@ -77,6 +83,8 @@ func (e *Engine) Stats() Stats {
 func (e *Engine) track(c io.Closer) bool {
 	e.mu.Lock()
 	_, listener := c.(net.Listener)
+	_, packetListener := c.(net.PacketConn)
+	listener = listener || packetListener
 	if e.closed || e.ctx.Err() != nil || (listener && e.acceptingStopped) {
 		e.mu.Unlock()
 		c.Close()
@@ -115,10 +123,12 @@ func (e *Engine) release() { <-e.slots; e.active.Add(^uint64(0)) }
 func (e *Engine) StopAccepting() {
 	e.mu.Lock()
 	e.acceptingStopped = true
-	var listeners []net.Listener
+	var listeners []io.Closer
 	for c := range e.closers {
 		if l, ok := c.(net.Listener); ok {
 			listeners = append(listeners, l)
+		} else if p, ok := c.(net.PacketConn); ok {
+			listeners = append(listeners, p)
 		}
 	}
 	e.mu.Unlock()
@@ -145,11 +155,16 @@ func (e *Engine) Close() error {
 	for _, c := range list {
 		if l, ok := c.(net.Listener); ok {
 			l.Close()
+		} else if p, ok := c.(net.PacketConn); ok {
+			p.Close()
 		}
 	}
 	var closed sync.WaitGroup
 	for _, c := range list {
 		if _, ok := c.(net.Listener); ok {
+			continue
+		}
+		if _, ok := c.(net.PacketConn); ok {
 			continue
 		}
 		closed.Add(1)
@@ -263,10 +278,23 @@ func (e *Engine) handleSOCKS(c net.Conn) {
 		socksReply(c, 8, nil)
 		return
 	}
+	client := c
+	earlyReply := e.config.Sniffing && sniffEligible(host, port)
+	if earlyReply {
+		// A SOCKS client sends its HTTP/TLS prefix only after acceptance.
+		// This is admission, not a claim that the upstream is negotiated.
+		if socksReply(c, 0, nil) != nil {
+			return
+		}
+		c.SetDeadline(time.Time{})
+		client, host = e.destination(c, host, port)
+	}
 	upstream, err := Dial(e.ctx, e.config, host, port)
 	if err != nil {
 		c.SetWriteDeadline(time.Now().Add(500 * time.Millisecond))
-		socksReply(c, 1, nil)
+		if !earlyReply {
+			socksReply(c, 1, nil)
+		}
 		e.emit(dialFailure(id, err))
 		return
 	}
@@ -275,13 +303,13 @@ func (e *Engine) handleSOCKS(c net.Conn) {
 	}
 	defer e.untrack(upstream)
 	defer upstream.Close()
-	if socksReply(c, 0, nil) != nil {
+	if !earlyReply && socksReply(c, 0, nil) != nil {
 		return
 	}
 	version, alpn := connectionMeta(upstream)
 	e.emit(Event{Event: "negotiated", ConnectionID: id, TunnelReady: true, TLSVersion: version, ALPN: alpn})
 	c.SetDeadline(time.Time{})
-	err, transferred := e.relayWithMetrics(c, upstream)
+	err, transferred := e.relayWithMetrics(client, upstream)
 	if err != nil && !errors.Is(err, errIdleTimeout) && reasonCode(err) != "CANCELLED" {
 		e.emit(Event{Event: "failure", ConnectionID: id, ReasonCode: reasonCode(err), TunnelReady: true, Phase: "PROTOCOL_FAILED"})
 	}

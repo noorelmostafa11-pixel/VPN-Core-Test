@@ -34,10 +34,11 @@ type Config struct {
 	OriginalURI                                                                 string
 	Compatibility                                                               []string
 	PluginMux, OnlyCustomRoots, InsecureRequested, InvalidPathED                bool
+	Sniffing, NativeDNS, PreferIPv4, PreferTCP                                  bool
 }
 
 func defaults() Config {
-	return Config{Path: "/", Header: "none", Encryption: "none", EarlyHeader: "Sec-WebSocket-Protocol", ListenPort: 1080, MaxConnections: 128, ConnectTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
+	return Config{Path: "/", Header: "none", Encryption: "none", EarlyHeader: "Sec-WebSocket-Protocol", ListenPort: 1080, MaxConnections: 128, ConnectTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second, Sniffing: true, NativeDNS: true, PreferIPv4: true}
 }
 func option(m map[string]string, fallback string, keys ...string) string {
 	for _, k := range keys {
@@ -713,6 +714,21 @@ func ReadConfig(path string) (Config, error) {
 			hi = 600000
 		case "ready_file":
 			c.ReadyFile = v
+			continue
+		case "sniffing", "native_dns", "prefer_ipv4", "prefer_tcp":
+			if v != "true" && v != "false" {
+				return c, fmt.Errorf("PARSE_INVALID: %s requires true or false", k)
+			}
+			switch k {
+			case "sniffing":
+				c.Sniffing = truth(v)
+			case "native_dns":
+				c.NativeDNS = truth(v)
+			case "prefer_ipv4":
+				c.PreferIPv4 = truth(v)
+			case "prefer_tcp":
+				c.PreferTCP = truth(v)
+			}
 			continue
 		case "tls_ca_file", "test_ca_file":
 			c.CAFile = v

@@ -347,6 +347,7 @@ func testNativeUDPActivityKeepsFlowAlive(t *testing.T, uploadOnly bool) {
 		t.Fatal(err)
 	}
 	cfg.IdleTimeout = 150 * time.Millisecond
+	cfg.NativeDNS = false // This fixture tests arbitrary datagrams, not DNS wire messages.
 	e, _ := NewEngine(context.Background(), cfg, Hooks{})
 	defer e.Close()
 	tunnel := &Tunnel{engine: e, ctx: e.ctx}

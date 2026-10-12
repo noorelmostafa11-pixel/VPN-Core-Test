@@ -36,7 +36,7 @@ def main():
  for name in ('NOTICE.md','OWNERSHIP.md'):shutil.copy2(ROOT/name,output/name)
  allowed={exe,'NOTICE.md','OWNERSHIP.md'}
  if target=='windows':
-  for name in ('Set-Windows-Tunnel.ps1','Windows-Tunnel.psm1'):
+  for name in ('Set-Windows-Tunnel.ps1','Windows-Tunnel.psm1','Run-Native-Tunnel.ps1','Watch-Native-Network.ps1'):
    shutil.copy2(ROOT/'scripts'/name,output/name);allowed.add(name)
   shutil.copy2(ROOT/'docs/WINDOWS-TUNNEL.md',output/'WINDOWS-TUNNEL.md');allowed.add('WINDOWS-TUNNEL.md')
  if a.shared:allowed.update({shared,pathlib.Path(shared).with_suffix('.h').name})

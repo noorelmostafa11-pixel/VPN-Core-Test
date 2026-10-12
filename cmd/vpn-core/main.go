@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/noorelmostafa11-pixel/VPN-Core-Test/core"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -28,6 +29,8 @@ func run() int {
 	tunFD := flag.Int("tun-fd", -1, "duplicate an established TUN descriptor")
 	tunMTU := flag.Int("tun-mtu", 1500, "native TUN MTU")
 	tunOnly := flag.Bool("tun-only", false, "disable the SOCKS listener")
+	dnsListen := flag.String("dns-listen", "", "local UDP/TCP DNS over HTTPS through the node, e.g. 127.0.0.1:53")
+	bindInterface := flag.String("bind-interface", "", "Windows physical uplink for upstream sockets")
 	flag.Parse()
 	if *version {
 		fmt.Println("vpn-core", core.Version, "Go; project-owned protocols; SOCKS5 TCP + UDP; native TUN")
@@ -98,13 +101,54 @@ func run() int {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	engine, e := core.NewEngine(ctx, c, core.Hooks{})
+	runtimeReady := c.ReadyFile
+	if *tunName != "" || *tunFD >= 0 {
+		c.ReadyFile = ""
+	}
+	hooks := core.Hooks{}
+	if *bindInterface != "" {
+		hooks.Protect, e = core.BindInterface(*bindInterface)
+		if e != nil {
+			fmt.Fprintln(os.Stderr, e)
+			return 1
+		}
+	}
+	var upstream4, upstream6 []string
+	if *tunName != "" || *tunFD >= 0 {
+		var ips []net.IPAddr
+		hooks, ips, e = core.PinBootstrap(ctx, c, hooks)
+		if e != nil {
+			fmt.Fprintln(os.Stderr, e)
+			return 1
+		}
+		for _, ip := range ips {
+			if ip.IP.To4() != nil {
+				upstream4 = append(upstream4, ip.IP.String())
+			} else {
+				upstream6 = append(upstream6, ip.IP.String())
+			}
+		}
+	}
+	engine, e := core.NewEngine(ctx, c, hooks)
 	if e != nil {
 		fmt.Fprintln(os.Stderr, e)
 		return 1
 	}
 	defer engine.Close()
+	dns6 := false
+	if *dnsListen != "" {
+		if _, e = engine.StartDNS(*dnsListen); e != nil {
+			fmt.Fprintln(os.Stderr, e)
+			return 1
+		}
+		if host, port, err := net.SplitHostPort(*dnsListen); err == nil && host == "127.0.0.1" && port != "0" {
+			if _, err = engine.StartDNS(net.JoinHostPort("::1", port)); err == nil {
+				dns6 = true
+			}
+		}
+	}
 	var tunnel *core.Tunnel
+	tunnelName := ""
 	if *tunName != "" || *tunFD >= 0 {
 		var device core.PacketDevice
 		var name string
@@ -125,17 +169,13 @@ func run() int {
 			return 1
 		}
 		fmt.Fprintln(os.Stderr, "Native TUN ready:", name)
-		if *tunOnly && c.ReadyFile != "" {
-			if e = core.PublishReady(c.ReadyFile, map[string]any{"pid": os.Getpid(), "port": 0, "tun_name": name, "version": core.Version}); e != nil {
-				fmt.Fprintln(os.Stderr, e)
-				return 1
-			}
-		}
+		tunnelName = name
 	}
 	if *tunOnly && tunnel == nil {
 		fmt.Fprintln(os.Stderr, "--tun-only requires --tun or --tun-fd")
 		return 2
 	}
+	port := 0
 	if !*tunOnly {
 		a, e := engine.StartSOCKS()
 		if e != nil {
@@ -143,6 +183,13 @@ func run() int {
 			return 1
 		}
 		fmt.Fprintln(os.Stderr, "Listening on", a)
+		port = a.(*net.TCPAddr).Port
+	}
+	if tunnel != nil && runtimeReady != "" {
+		if e = core.PublishReady(runtimeReady, map[string]any{"pid": os.Getpid(), "port": port, "tun_name": tunnelName, "version": core.Version, "upstream_ipv4": upstream4, "upstream_ipv6": upstream6, "upstream_port": c.Port, "dns_ipv6": dns6}); e != nil {
+			fmt.Fprintln(os.Stderr, e)
+			return 1
+		}
 	}
 	go func() {
 		for {

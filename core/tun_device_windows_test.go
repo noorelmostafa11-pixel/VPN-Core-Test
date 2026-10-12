@@ -40,7 +40,7 @@ func TestWindowsNativeDevice(t *testing.T) {
 	}
 	defer tunnel.Close()
 	if os.Getenv("VPN_CORE_TEST_POLICY_PLAN") == "1" {
-		output, err := exec.Command("powershell", "-NoProfile", "-File", filepath.Join("scripts", "Set-Windows-Tunnel.ps1"), "-Mode", "Plan", "-TunName", name, "-UpstreamIPv4", "192.0.2.10").CombinedOutput()
+		output, err := exec.Command("powershell", "-NoProfile", "-File", filepath.Join("scripts", "Set-Windows-Tunnel.ps1"), "-Mode", "Plan", "-TunName", name, "-UpstreamIPv4", "192.0.2.10", "-StateFile", filepath.Join(os.TempDir(), "vpn-go-policy-plan.json")).CombinedOutput()
 		if err != nil {
 			t.Fatalf("read-only Windows policy plan: %v %s", err, output)
 		}
@@ -48,7 +48,7 @@ func TestWindowsNativeDevice(t *testing.T) {
 			Schema, Phase      string
 			Routes, Rules, DNS []json.RawMessage
 		}
-		if err = json.Unmarshal(output, &plan); err != nil || plan.Schema != "vpn-windows-session-v1" || plan.Phase != "Plan" || len(plan.Routes) != 3 || len(plan.Rules) != 4 || len(plan.DNS) < 2 {
+		if err = json.Unmarshal(output, &plan); err != nil || plan.Schema != "vpn-windows-session-v2" || plan.Phase != "Plan" || len(plan.Routes) != 5 || len(plan.Rules) != 0 || len(plan.DNS) < 2 {
 			t.Fatalf("invalid Windows policy plan: %v", err)
 		}
 	}

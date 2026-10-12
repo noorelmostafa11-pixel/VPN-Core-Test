@@ -1,4 +1,4 @@
-# Go core 0.5.1
+# Go core 0.5.2
 
 The implementation in `core/`, `cmd/` and `mobile/` is Go. It does not invoke a
 C++ core, Xray/sing-box engine, external tun-to-socks process, or TLS helper DLL.
@@ -36,9 +36,31 @@ devices through the MIT WireGuard **device** library. This adds no WireGuard VPN
 protocol. Windows needs administrator rights and the official architecture-
 matched, signed `wintun.dll` beside the executable. Linux needs CAP_NET_ADMIN.
 
-The application owns addresses, routes, DNS selection, upstream bypass policy
-and permission/lifecycle UI. The core does not change a machine's default route
-or DNS settings. Configure them before sending system traffic into the device.
+The core intercepts native TCP/UDP DNS and sends wire-format DNS over HTTPS
+through the configured node. `--dns-listen 127.0.0.1:53` also provides local
+TCP/UDP DNS for Windows. The default DNS policy prefers IPv4 records while
+retaining IPv6-only names. A bounded cache remembers unique names for IP
+destinations. No external UDP DNS or proxy engine is required.
+
+HTTP Host/TLS SNI destination override is shared by SOCKS and Native TUN for
+public web ports 80, 443, 8080 and 8443. The initial read is bounded to 16 KiB and
+150 ms; consumed bytes are replayed unchanged. ECH cover names are not used as
+destinations. Opaque web flows retain their IP unless a unique unexpired DNS
+mapping is available. Private destinations and non-web ports retain their
+existing handshake behavior. SOCKS acceptance can precede destination
+negotiation for sniffed flows; only successful upstream negotiation emits the
+`negotiated` event. Verify HTTPS/body, not SOCKS acceptance alone.
+
+Bootstrap TCP dialing prefers IPv4 and starts the other family after 250 ms
+(or immediately on failure), with at most two concurrent attempts. Losing
+attempts are joined and their sockets closed. CLI bootstrap addresses are
+pinned before TUN startup; the original node URI remains intact.
+
+The host still owns OS addresses, routes and DNS registration. The executable
+does not silently change the host network. The Windows package includes
+`Run-Native-Tunnel.ps1`: it configures both families, registers the core's local
+DNS temporarily and restores owned settings on stop, with a crash watcher.
+`--bind-interface` protects Windows upstream sockets from recapture.
 Protect every upstream socket and resolve bootstrap names through the physical
 network with `Hooks`. A protection/resolver failure never falls back to a direct
 connection. Close the engine and wait for it before releasing callback resources.
@@ -54,11 +76,19 @@ Examples:
 vpn-core --config node.ini
 vpn-core --config node.ini --tun vpn0 --tun-only --tun-mtu 1500
 vpn-core --config node.ini --tun-fd 5 --tun-only
+powershell -NoProfile -ExecutionPolicy Bypass -File Run-Native-Tunnel.ps1 -Config node.ini
 ```
 
 The first starts loopback SOCKS5 TCP/UDP. The other commands start packet
 forwarding; the host still sets the corresponding OS addresses/routes. A supplied
 descriptor is duplicated; closing the core does not close the app's original fd.
+
+Optional node.ini settings: `sniffing=true`, `native_dns=true`,
+`prefer_ipv4=true`, `prefer_tcp=false`. The Windows launcher selects TCP mode:
+native UDP/443 is rejected immediately so browsers retry TCP, and DNS HTTPS/SVCB
+binding records return empty answers. Other UDP remains supported. Normal SDK
+defaults retain UDP/443. Set `prefer_ipv4=false` for dual-family DNS answers.
+Sniffing and DNS interception can be disabled independently.
 
 ## Browser concurrency and diagnostics
 

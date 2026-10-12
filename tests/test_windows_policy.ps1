@@ -24,7 +24,7 @@ try {
             RestoreDNS={param($d) $script:dns[[int]$d.Index]= $(if ($d.Static) {$d.Servers[0]} else {'DHCP'})}
             FlushDNS={}
         }
-        $state=@{Schema='vpn-windows-session-v1';Phase='Plan';TunMetric=@{Value=25};DnsIPv4=@('1.1.1.1');DNS=@(@{Index=1;Static=$false;Servers=@('10.0.0.53')},@{Index=2;Static=$true;Servers=@('9.9.9.9')});Routes=@(@{Prefix='0.0.0.0/1'},@{Prefix='128.0.0.0/1'});Rules=@(@{Name='owned1'},@{Name='owned2'})}
+        $state=@{Schema='vpn-windows-session-v1';Phase='Plan';TunAddress='10.248.231.1';TunMetric=@{Value=25;Automatic='Disabled';DHCP='Enabled'};DnsIPv4=@('1.1.1.1');DNS=@(@{Index=1;Static=$false;Servers=@('10.0.0.53')},@{Index=2;Static=$true;Servers=@('9.9.9.9')});Routes=@(@{Prefix='0.0.0.0/1'},@{Prefix='128.0.0.0/1'});Rules=@(@{Name='owned1'},@{Name='owned2'})}
         $failed=$false
         try { Invoke-VpnWindowsPlan $state $path $ops } catch { $failed=$true }
         if ($fault -eq 0) {
