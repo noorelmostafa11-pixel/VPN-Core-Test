@@ -319,6 +319,29 @@ func TestDialResolvedFallbackAndCleanup(t *testing.T) {
 	}
 }
 
+func TestDialResolvedIPv4SuccessDoesNotWaitForIPv6(t *testing.T) {
+	for _, ips := range [][]net.IPAddr{
+		{{IP: net.ParseIP("192.0.2.1")}},
+		{{IP: net.ParseIP("2001:db8::1")}, {IP: net.ParseIP("192.0.2.1")}},
+	} {
+		var attempts atomic.Int32
+		peer, server := net.Pipe()
+		conn, err := dialResolved(context.Background(), "tcp", ips, "443", func(_ context.Context, _, address string) (net.Conn, error) {
+			attempts.Add(1)
+			if !strings.HasPrefix(address, "192.") {
+				t.Error("IPv6 was attempted despite immediate IPv4 success")
+				return nil, errors.New("IPv6 unavailable")
+			}
+			return peer, nil
+		})
+		if err != nil || conn == nil || attempts.Load() != 1 {
+			t.Fatalf("IPv4-only/dual-answer fast path failed: %v, attempts=%d", err, attempts.Load())
+		}
+		conn.Close()
+		server.Close()
+	}
+}
+
 func BenchmarkSniffHTTP(b *testing.B) {
 	wire := []byte("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")
 	for i := 0; i < b.N; i++ {

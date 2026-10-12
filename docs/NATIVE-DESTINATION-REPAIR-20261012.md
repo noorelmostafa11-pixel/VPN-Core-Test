@@ -19,7 +19,7 @@ Local validation:
 - Race-enabled core/mobile tests, including TLS HTTPS regression controls on
   SOCKS and IPv4/IPv6 native packet paths, DNS fallback/cache/local/native TCP
   and UDP, malformed input, ECH and canceled/failed address-family races.
-- 163 independent protocol/carrier tests passed; two optional external-server
+- 161 independent protocol/carrier tests passed; two optional external-server
   cases skipped. No URI/protocol options were removed.
 - Windows v1/v2 transaction fault injection and recovery retry passed.
 - Standalone Go 0.5.2 native Windows acceptance on Oracle-Direct-Test-CF and
@@ -37,4 +37,8 @@ The deleted Windows application was not recreated. The PowerShell launcher
 only applies OS policy; forwarding, destination handling and DNS are in Go.
 `main` remains separate and unchanged. Private node fixtures/results remain
 outside source control. The optional Windows Internet acceptance test accepts
-an explicit node library and records browser results/rollback.
+an explicit node library, optionally selected names, and records browser
+results/rollback. It contains no fixed provider or node list; matching the
+server IP to the trace exit is optional because generic nodes may use separate
+egress addresses. The two live nodes above are the extent of local Internet
+validation, not proof that every public node or protocol deployment works.

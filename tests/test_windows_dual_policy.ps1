@@ -49,6 +49,12 @@ Assert (@($taskV6Plan.Rules).Count -eq 0) 'Test mode unexpectedly enabled a fire
 Assert (@($taskV6Plan.DNS | Where-Object Family -eq 'IPv6' | ForEach-Object TargetServers | Where-Object { $_ }).Count -eq 0) 'Unverified IPv6 DNS resolvers are enabled by default.'
 Write-Output 'PASS: dual-stack plans, IPv6 upstream, DNS families, exact aliases, no hidden adapters, no IPv6 block, no plan mutations.'
 
+$taskCanonical=(& (Join-Path $taskNetwork 'Set-Windows-Tunnel.ps1') -Mode Plan -TunName VPN-Go-Test -UpstreamIPv6 '2001:0db8:0000::0010' -TunAddressIPv6 'fd48:248:0491::1' -DnsIPv6 '0000::0001' -StateFile $taskStateFile) -join "`n" | ConvertFrom-Json
+Assert ($taskCanonical.TunAddresses[1].Address -eq 'fd48:248:491::1') 'Noncanonical TUN IPv6 would fail Windows address readiness.'
+Assert (@($taskCanonical.Routes | Where-Object Prefix -eq '2001:db8::10/128').Count -eq 1) 'IPv6 upstream bypass is not normalized.'
+Assert ($taskCanonical.DNS.Where({$_.Family -eq 'IPv6'})[0].TargetServers[0] -eq '::1') 'IPv6 DNS address is not normalized.'
+Write-Output 'PASS: leading-zero IPv6 addresses normalized for Windows CIM readiness and restoration.'
+
 $taskOriginalRoutes=${function:Get-NetRoute}
 function Get-NetRoute {
     param($AddressFamily,$DestinationPrefix,$PolicyStore,$InterfaceIndex,$ErrorAction)

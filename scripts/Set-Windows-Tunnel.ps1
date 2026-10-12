@@ -43,6 +43,10 @@ foreach($address in @($DnsIPv6)) {
     $ip=[Net.IPAddress]::Parse($address)
     if($ip.AddressFamily -ne [Net.Sockets.AddressFamily]::InterNetworkV6 -or $ip.IsIPv6Multicast -or $ip.Equals([Net.IPAddress]::IPv6Any)){throw 'Invalid DNS IPv6 address.'}
 }
+# Windows CIM matches address text after normalizing IPv6 zero groups.
+$TunAddressIPv6=[Net.IPAddress]::Parse($TunAddressIPv6).ToString()
+$UpstreamIPv6=@($UpstreamIPv6 | ForEach-Object { [Net.IPAddress]::Parse($_).ToString() })
+$DnsIPv6=@($DnsIPv6 | ForEach-Object { [Net.IPAddress]::Parse($_).ToString() })
 $tun=Get-NetAdapter -Name $TunName -ErrorAction Stop
 if(@($tun).Count -ne 1 -or $tun.Status -ne 'Up') { throw 'The native Wintun adapter is not Up.' }
 # Hidden WAN miniports report Up but are not usable firewall interface aliases.

@@ -53,11 +53,12 @@ function Get-VpnWindowsOperations {
         RemoveRoute = { param($r) if (!(Test-VpnAdapterIdentity $r.Index $r.Guid)) { return }; Get-NetRoute -DestinationPrefix $r.Prefix -InterfaceIndex $r.Index -PolicyStore ActiveStore -ErrorAction SilentlyContinue | Where-Object NextHop -eq $r.NextHop | Remove-NetRoute -Confirm:$false -ErrorAction Stop }
         AddAddress = { param($s)
             foreach ($a in $s.TunAddresses) {
-                New-NetIPAddress -InterfaceIndex $s.TunIndex -AddressFamily $a.Family -IPAddress $a.Address -PrefixLength $a.Prefix -SkipAsSource $false -ErrorAction Stop | Out-Null
+                $canonical=[Net.IPAddress]::Parse($a.Address).ToString()
+                New-NetIPAddress -InterfaceIndex $s.TunIndex -AddressFamily $a.Family -IPAddress $canonical -PrefixLength $a.Prefix -SkipAsSource $false -ErrorAction Stop | Out-Null
                 # Route only after Windows can select this address as a source.
                 $deadline=[DateTime]::UtcNow.AddSeconds(8)
                 do {
-                    $address=Get-NetIPAddress -InterfaceIndex $s.TunIndex -AddressFamily $a.Family -IPAddress $a.Address -ErrorAction Stop
+                    $address=Get-NetIPAddress -InterfaceIndex $s.TunIndex -AddressFamily $a.Family -IPAddress $canonical -ErrorAction Stop
                     if ($address.AddressState -eq 'Preferred') { break }
                     if ($address.AddressState -in @('Duplicate','Invalid')) { throw "TUN $($a.Family) address is $($address.AddressState)" }
                     if ([DateTime]::UtcNow -ge $deadline) { throw "TUN $($a.Family) address did not become usable" }
@@ -68,8 +69,9 @@ function Get-VpnWindowsOperations {
         RemoveAddress = { param($s)
             if (!(Test-VpnAdapterIdentity $s.TunIndex $s.TunGuid)) { return }
             foreach ($a in $s.TunAddresses) {
+                $canonical=[Net.IPAddress]::Parse($a.Address).ToString()
                 foreach($store in @('ActiveStore','PersistentStore')) {
-                    Get-NetIPAddress -InterfaceIndex $s.TunIndex -AddressFamily $a.Family -IPAddress $a.Address -PolicyStore $store -ErrorAction SilentlyContinue | Remove-NetIPAddress -Confirm:$false -ErrorAction Stop
+                    Get-NetIPAddress -InterfaceIndex $s.TunIndex -AddressFamily $a.Family -IPAddress $canonical -PolicyStore $store -ErrorAction SilentlyContinue | Remove-NetIPAddress -Confirm:$false -ErrorAction Stop
                 }
             }
         }

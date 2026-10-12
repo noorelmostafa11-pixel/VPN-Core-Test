@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$NodeLibrary,[string]$Binary='',[string]$Output='')
+param([Parameter(Mandatory=$true)][string]$NodeLibrary,[string[]]$NodeNames=@(),[switch]$RequireNodeIPExit,[string]$Binary='',[string]$Output='')
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 if(!$Binary){$Binary=Join-Path $root 'build\windows-amd64\vpn-core.exe'}
@@ -6,10 +6,15 @@ if(!$Output){$Output=Join-Path $root ('build\internet-acceptance-'+[guid]::NewGu
 $Output=[IO.Path]::GetFullPath($Output)
 New-Item -ItemType Directory -Path $Output|Out-Null
 $nodes=Get-Content -LiteralPath $NodeLibrary -Raw|ConvertFrom-Json
-$chosen=@($nodes|Where-Object Name -in @('Oracle-Direct-Test-CF','Oracle-Direct-Test-2'))
-if($chosen.Count -ne 2){throw 'The acceptance fixture needs both known nodes.'}
+$chosen=@($nodes|Where-Object { $NodeNames.Count -eq 0 -or $_.Name -in $NodeNames })
+if($chosen.Count -eq 0){throw 'The node library contains no selected nodes.'}
 $cases=@()
-foreach($node in $chosen){$dir=Join-Path $Output $node.Name;New-Item -ItemType Directory -Path $dir|Out-Null;$config=Join-Path $dir 'node.ini';[IO.File]::WriteAllText($config,"node_uri=$($node.Uri)`nconnect_timeout_ms=10000`nidle_timeout_ms=60000`nmax_connections=128`n",[Text.UTF8Encoding]::new($false));$cases+=@{Name=$node.Name;Config=$config;Directory=$dir;ExpectedExitIP=([Uri]$node.Uri).Host}}
+foreach($node in $chosen){
+ $dir=Join-Path $Output ('node-'+$cases.Count);New-Item -ItemType Directory -Path $dir|Out-Null;$config=Join-Path $dir 'node.ini'
+ $expected=$null
+ if($RequireNodeIPExit){$ip=$null;if(![Net.IPAddress]::TryParse(([Uri]$node.Uri).Host,[ref]$ip)){throw 'RequireNodeIPExit needs a literal-IP node with matching egress.'};$expected=$ip.ToString()}
+ [IO.File]::WriteAllText($config,"node_uri=$($node.Uri)`nconnect_timeout_ms=10000`nidle_timeout_ms=60000`nmax_connections=128`n",[Text.UTF8Encoding]::new($false));$cases+=@{Name=$node.Name;Config=$config;Directory=$dir;ExpectedExitIP=$expected}
+}
 $cases|ConvertTo-Json -Depth 4|Set-Content -LiteralPath (Join-Path $Output 'cases.json') -Encoding UTF8
 $physical=@(Get-NetAdapter|Where-Object Status -eq Up|Select-Object Name,ifIndex,InterfaceGuid)
 $beforeDns=@(Get-DnsClientServerAddress|Where-Object InterfaceIndex -in @($physical.ifIndex)|Sort-Object InterfaceIndex,AddressFamily|Select-Object InterfaceIndex,AddressFamily,ServerAddresses)
@@ -33,7 +38,7 @@ try{
    $success=$false;$body='';$exit=$null
    if($browser.WaitForExit(30000)){
     for($taskRead=0;$taskRead -lt 20;$taskRead++){try{$body=[IO.File]::ReadAllText($html);break}catch [IO.IOException]{Start-Sleep -Milliseconds 100}}
-    $success=$body.Contains($site.Marker);$match=[regex]::Match($body,'(?m)^ip=([^\r\n<]+)');if($match.Success){$exit=$match.Groups[1].Value;$success=$success -and $exit -eq $case.ExpectedExitIP}
+    $success=$body.Contains($site.Marker);$match=[regex]::Match($body,'(?m)^ip=([^\r\n<]+)');if($match.Success){$exit=$match.Groups[1].Value};if($case.ExpectedExitIP -and $site.Name -eq 'cloudflare'){$success=$success -and $exit -eq $case.ExpectedExitIP}
    }
    $checks+=@{Site=$site.Name;Success=$success;ExitIP=$exit;Milliseconds=$clock.ElapsedMilliseconds;Bytes=$body.Length}
   }
@@ -41,7 +46,7 @@ try{
   $oldPreference=$ErrorActionPreference;$ErrorActionPreference='Continue'
   try{& 'C:\Windows\System32\curl.exe' --silent --show-error --connect-timeout 4 --max-time 10 --noproxy '*' --resolve 'www.cloudflare.com:443:[2606:4700::6810:7b60]' --output $curlBody 'https://www.cloudflare.com/cdn-cgi/trace' 2> $curlError;$curlCode=$LASTEXITCODE}finally{$ErrorActionPreference=$oldPreference}
   $curlText=if(Test-Path -LiteralPath $curlBody){[IO.File]::ReadAllText($curlBody)}else{''};$match=[regex]::Match($curlText,'(?m)^ip=([^\r\n]+)')
-  $native6=($curlCode -eq 0 -and $match.Success -and $match.Groups[1].Value -eq $case.ExpectedExitIP)
+  $native6=($curlCode -eq 0 -and $match.Success -and (!$case.ExpectedExitIP -or $match.Groups[1].Value -eq $case.ExpectedExitIP))
   $final=Get-NetAdapterStatistics -Name $ready.TunName
   $result=@{Node=$case.Name;Browser=$checks;NativeIPv6Destination=$native6;SentBytes=$final.SentBytes-$initial.SentBytes;ReceivedBytes=$final.ReceivedBytes-$initial.ReceivedBytes;CoreVersion=$ready.Version;BrowserProxy=$false;BrowserDNSPinned=$false;BrowserQUICDisabled=$false}
   $result|ConvertTo-Json -Depth 6|Set-Content -LiteralPath (Join-Path $case.Directory 'result.json') -Encoding UTF8
