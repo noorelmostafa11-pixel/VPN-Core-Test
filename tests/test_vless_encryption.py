@@ -67,7 +67,7 @@ class VlessEncryptionTests(unittest.TestCase):
         for bad in ('handshake_tag','ticket_tag','padding_tag','record_tag','record_length'):
             with self.subTest(bad=bad),self.peer(bad=bad) as (info,crypto,peer_log):
                 with self.core(self.uri(info,'native','1rtt')) as (port,log):
-                    with self.socks(port) as s:
+                    with old.original.CoreTests.socks(self,port,expected=1 if bad in ("handshake_tag","ticket_tag","padding_tag") else 0) as s:
                         try:self.assertEqual(s.recv(100),b'')
                         except ConnectionResetError:pass
                     time.sleep(.05);self.assertIn('VLESS_ENCRYPTION_AUTHENTICATION',log.read_text())

@@ -127,12 +127,25 @@ class CoreTests(unittest.TestCase):
         ca_key = cls.directory / 'ca.key'
         cls.cert = cls.directory / 'server.pem'
         cls.key = cls.directory / 'server.key'
-        run('openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', str(ca_key), '-out', str(cls.ca), '-days', '2', '-subj', '/CN=VPNCoreEphemeralTestCA', '-addext', 'basicConstraints=critical,CA:TRUE')
-        csr = cls.directory / 'server.csr'
-        run('openssl', 'req', '-newkey', 'rsa:2048', '-nodes', '-keyout', str(cls.key), '-out', str(csr), '-subj', '/CN=localhost')
-        ext = cls.directory / 'extensions.txt'
-        ext.write_text('subjectAltName=DNS:localhost,IP:127.0.0.1\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n')
-        run('openssl', 'x509', '-req', '-in', str(csr), '-CA', str(cls.ca), '-CAkey', str(ca_key), '-CAcreateserial', '-out', str(cls.cert), '-days', '2', '-extfile', str(ext))
+        # Generate standards-compliant fixtures identically on every host;
+        # the system openssl command differs between macOS and Linux/Windows.
+        import datetime,ipaddress
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes,serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.x509.oid import NameOID
+        now=datetime.datetime.now(datetime.timezone.utc)
+        authority=rsa.generate_private_key(public_exponent=65537,key_size=2048)
+        authority_name=x509.Name([x509.NameAttribute(NameOID.COMMON_NAME,'VPNCoreEphemeralTestCA')])
+        ca_cert=x509.CertificateBuilder().subject_name(authority_name).issuer_name(authority_name).public_key(authority.public_key()).serial_number(x509.random_serial_number()).not_valid_before(now-datetime.timedelta(minutes=1)).not_valid_after(now+datetime.timedelta(days=2)).add_extension(x509.BasicConstraints(ca=True,path_length=None),critical=True).sign(authority,hashes.SHA256())
+        key=rsa.generate_private_key(public_exponent=65537,key_size=2048)
+        subject=x509.Name([x509.NameAttribute(NameOID.COMMON_NAME,'localhost')])
+        cert=x509.CertificateBuilder().subject_name(subject).issuer_name(authority_name).public_key(key.public_key()).serial_number(x509.random_serial_number()).not_valid_before(now-datetime.timedelta(minutes=1)).not_valid_after(now+datetime.timedelta(days=2)).add_extension(x509.SubjectAlternativeName([x509.DNSName('localhost'),x509.IPAddress(ipaddress.ip_address('127.0.0.1'))]),critical=False).add_extension(x509.BasicConstraints(ca=False,path_length=None),critical=True).add_extension(x509.ExtendedKeyUsage([x509.oid.ExtendedKeyUsageOID.SERVER_AUTH]),critical=False).sign(authority,hashes.SHA256())
+        cls.ca.write_bytes(ca_cert.public_bytes(serialization.Encoding.PEM))
+        ca_key.write_bytes(authority.private_bytes(serialization.Encoding.PEM,serialization.PrivateFormat.TraditionalOpenSSL,serialization.NoEncryption()))
+        cls.cert.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+        cls.key.write_bytes(key.private_bytes(serialization.Encoding.PEM,serialization.PrivateFormat.TraditionalOpenSSL,serialization.NoEncryption()))
+
         cls.mock = MockTrojan(cls.cert, cls.key)
 
     @classmethod
@@ -266,7 +279,7 @@ class CoreTests(unittest.TestCase):
                 s.sendall(b'never-direct')
                 try:
                     self.assertEqual(s.recv(1024), b'')
-                except ConnectionResetError:
+                except (ConnectionResetError,ConnectionAbortedError):
                     pass
 
     def test_10_unsupported_command(self):

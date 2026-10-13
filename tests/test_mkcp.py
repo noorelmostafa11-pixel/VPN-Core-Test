@@ -8,10 +8,16 @@ def fnv(data):
     value=2166136261
     for b in data:value=((value^b)*16777619)&0xffffffff
     return value
+def disable_udp_reset(sock):
+    if os.name=='nt':
+        import ctypes
+        value=ctypes.c_ulong(0);returned=ctypes.c_ulong()
+        result=ctypes.windll.ws2_32.WSAIoctl(ctypes.c_size_t(sock.fileno()),ctypes.c_ulong(0x9800000C),ctypes.byref(value),4,None,0,ctypes.byref(returned),None,None)
+        if result:raise OSError('failed to disable listener ICMP reset')
 class KCPPeer:
     def __init__(self,crypto,seed=None,loss=False,mtu=900,header='none'):
         self.header=header;self.header_size={'none':0,'srtp':4,'utp':4,'wireguard':4,'dtls':13,'wechat-video':13,'dns':33}[header]
-        self.crypto=crypto;self.seed=seed;self.loss=loss;self.mtu=mtu;self.errors=[];self.dropped=0;self.retransmitted=0;self.socket=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);self.socket.bind(('127.0.0.1',0));self.socket.settimeout(.01);self.port=self.socket.getsockname()[1];self.stop=threading.Event();self.sessions={};self.thread=threading.Thread(target=self.run,daemon=True);self.thread.start()
+        self.crypto=crypto;self.seed=seed;self.loss=loss;self.mtu=mtu;self.errors=[];self.dropped=0;self.retransmitted=0;self.socket=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);self.socket.bind(('127.0.0.1',0));disable_udp_reset(self.socket);self.socket.settimeout(.01);self.port=self.socket.getsockname()[1];self.stop=threading.Event();self.sessions={};self.thread=threading.Thread(target=self.run,daemon=True);self.thread.start()
     def seal(self,data):
         prefix={'none':b'','srtp':b'\xb5\xe8\x00\x01','utp':b'\x12\x34\x01\x00','wireguard':b'\x04\x00\x00\x00',
                 'dtls':b'\x17\xfe\xfd'+bytes(10),'wechat-video':b'\xa1\x08'+bytes(4)+b'\x00\x10\x11\x18\x30\x22\x30',

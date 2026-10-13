@@ -359,7 +359,7 @@ class Peer:
                     data = receive()
                     if not data:break
                     send(data)
-        except (EOFError, OSError, ssl.SSLError):
+        except (EOFError, OSError, ssl.SSLError, __import__("h2.exceptions",fromlist=["StreamClosedError"]).StreamClosedError):
             pass
         except Exception as e:
             self.errors.append(repr(e))
@@ -413,7 +413,12 @@ class ExpandedTests(unittest.TestCase):
                         if process.poll() is not None or time.monotonic() > deadline:
                             raise AssertionError((temp / 'core.log').read_text())
                         time.sleep(.01)
-                    data = json.loads(ready.read_text())
+                    for retry in range(100):
+                        try:
+                            data = json.loads(ready.read_text());break
+                        except PermissionError:
+                            time.sleep(.005)
+                    else:raise AssertionError('ready file remained locked')
                     self.assertEqual(data['pid'], process.pid)
                     yield data['port'], temp / 'core.log'
                 except BaseException as error:

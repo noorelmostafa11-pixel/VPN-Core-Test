@@ -224,6 +224,22 @@ class LifecycleAcceptanceTests(unittest.TestCase):
         finally:
             release.set()
             for worker in workers:worker.join(2)
+    def test_default_dns_protect_callback_keeps_its_lease_until_return(self):
+        entered=threading.Event();release=threading.Event()
+        @PROTECT
+        def protect(fd,user):
+            entered.set();release.wait(8);return 0
+        uri=f'vless://{peerlib.ID}@bootstrap-lease-probe.invalid:443?security=none'
+        with self.engine(uri,RESOLVE(),protect) as (port,worker,result):
+            client=self.request(port)
+            try:
+                self.assertTrue(entered.wait(2))
+                self.lib.vpn_core_stop();self.wait(lambda:self.lib.vpn_core_get_listen_port()==0)
+                time.sleep(.1)
+                self.assertTrue(worker.is_alive(),'Run returned while a protect callback still held foreign memory')
+                self.assertEqual(result,[]);self.assertGreater(self.lib.vpn_core_pending_callbacks(),0)
+                with self.assertRaises(OSError):socket.create_connection(('127.0.0.1',port),.2)
+            finally:release.set();client.close()
     def test_stop_cancels_socks_and_tls_wait_before_connect_deadline(self):
         @RESOLVE
         def resolve(host,out,cap,user):return self.answer(out,cap)

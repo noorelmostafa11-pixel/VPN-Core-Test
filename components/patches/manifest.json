@@ -1,0 +1,152 @@
+[
+  {
+    "path": "vendor/github.com/quic-go/quic-go/internal/handshake/crypto_setup.go",
+    "replacement": "crypto_setup.go.replacement",
+    "original_sha256": "8e4b7a53c347f10d7812ae1c31935894b600f77782bead8d9e4bcc2bb85974da",
+    "patched_sha256": "331926b54d4477b6414177763317fa5c24acc48ff400bf7f79dfaa00ed4de7e0"
+  },
+  {
+    "path": "vendor/github.com/refraction-networking/utls/u_quic.go",
+    "replacement": "u_quic.go.replacement",
+    "original_sha256": "8a8dbd4285d88418b999f39bfc90ba09fcaa462fee7e98a80dfeaf07471b902f",
+    "patched_sha256": "c5e68528a264838995f7fa2dc1490dca0bd9d9fda42941c1f3c0aed25002f8a5"
+  },
+  {
+    "path": "vendor/github.com/refraction-networking/utls/project_records.go",
+    "replacement": "project_records.go.replacement",
+    "original_sha256": null,
+    "patched_sha256": "25d998c24a241276a204b747745bef2bb10b8cdf59f49934a041e8e14d2a4589"
+  },
+  {
+    "path": "vendor/github.com/refraction-networking/utls/u_conn.go",
+    "replacement": "u_conn.go.replacement",
+    "original_sha256": "d83957a114ee2ae9ffcb87717cb41c3074f8045f990b6fe9c07cc0371694658b",
+    "patched_sha256": "080ea02c2bcda3ae1c12a5ecfb6a787d7e1563e1054179cff4543f8b2b0a9d72"
+  },
+  {
+    "path": "vendor/github.com/refraction-networking/utls/handshake_client_tls13.go",
+    "replacement": "handshake_client_tls13.go.replacement",
+    "original_sha256": "5872beb43bdc5b54a2b85977f5b6ac368dc734a256887f110d5479b206a7a127",
+    "patched_sha256": "db012009006d49d6b6a4376b0b846b302e75dab888918a383a792a19f6799e74"
+  },
+  {
+    "path": "vendor/github.com/refraction-networking/utls/u_handshake_client.go",
+    "replacement": "u_handshake_client.go.replacement",
+    "original_sha256": "33aba1b4b0de1ce6d06ae6fb2d9cb5d415781e647aa74e5ab48b45e9462c0183",
+    "patched_sha256": "33c03ce8bd7b9995c4aeb2a39c665b5dfee50e8e378501ba1bb4d116c600272b"
+  },
+  {
+    "path": "vendor/github.com/refraction-networking/utls/key_schedule.go",
+    "replacement": "key_schedule.go.replacement",
+    "original_sha256": "148e48ef3503c4ffc4e4c2f3acf717f4c98bb4e344e5df01ed4b9e78a7f83d4a",
+    "patched_sha256": "010a299001dddf239ff9af26b35b9a50f12db6b92d16f2aba33d8bb6fb000016"
+  },
+  {
+    "path": "vendor/github.com/refraction-networking/utls/u_public.go",
+    "replacement": "u_public.go.replacement",
+    "original_sha256": "5c55536d0cd5e2bac53140e5182212f3f6bfc4926c60b79b4bee13a522881f1b",
+    "patched_sha256": "fcd7c0eeab59848a8c3922c72d50575f184ad55e26efd54574e344dcfbe60675"
+  },
+  {
+    "path": "vendor/github.com/refraction-networking/utls/u_parrots.go",
+    "replacement": "u_parrots.go.replacement",
+    "original_sha256": "122612d4248fe283a8f411eb98ff8efc1bcd68558ba430696740cf2a26c5f108",
+    "patched_sha256": "d707369c909078a7522fb7c8a93afb21a79686c2a911110083d7197de3435e1e"
+  },
+  {
+    "path": "vendor/github.com/apernet/hysteria/core/v2/client/client.go",
+    "replacement": "hysteria_client.go.replacement",
+    "original_sha256": "04b9a54d40841a167ec6337ad47e4bd0b81144874afde67b7b1eefb1e3604557",
+    "patched_sha256": "afc89df0005f7071422a3a4f32a083d08f0789319196eae557d5827f971c1156"
+  },
+  {
+    "path": "vendor/github.com/apernet/hysteria/core/v2/client/udp.go",
+    "replacement": "hysteria_client_udp.go.replacement",
+    "original_sha256": "4bb9c51b8d8cb1a77b3555a23b0321417f9724bd031838d2c7412cc992b9c574",
+    "patched_sha256": "2d5e3fd22c313dace7564f4c0ed4bd0113afd1d33cfafdcdac94c014fdff5823"
+  },
+  {
+    "path": "vendor/github.com/apernet/hysteria/core/v2/server/config.go",
+    "replacement": "hysteria_server_config.go.replacement",
+    "original_sha256": "a24497dc5ea470ba9b5b34da2f0e26996e82ee0e8969a5731bfdaa16dbe4463d",
+    "patched_sha256": "6ee8b318a5f954614dc6c7935b2897f8b5c12de475fcb5cad3c65119f8301fc1"
+  },
+  {
+    "path": "vendor/github.com/apernet/hysteria/core/v2/server/server.go",
+    "replacement": "hysteria_server.go.replacement",
+    "original_sha256": "8ba9ddb7ad12791394ad46996252bb7bdaae21b1041102b5c3d73789cc379244",
+    "patched_sha256": "a0d543c0f403db1113bcc29256936f93757e6b4489869e6a4a06d5e85ae71fd3"
+  },
+  {
+    "path": "vendor/github.com/apernet/hysteria/core/v2/server/udp.go",
+    "replacement": "hysteria_server_udp.go.replacement",
+    "original_sha256": "5c0234cc2ca2065597598d47bb99c94bc58ab0e9b525d083c4062513ab04cdd4",
+    "patched_sha256": "e7fad4309ae35adfcbe1622487c918572cbc69c5b8ba7dc52fc2d036ca760c28"
+  },
+  {
+    "path": "vendor/github.com/apernet/hysteria/core/v2/server/copy.go",
+    "replacement": "hysteria_server_copy.go.replacement",
+    "original_sha256": "7d855c80f357eca1c6332d73ae1c71c5ad63f92d11200e5282401ffea8ce63a0",
+    "patched_sha256": "7bd9accdb354147a038120d9dafb9a19f5b7e2c2ff29060ecc616dc7d8bc490b"
+  },
+  {
+    "path": "vendor/github.com/apernet/hysteria/core/v2/internal/protocol/proxy.go",
+    "replacement": "hysteria_protocol.go.replacement",
+    "original_sha256": "55f25354b9fe04bebdef60cb95e7fcceee646f2cdbba10189a078a0c27ca6eb5",
+    "patched_sha256": "9bc297b92a73f943fd644added552c3d75b6c25b1b5ebcddf8cd5fffe383ac3a"
+  },
+  {
+    "path": "vendor/github.com/apernet/hysteria/core/v2/internal/frag/frag.go",
+    "replacement": "hysteria_frag.go.replacement",
+    "original_sha256": "246aed0a20fd9a00255c1d74b8dd49d5f5e9bf6f7593376cad35dfa4976091d3",
+    "patched_sha256": "633d189b382c2773c22e42ad53a63bf6ae813ebfc3b88321e9788680ec1eb9c6"
+  },
+  {
+    "path": "vendor/github.com/apernet/hysteria/extras/v2/obfs/gecko.go",
+    "replacement": "hysteria_gecko.go.replacement",
+    "original_sha256": "6373883a1f9fcae1adbfbc9b64d39d278c8dd2034219ff4eac3517f5b02de382",
+    "patched_sha256": "60fdfee36b6183b75c9813c85a9d37de6e8b4f107f73b62442a333c4f461d4db"
+  },
+  {
+    "path": "vendor/github.com/apernet/quic-go/internal/handshake/tls_conn_utls.go",
+    "replacement": "hysteria_utls_quic.go.replacement",
+    "original_sha256": "c508d29853058084016b3985562e8cc0f148490b4618416d5e976e861a4688d9",
+    "patched_sha256": "6b79c975f87f0ff21e2ec161efe5d862028f1a8f773f486380863c8715a9b005"
+  },
+  {
+    "path": "vendor/golang.zx2c4.com/wireguard/device/device.go",
+    "replacement": "wireguard_device.go.replacement",
+    "original_sha256": "4759b09a3a73388195cd47a629234a9f6f17d597fb09e11f4b2ceac91b884f28",
+    "patched_sha256": "63691cf1493bafc7fca27be6dadb9b1f2b54cace23630e8d50d63c0117a376bd"
+  },
+  {
+    "path": "vendor/golang.zx2c4.com/wireguard/tun/netstack/tun.go",
+    "replacement": "wireguard_netstack.go.replacement",
+    "original_sha256": "593bfb8df9be328926e2bf245ee8a48290a8a5480100c80002a380ffe7f08453",
+    "patched_sha256": "4c8821cc3931034c6ccaa47a4344ed0b2b082acf07c3ca0d040a22595ee68d3f"
+  },
+  {
+    "path": "vendor/golang.zx2c4.com/wireguard/device/queueconstants_default.go",
+    "replacement": "wireguard_queue_default.go.replacement",
+    "original_sha256": "26adc0bf101d2a1c74c2c5b0f25d799c32066e83434b8a6cca5f274f706d031b",
+    "patched_sha256": "ae81db523cca4ea2db92032acef09d5fd1eb2420a045645c41a794513a915094"
+  },
+  {
+    "path": "vendor/golang.zx2c4.com/wireguard/device/queueconstants_windows.go",
+    "replacement": "wireguard_queue_windows.go.replacement",
+    "original_sha256": "5d7ce94696d1896eccd666f24ff12c461bb43587826eaf47d5676172e79fd5f7",
+    "patched_sha256": "cf40af5c0b64dc734518c6da36679a683128486ee6f816ecea9f46f54c962a17"
+  },
+  {
+    "path": "vendor/golang.zx2c4.com/wireguard/device/queueconstants_android.go",
+    "replacement": "wireguard_queue_android.go.replacement",
+    "original_sha256": "4d678e7163481e571dfa32e363e78cf9eaddbb48471d5f2013b3ca7a9da7b38f",
+    "patched_sha256": "50ebbaf04cc9522d0719210fc1f8c2267e1c9d6503392b1bb3253cb4021b50bd"
+  },
+  {
+    "path": "vendor/golang.zx2c4.com/wireguard/device/queueconstants_ios.go",
+    "replacement": "wireguard_queue_ios.go.replacement",
+    "original_sha256": "e4bb8c1b97ebb674f623b8eee84768b4f03395daac628cf514b95527326f3441",
+    "patched_sha256": "28bad5fc7e40900636ca58def7e79a171dec18e843da4026e6cfce0c0c9edf53"
+  }
+]

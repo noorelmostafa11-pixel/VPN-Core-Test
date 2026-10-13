@@ -1,33 +1,67 @@
-# vpn-core — main
+# vpn-core 0.5.6 — Go
 
-هذا الفرع يحتفظ بالكور الأصلي 0.4.11: محرك C++ مع مكونات TLS/QUIC في Go.
-نسخة Go الكاملة مع TUN الداخلي موجودة في
-[feature/go-native-core](https://github.com/noorelmostafa11-pixel/VPN-Core-Test/tree/feature/go-native-core).
-تنظيف هذا الفرع لا يغيّر كود المحرك أو دعم بروتوكولاته.
+فرع Go مستقل مبني من `main` عند
+`90a1853114de3e4bcb3deed6747801c10bc5b370`. الكور ينفذ VLESS وVMess وTrojan
+وShadowsocks داخل Go، مع وسائل النقل والتشفير والبصمات التي يدعمها main.
+أضيف عميل وخادم Hysteria 2 بمكوّن البروتوكول الرسمي المرخص داخل نفس العملية،
+واتصالات SSH خارجية مع تثبيت هوية الخادم. تفاصيل التغطية والاختبارات وحدود
+الإضافات في [سجل التنفيذ](docs/FULL-SUPPORT-IMPLEMENTATION.md).
+يدعم أيضًا عميل وخادم WireGuard، مع ربط الخادم مباشرة بمسار الحزم داخل الكور.
+وأضيف عميل وخادم AnyTLS وتنفيذ UDP-over-TCP، مع إعادة استخدام الجلسات وحدود للذاكرة.
+يعمل كملف واحد، ويحتوي مسار TUN أصلي لـTCP/UDP وIPv4/IPv6. تنفيذ البروتوكولات
+خاص بالمشروع للبروتوكولات الأصلية، مع مكونات Hysteria وSSH وTLS/QUIC والتشفير
+وgVisor والتعريفات المرخصة محفوظة.
 
-## البناء والاختبار من GitHub
-
-افتح **Actions → Build & Test → Run workflow**، ثم اختر الفرع فقط:
-
-- `main`: بناء واختبار الكور الأصلي على Windows وLinux، وبناء Android ARM64.
-- `feature/go-native-core`: اختبار Go على Windows وLinux وmacOS، وبناء الأهداف المحمولة وAndroid ARM64 AAR.
-
-لا توجد اختيارات إضافية للمعمارية أو الشاردات أو تنظيف الملفات في شاشة Run.
-يبدأ الفحص أيضًا عند رفع تغيير إلى أحد الفرعين. الحزم متاحة في Artifacts؛
-لا يحدث نشر Release أو دمج بين الفرعين تلقائيًا.
-
-## البناء محليًا
+البناء والتشغيل:
 
 ```text
-python scripts/Build.py --target windows
-python scripts/Build.py --target linux
-python scripts/Package-Target.py --build build/windows-amd64
+python scripts/Build-Go.py --target windows --arch amd64 --wintun
+build/windows-amd64/vpn-core.exe --config node.ini
 ```
 
-الأدوات المثبتة في `scripts/toolchains.json`. راجع
-[دليل البناء](docs/BUILDING.md)، و[SDK](docs/SDK-INTEGRATION.md)،
-و[المكونات](docs/COMPONENTS.md). مصادر المحرك والاختبارات والتراخيص محفوظة؛
-التقارير المتراكمة للنسخ القديمة متاحة في تاريخ Git.
+صيغة `node.ini` السابقة محفوظة:
 
-فحص العقد العامة اختياري ومحلي بواسطة `scripts/Test-Nodes.py`؛ لا يدخل في
-التشغيل الافتراضي. مدخلات اللقطات والمقارنة اللازمة محفوظة مع التحقق من هاشها.
+```ini
+node_uri=vless://12345678-1234-4567-9234-567812345678@example.test:443?security=tls&type=tcp
+listen_port=1080
+connect_timeout_ms=10000
+idle_timeout_ms=60000
+max_connections=128
+```
+
+الناتج الافتراضي برنامج Go واحد. `--shared` يبني مكتبة Go اختيارية تحافظ على
+C ABI 2 لدمج التطبيقات. لا يحتاج التشغيل إلى `vpn-tls.dll` أو محرك C++.
+
+السقف الافتراضي 128 اتصالًا، ويمكن ضبط `max_connections` بين 1 و512.
+عند امتلائه يظهر `CONNECTION_LIMIT` في السجل، ويعود قبول الاتصالات بمجرد
+إغلاق اتصال. انتهاء الخمول يظهر `IDLE_TIMEOUT` مع حجم البيانات ومدة الاتصال.
+
+TUN داخل الكور يمرر الحزم مباشرة إلى البروتوكولات. لإنشاء جهاز:
+`vpn-core --config node.ini --tun vpn0 --tun-only`. التطبيق المضيف يضبط عناوين
+الجهاز والمسارات وDNS وحماية الاتصال بالشبكة الأصلية. Windows يحتاج صلاحيات
+Administrator وتعريف Wintun الرسمي. لا يغيّر الكور المسار الافتراضي للجهاز.
+
+حزمة Windows تتضمن إعداد IPv4 اختياريًا للمسارات وDNS وقواعد المنع والاستعادة:
+[دليل إعداد نفق Windows](docs/WINDOWS-TUNNEL.md). تشغيل `--tun` وحده لا يضمن
+منع تسريب DNS. إعداد المنع الجديد يحتاج تأكيدًا بالتقاط الحزم على الجهاز الحقيقي.
+
+يدعم SDK Go، وAndroid AAR عبر `mobile.StartFD` مع VpnService، وواجهة حزم
+`StartPackets` لدمج Android/iOS. بناء Apple يحتاج macOS/Xcode وصلاحية Network
+Extension في التطبيق. الحزم الافتراضية تستهدف معمارية واحدة لتقليل الحجم.
+
+```text
+python scripts/Build-Go.py --target linux --arch arm64
+python scripts/Build-Go.py --target darwin --arch arm64
+python scripts/Build-Mobile.py --target android/arm64 --output dist/vpn-core.aar
+python -m pip install -r tests/requirements-go.txt
+go test -race ./core ./mobile
+python scripts/Validate-Go.py
+```
+
+على GitHub توجد عملية واحدة: **Actions → Build & Test → Run workflow**.
+اختر `main` أو `feature/go-native-core` فقط؛ البناء والاختبارات تتحدد حسب الفرع
+دون اختيارات إضافية. يبدأ الفحص أيضًا عند رفع تغيير إلى أي منهما.
+
+تفاصيل البروتوكولات والمنصات ودورة الحياة والبناء في
+[دليل Go وTUN](docs/GO-NATIVE-CORE.md). تقارير النسخ السابقة متاحة في تاريخ Git.
+يحتفظ هذا الفرع بالملكية والتراخيص السابقة؛ لم نضف ترخيصًا عامًا للكود الأصلي.
