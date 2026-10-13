@@ -1,7 +1,7 @@
-param([Parameter(Mandatory=$true)][string]$StateFile,[int]$CorePid,[long]$CoreTicks,[int]$ParentPid,[long]$ParentTicks)
+param([Parameter(Mandatory=$true)][string]$StateFile,[int]$CorePid,[long]$CoreTicks,[int]$ParentPid,[long]$ParentTicks,[int]$OwnerPid=0,[long]$OwnerTicks=0)
 $ErrorActionPreference='Stop'
 function Owned-Process([int]$Id,[long]$Ticks){try{$p=Get-Process -Id $Id -ErrorAction Stop;return $p.StartTime.ToUniversalTime().Ticks -eq $Ticks}catch{return $false}}
-while((Owned-Process $CorePid $CoreTicks) -and (Owned-Process $ParentPid $ParentTicks)){Start-Sleep -Milliseconds 500}
+while((Owned-Process $CorePid $CoreTicks) -and (Owned-Process $ParentPid $ParentTicks) -and ($OwnerPid -eq 0 -or (Owned-Process $OwnerPid $OwnerTicks))){Start-Sleep -Milliseconds 500}
 $mutex=[Threading.Mutex]::new($false,'Local\VPN-Go-Core-Network')
 try{
     for($attempt=0;$attempt -lt 3;$attempt++){

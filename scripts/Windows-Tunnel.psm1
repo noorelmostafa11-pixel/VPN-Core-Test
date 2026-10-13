@@ -55,6 +55,10 @@ function Get-VpnWindowsOperations {
             foreach ($a in $s.TunAddresses) {
                 $canonical=[Net.IPAddress]::Parse($a.Address).ToString()
                 New-NetIPAddress -InterfaceIndex $s.TunIndex -AddressFamily $a.Family -IPAddress $canonical -PrefixLength $a.Prefix -SkipAsSource $false -ErrorAction Stop | Out-Null
+            }
+            # Configure both families before waiting, so Windows DAD runs in parallel.
+            foreach ($a in $s.TunAddresses) {
+                $canonical=[Net.IPAddress]::Parse($a.Address).ToString()
                 # Route only after Windows can select this address as a source.
                 $deadline=[DateTime]::UtcNow.AddSeconds(8)
                 do {

@@ -61,6 +61,12 @@ does not silently change the host network. The Windows package includes
 `Run-Native-Tunnel.ps1`: it configures both families, registers the core's local
 DNS temporarily and restores owned settings on stop, with a crash watcher.
 `--bind-interface` protects Windows upstream sockets from recapture.
+Windows hosts can select `-ProxyPort` and `-TunMTU`. With `-Exchange`,
+`-SessionTimeout 0` keeps an application session active until it signals stop.
+`-OwnerPid` plus `-OwnerTicks` lets both the coordinator and independent watcher
+restore the network after the external application's process exits. Defaults
+retain standalone behavior; no application binary or application source is
+required in the core repository.
 Protect every upstream socket and resolve bootstrap names through the physical
 network with `Hooks`. A protection/resolver failure never falls back to a direct
 connection. Close the engine and wait for it before releasing callback resources.
