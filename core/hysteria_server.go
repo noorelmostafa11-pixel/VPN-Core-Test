@@ -49,6 +49,7 @@ func (e *Engine) startHysteriaServer(s serverSpec) (net.Addr, error) {
 	if err != nil {
 		return nil, err
 	}
+	configureDatagramBuffers(packet)
 	packet, err = wrapHysteriaPacket(packet, s.config.Options)
 	if err != nil {
 		return nil, err

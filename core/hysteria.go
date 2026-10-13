@@ -103,6 +103,7 @@ func (f *hyFactory) New(addr net.Addr) (net.PacketConn, error) {
 	if err != nil {
 		return nil, err
 	}
+	configureDatagramBuffers(conn)
 	conn, err = wrapHysteriaPacket(conn, f.options)
 	if err != nil {
 		return nil, err

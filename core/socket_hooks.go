@@ -126,7 +126,11 @@ func outboundDial(ctx context.Context, network, address string, timeout time.Dur
 		defer cancel()
 	}
 	if h, ok := ctx.Value(hooksKey{}).(Hooks); ok && h.Dial != nil {
-		return h.Dial(ctx, network, address)
+		conn, err := h.Dial(ctx, network, address)
+		if err == nil && strings.HasPrefix(network, "udp") {
+			configureDatagramBuffers(conn)
+		}
+		return conn, err
 	}
 	host, port, e := net.SplitHostPort(address)
 	if e != nil {
@@ -137,7 +141,11 @@ func outboundDial(ctx context.Context, network, address string, timeout time.Dur
 		return nil, e
 	}
 	d := net.Dialer{ControlContext: socketControl}
-	return dialResolved(ctx, network, ips, port, d.DialContext)
+	conn, err := dialResolved(ctx, network, ips, port, d.DialContext)
+	if err == nil && strings.HasPrefix(network, "udp") {
+		configureDatagramBuffers(conn)
+	}
+	return conn, err
 }
 
 // Literal addresses and one-family answers have no racing overhead. With both

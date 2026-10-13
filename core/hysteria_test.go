@@ -32,7 +32,8 @@ func hysteriaFixture(t *testing.T) (Config, hs.Server) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server, err := hs.NewServer(&hs.Config{Conn: packet, TLSConfig: hs.TLSConfig{Certificates: []tls.Certificate{pair}}, Authenticator: hyAuth{"test-auth"}, UDPIdleTimeout: 2 * time.Second})
+	configureDatagramBuffers(packet)
+	server, err := hs.NewServer(&hs.Config{Conn: packet, TLSConfig: hs.TLSConfig{Certificates: []tls.Certificate{pair}}, Authenticator: hyAuth{"test-auth"}, UDPIdleTimeout: 2 * time.Second, Outbound: bufferedHysTestOutbound{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,6 +54,7 @@ func udpEchoPeer(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	configureDatagramBuffers(p)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -67,6 +69,40 @@ func udpEchoPeer(t *testing.T) string {
 	}()
 	t.Cleanup(func() { p.Close(); <-done })
 	return p.LocalAddr().String()
+}
+
+// The official component's default outbound uses an OS socket. Mirror the
+// engine's per-socket Apple buffer setting in this test-only reference adapter.
+type bufferedHysTestOutbound struct{}
+
+func (bufferedHysTestOutbound) TCP(addr string) (net.Conn, error) {
+	return net.DialTimeout("tcp", addr, time.Second)
+}
+func (bufferedHysTestOutbound) CheckUDP(string) error { return nil }
+func (bufferedHysTestOutbound) UDP(string) (hs.UDPConn, error) {
+	c, err := net.ListenUDP("udp", nil)
+	if err != nil {
+		return nil, err
+	}
+	configureDatagramBuffers(c)
+	return bufferedHysTestUDP{c}, nil
+}
+
+type bufferedHysTestUDP struct{ *net.UDPConn }
+
+func (c bufferedHysTestUDP) ReadFrom(b []byte) (int, string, error) {
+	n, a, err := c.UDPConn.ReadFrom(b)
+	if a == nil {
+		return n, "", err
+	}
+	return n, a.String(), err
+}
+func (c bufferedHysTestUDP) WriteTo(b []byte, a string) (int, error) {
+	addr, err := net.ResolveUDPAddr("udp", a)
+	if err != nil {
+		return 0, err
+	}
+	return c.UDPConn.WriteTo(b, addr)
 }
 func checkHysteriaUDP(t *testing.T, s PacketStream) {
 	t.Helper()
