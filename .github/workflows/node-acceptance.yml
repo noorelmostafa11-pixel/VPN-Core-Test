@@ -1,0 +1,190 @@
+name: Node Acceptance - 15 Shards
+
+# The 72,767 pinned Pre URIs are tested only when explicitly dispatched.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: node-acceptance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  acceptance:
+    name: Test nodes (shard ${{ matrix.shard }}/14)
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      max-parallel: 15
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+
+    steps:
+      - name: Checkout main source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+          cache: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Restore and SHA256-verify pinned 72,767 original node URIs
+        run: python3 scripts/Prepare-Pinned-Nodes.py
+
+      - name: Build temporary Linux Go core from checked-out source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/Build-Go.py \
+            --target linux \
+            --arch amd64 \
+            --output "$RUNNER_TEMP/vpn-core-build"
+          test -x "$RUNNER_TEMP/vpn-core-build/vpn-core"
+
+      - name: Test shard through source-built Go core and curl over SOCKS
+        shell: bash
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python3 scripts/Test-Nodes.py \
+            --core "$RUNNER_TEMP/vpn-core-build/vpn-core" \
+            --nodes nodes/pre/protocols \
+            --pre-manifest docs/pre-source-manifest.json \
+            --output "$RUNNER_TEMP/node-acceptance" \
+            --source-commit "$GITHUB_SHA" \
+            --shard "$SHARD" \
+            --shards 15 \
+            --concurrency 8 \
+            --timeout 10
+
+      - name: Save shard report only (no core binaries or raw URI lists)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acceptance-shard-${{ matrix.shard }}
+          path: |
+            ${{ runner.temp }}/node-acceptance/summary.json
+            ${{ runner.temp }}/node-acceptance/results.ndjson
+            ${{ runner.temp }}/node-acceptance/pre-manifest.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  summarize:
+    name: Verify total coverage and summarize reports
+    needs: [acceptance]
+    if: always() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Download available shard reports
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: acceptance-shard-*
+          path: reports
+
+      - name: Verify shard inventory and produce aggregate JSON
+        shell: bash
+        env:
+          ACCEPTANCE_RESULT: ${{ needs.acceptance.result }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import collections
+          import json
+          import os
+          import pathlib
+
+          total_inventory = 72767
+          shards = 15
+          root = pathlib.Path('reports')
+          statuses = collections.Counter()
+          reasons = collections.Counter()
+          missing = []
+          errors = []
+          selected = 0
+          finished = 0
+          core_hashes = set()
+          source_commits = set()
+          manifest_hashes = set()
+          for shard in range(shards):
+              folder = root / f'acceptance-shard-{shard}'
+              summary_path = folder / 'summary.json'
+              result_path = folder / 'results.ndjson'
+              if not summary_path.is_file() or not result_path.is_file():
+                  missing.append(shard)
+                  continue
+              try:
+                  report = json.loads(summary_path.read_text(encoding='utf-8'))
+                  with result_path.open(encoding='utf-8') as stream:
+                      rows = sum(1 for line in stream if line.strip())
+                  expected = (total_inventory + shards - 1 - shard) // shards
+                  if (report.get('shard') != shard or report.get('shards') != shards
+                      or report.get('total_pre_inventory') != total_inventory
+                      or report.get('selected') != expected
+                      or report.get('inventory') != expected
+                      or report.get('finished') != expected
+                      or report.get('completed') is not True or rows != expected
+                      or sum(report.get('statuses', {}).values()) != expected):
+                      errors.append(f'shard-{shard}: coverage or summary mismatch')
+                  selected += report.get('selected', 0)
+                  finished += report.get('finished', 0)
+                  statuses.update(report.get('statuses', {}))
+                  reasons.update(report.get('reasons', {}))
+                  core_hashes.add(report.get('core_sha256'))
+                  source_commits.add(report.get('source_commit'))
+                  manifest_hashes.add(report.get('pre_manifest_sha256'))
+              except (OSError, ValueError, TypeError, KeyError) as exc:
+                  errors.append(f'shard-{shard}: malformed report ({type(exc).__name__})')
+          if len(core_hashes) != 1 or None in core_hashes:
+              errors.append('The 15 runners did not report one identical Go core hash')
+          if source_commits != {os.environ['GITHUB_SHA']}:
+              errors.append('Source commit mismatch')
+          if len(manifest_hashes) != 1 or None in manifest_hashes:
+              errors.append('Pinned Pre manifest mismatch')
+          complete = (not missing and not errors and selected == total_inventory
+                      and finished == total_inventory
+                      and os.environ['ACCEPTANCE_RESULT'] == 'success')
+          summary = {
+              'schema': 'vpn-node-acceptance-aggregate-v1',
+              'source_commit': os.environ['GITHUB_SHA'],
+              'expected_nodes': total_inventory,
+              'shards': shards,
+              'selected': selected,
+              'finished': finished,
+              'statuses': dict(statuses),
+              'reasons': dict(reasons),
+              'missing_shards': missing,
+              'errors': errors,
+              'shard_jobs_result': os.environ['ACCEPTANCE_RESULT'],
+              'complete': complete,
+          }
+          out = pathlib.Path('aggregate')
+          out.mkdir(exist_ok=True)
+          (out / 'summary.json').write_text(json.dumps(summary, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+          print(json.dumps(summary, sort_keys=True))
+          if not complete:
+              raise SystemExit('Incomplete or inconsistent node acceptance coverage')
+          PY
+
+      - name: Upload aggregate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acceptance-aggregate
+          path: aggregate/summary.json
+          if-no-files-found: warn
+          retention-days: 7
