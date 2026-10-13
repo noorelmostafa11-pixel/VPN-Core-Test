@@ -493,7 +493,7 @@ func (t *routeTable) tcp(ctx context.Context, tag, host string, port, depth int)
 		return nil, err
 	}
 	if o.detour != "" {
-		if o.config.Protocol == "hysteria2" || o.config.Protocol == "wireguard" {
+		if o.config.Protocol == "hysteria2" || o.config.Protocol == "wireguard" || o.config.Protocol == "tuic" {
 			return nil, errors.New("DETOUR_UDP_UNSUPPORTED")
 		}
 		h, _ := ctx.Value(hooksKey{}).(Hooks)

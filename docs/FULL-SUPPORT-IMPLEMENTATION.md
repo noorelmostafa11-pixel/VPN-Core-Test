@@ -25,9 +25,9 @@ states its boundary. "Pending" must not be advertised as supported.
 | --- | --- |
 | VLESS, VMess, Trojan, Shadowsocks clients | Baseline; retain independent wire tests |
 | SS2022, VLESS REALITY/Vision/encryption, VMess legacy/alter-ID | Baseline client scope; retain authentication and cipher tests |
-| ShadowTLS v2 and v3; Shadowsocks with ShadowTLS | Pending client/server and independent-reference tests |
+| ShadowTLS v2 and v3; Shadowsocks with ShadowTLS | Client/server added: verified TLS, v2 challenge, strict v3 handshake/data integrity, standalone/SIP003 Shadowsocks and optional UOT v2 UDP. Independent sing-box 1.14.3 payloads passed both directions with the documented v2 ticket boundary. Embedded SS2022, non-strict v3 and broader multi-user/SNI options remain pending; see SHADOWTLS.md |
 | Hysteria 1 and 2 | Hysteria 2 client/server added: TCP/UDP, BBR/reno/negotiated Brutal, Salamander/Gecko, native/Chrome, trust/pins/ECH configuration, bounded reuse/reconnect/close; standalone official 2.13.0 TCP/UDP in both directions passed. Hysteria 1 and extra options (port hopping, realms, fake TCP) remain pending; see HYSTERIA2.md |
-| TUIC | Pending client/server, authentication and both UDP relay modes |
+| TUIC | v5 client/server added: TLS-exporter authentication, TCP, native/QUIC UDP, fragmentation, direct Full Cone relay, bounded reuse/close and independent sing-box 1.14.3 payloads both modes/directions. Additional congestion selection, uTLS, 0-RTT and per-user passwords remain pending; see TUIC.md |
 | AnyTLS | Client/server added: session reuse, bounded padding updates, v1/v2 server framing, verified TLS, TCP and UOT v2 connect/non-connect UDP. Official 0.0.13 client/server payload tests in both directions passed; see ANYTLS.md |
 | WireGuard VPN | Client/server added: official encrypted device, protected sockets, bounded reuse/queues/workers, TCP/UDP IPv4/IPv6, PSK, encrypted DNS and native server forwarding. Independent Python Noise_IK/encrypted TCP/UDP/auth/source tests passed. Kernel/public-node and Windows route/DNS acceptance remain separate; see WIREGUARD.md |
 | Remote HTTP/HTTPS proxy | Added HTTP CONNECT and verified TLS path; preserve response read-ahead |
@@ -215,3 +215,31 @@ core/mobile/CLI, vet, 172 wire tests (170 passed, two existing optional skips),
 eleven executable cross-builds, Windows C ABI lifecycle/restart and binary
 packaging. Publication and its CI are checked separately. Other pending report
 entries remain pending.
+
+## 0.5.7 extension
+
+TUIC v5 clients/servers and ShadowTLS v2/v3 with Shadowsocks and optional UOT v2
+are implemented; see [TUIC.md](TUIC.md) and [SHADOWTLS.md](SHADOWTLS.md). Full
+report coverage remains incomplete; their additional options and all other
+pending entries remain explicit.
+
+Local validation passed: full core/mobile/CLI race tests and vet, eleven
+executable cross-builds, Windows C ABI lifecycle/restart and binary packaging.
+The combined wire run executed 173 tests with 170 passed and three optional
+skips. The skipped Xray reference class was then run separately against the
+installed independent Xray and passed its VLESS/Trojan/SS payload cases; the
+two old optional skips remain. New sing-box 1.14.3 TUIC and ShadowTLS payload
+cases passed. Initial reference failures involving Windows UDP buffer limits
+and ShadowTLS v2 TLS tickets remain documented in the respective protocol
+records. Local tests are not public-node/host-route Internet acceptance.
+
+The stripped Windows executable is 18,263,552 bytes, compared with 18,010,624
+for the previous build. No throughput/latency improvement is inferred from
+tests or binary size. The local pre-publication build records a dirty tree;
+it is not represented as a clean published release. Publication and CI require
+their own confirmation.
+
+Remote main advanced independently to
+`d3442fea7d65ee02e4e807b6c457c5cf2f738d19` while this work ran: the owner's
+commit adds a manual node-acceptance workflow only. It is preserved without
+modification; the original protocol-source baseline remains `63cc65b...`.

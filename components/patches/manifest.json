@@ -15,7 +15,7 @@
     "path": "vendor/github.com/refraction-networking/utls/project_records.go",
     "replacement": "project_records.go.replacement",
     "original_sha256": null,
-    "patched_sha256": "25d998c24a241276a204b747745bef2bb10b8cdf59f49934a041e8e14d2a4589"
+    "patched_sha256": "18585d01dc920f1e3f5c01b796338f21089c26837a455d4056632bf0549c7329"
   },
   {
     "path": "vendor/github.com/refraction-networking/utls/u_conn.go",

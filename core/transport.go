@@ -696,6 +696,19 @@ func Dial(ctx context.Context, c Config, host string, port int) (net.Conn, error
 	if c.Routing != nil {
 		return nil, errors.New("ROUTE_ENGINE_REQUIRED")
 	}
+	if c.Protocol == "ss" && c.Plugin == "shadowtls" {
+		converted, err := shadowFromSS(c)
+		if err != nil {
+			return nil, err
+		}
+		return dialShadowTLS(ctx, converted, host, port)
+	}
+	if c.Protocol == "tuic" {
+		return dialTUIC(ctx, c, host, port)
+	}
+	if c.Protocol == "shadowtls" {
+		return dialShadowTLS(ctx, c, host, port)
+	}
 	if c.Protocol == "ssh" {
 		return dialSSH(ctx, c, host, port)
 	}
