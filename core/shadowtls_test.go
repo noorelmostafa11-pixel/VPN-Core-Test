@@ -180,10 +180,10 @@ func TestShadowTLSRejectsTamperingReplayAndSlicing(t *testing.T) {
 }
 
 func TestShadowTLSStrictServerHelloVersion(t *testing.T) {
-	body := make([]byte, 38)
+	body := make([]byte, 39)
 	body[0] = 2
 	body[4], body[5] = 3, 3
-	body[37] = 0
+	body[38] = 0
 	body = append(body, 0x13, 1, 0, 0, 6, 0, 43, 0, 2, 3, 4)
 	frame := shadowRecord(22, body)
 	if !shadowTLS13(frame) {
