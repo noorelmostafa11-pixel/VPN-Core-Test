@@ -175,6 +175,33 @@ func shadowRandom(frame []byte) []byte {
 	}
 	return append([]byte(nil), frame[11:43]...)
 }
+func shadowTLS13(frame []byte) bool {
+	if len(frame) < 44 || frame[0] != 22 || frame[5] != 2 {
+		return false
+	}
+	pos := 44 + int(frame[43])
+	if pos+5 > len(frame) {
+		return false
+	}
+	pos += 3
+	n := getWord(frame, pos)
+	pos += 2
+	if n != len(frame)-pos {
+		return false
+	}
+	for pos+4 <= len(frame) {
+		kind, size := getWord(frame, pos), getWord(frame, pos+2)
+		pos += 4
+		if size > len(frame)-pos {
+			return false
+		}
+		if kind == 43 {
+			return size == 2 && frame[pos] == 3 && frame[pos+1] == 4
+		}
+		pos += size
+	}
+	return false
+}
 func shadowSignHello(hello []byte, password string) error {
 	if len(hello) < 71 || hello[0] != 1 || hello[38] != 32 {
 		return errors.New("SHADOWTLS_CLIENT_HELLO_INVALID")

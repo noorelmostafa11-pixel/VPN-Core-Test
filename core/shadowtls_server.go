@@ -164,6 +164,9 @@ func (e *Engine) serveShadow(raw net.Conn, s serverSpec) {
 			}
 			if version == 3 {
 				if sr := shadowRandom(frame); sr != nil {
+					if !shadowTLS13(frame) {
+						return
+					}
 					state.mu.Lock()
 					state.random = sr
 					state.mu.Unlock()

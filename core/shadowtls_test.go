@@ -178,3 +178,22 @@ func TestShadowTLSRejectsTamperingReplayAndSlicing(t *testing.T) {
 		})
 	}
 }
+
+func TestShadowTLSStrictServerHelloVersion(t *testing.T) {
+	body := make([]byte, 38)
+	body[0] = 2
+	body[4], body[5] = 3, 3
+	body[37] = 0
+	body = append(body, 0x13, 1, 0, 0, 6, 0, 43, 0, 2, 3, 4)
+	frame := shadowRecord(22, body)
+	if !shadowTLS13(frame) {
+		t.Fatal("TLS 1.3 ServerHello rejected")
+	}
+	frame[len(frame)-1] = 3
+	if shadowTLS13(frame) {
+		t.Fatal("TLS 1.2 accepted as strict v3")
+	}
+	if shadowTLS13(frame[:43]) {
+		t.Fatal("truncated ServerHello accepted")
+	}
+}
