@@ -262,6 +262,9 @@ func (c Config) Validate() error {
 	if c.Protocol == "wireguard" {
 		return validateWireGuard(c)
 	}
+	if c.Protocol == "anytls" {
+		return validateAnyTLS(c)
+	}
 	if isProxyProtocol(c.Protocol) {
 		return validateProxyConfig(c)
 	}

@@ -28,7 +28,7 @@ states its boundary. "Pending" must not be advertised as supported.
 | ShadowTLS v2 and v3; Shadowsocks with ShadowTLS | Pending client/server and independent-reference tests |
 | Hysteria 1 and 2 | Hysteria 2 client/server added: TCP/UDP, BBR/reno/negotiated Brutal, Salamander/Gecko, native/Chrome, trust/pins/ECH configuration, bounded reuse/reconnect/close; standalone official 2.13.0 TCP/UDP in both directions passed. Hysteria 1 and extra options (port hopping, realms, fake TCP) remain pending; see HYSTERIA2.md |
 | TUIC | Pending client/server, authentication and both UDP relay modes |
-| AnyTLS | Pending client/server, session reuse, padding updates and UDP-over-TCP |
+| AnyTLS | Client/server added: session reuse, bounded padding updates, v1/v2 server framing, verified TLS, TCP and UOT v2 connect/non-connect UDP. Official 0.0.13 client/server payload tests in both directions passed; see ANYTLS.md |
 | WireGuard VPN | Client/server added: official encrypted device, protected sockets, bounded reuse/queues/workers, TCP/UDP IPv4/IPv6, PSK, encrypted DNS and native server forwarding. Independent Python Noise_IK/encrypted TCP/UDP/auth/source tests passed. Kernel/public-node and Windows route/DNS acceptance remain separate; see WIREGUARD.md |
 | Remote HTTP/HTTPS proxy | Added HTTP CONNECT and verified TLS path; preserve response read-ahead |
 | Remote SOCKS4/4a/5 | Added, including SOCKS5 credentials and UDP association; SOCKS4 is IPv4 TCP by specification |
@@ -196,3 +196,22 @@ New tests include repeated connections, PSKs, encrypted DNS and bounded
 admission/close. The stripped Windows executable is 17,908,736 bytes.
 Publication and its remote CI are checked separately. Other pending report entries
 remain pending; no application files or private profiles are deliverables.
+
+Published WireGuard: `67c0430831b03c628c002cf50597fbd23083ff5e`. Its CI passed
+Windows/Linux/portable/Android but failed two one-second macOS WireGuard setup
+tests. Fix `c264de05593ffab16f0e284122b01591f10ee7a4` selects peer endpoints
+sequentially, avoiding same-key handshakes roaming the server to a losing
+socket, and uses a normal five-second fixture setup budget; explicit 100 ms
+authentication-rejection tests remain. CI run `38359427401` completed successfully
+on the exact fix: all six jobs, including macOS and the Android AAR. The earlier
+WireGuard run remains recorded as a failure, not an all-pass result.
+
+## 0.5.6 extension
+
+Project-authored AnyTLS clients/servers, session reuse, padding updates and
+UOT v2 are described in [ANYTLS.md](ANYTLS.md). Official reference TCP/UDP
+tests passed in both directions. Full local validation passed: race tests for
+core/mobile/CLI, vet, 172 wire tests (170 passed, two existing optional skips),
+eleven executable cross-builds, Windows C ABI lifecycle/restart and binary
+packaging. Publication and its CI are checked separately. Other pending report
+entries remain pending.

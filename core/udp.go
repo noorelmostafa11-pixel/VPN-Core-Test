@@ -457,6 +457,9 @@ func DialPacket(ctx context.Context, c Config, host string, port int) (PacketStr
 	if c.Protocol == "wireguard" {
 		return dialWireGuardPacket(ctx, c, host, port)
 	}
+	if c.Protocol == "anytls" {
+		return dialAnyTLSPacket(ctx, c, host, port)
+	}
 	if c.Routing != nil {
 		return nil, errors.New("ROUTE_ENGINE_REQUIRED")
 	}

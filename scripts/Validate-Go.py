@@ -20,4 +20,5 @@ suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_server_referen
 suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_hysteria_reference.HysteriaReferenceTests'))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_ssh_reference.SSHReferenceTests'))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_wireguard_reference.WireGuardReferenceTests'))
+suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_anytls_reference.AnyTLSReferenceTests'))
 result=unittest.TextTestRunner(verbosity=2).run(suite);raise SystemExit(not result.wasSuccessful())

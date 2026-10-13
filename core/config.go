@@ -231,6 +231,9 @@ func ParseURI(uri string) (Config, error) {
 	}
 	proto, body, ok := strings.Cut(uri, "://")
 	c.Protocol = strings.ToLower(proto)
+	if ok && c.Protocol == "anytls" {
+		return parseAnyTLSURI(uri)
+	}
 	if ok && (c.Protocol == "wireguard" || c.Protocol == "wg") {
 		return parseWireGuardURI(uri)
 	}
