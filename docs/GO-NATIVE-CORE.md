@@ -1,4 +1,4 @@
-# Go core 0.5.8
+# Go core 0.5.9
 
 Optional routing, DNS policy, remote HTTP/SOCKS, local HTTP/mixed and initial
 server support are described in [the full implementation record](FULL-SUPPORT-IMPLEMENTATION.md).

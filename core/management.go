@@ -52,6 +52,15 @@ func (e *Engine) StartManagementAPI(address, token string) (net.Addr, error) {
 		defer r.Body.Close()
 		encoder := json.NewEncoder(w)
 		switch {
+		case r.Method == "GET" && r.URL.Path == "/health":
+			encoder.Encode(e.URLHealth())
+		case r.Method == "POST" && r.URL.Path == "/health/check":
+			if !e.RequestURLTest() {
+				w.WriteHeader(409)
+				return
+			}
+			w.WriteHeader(202)
+			encoder.Encode(map[string]bool{"queued": true})
 		case r.Method == "GET" && r.URL.Path == "/stats":
 			encoder.Encode(e.Stats())
 		case r.Method == "GET" && r.URL.Path == "/routing":

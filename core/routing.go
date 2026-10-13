@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 )
 
@@ -32,10 +33,11 @@ type OutboundConfig struct {
 	Detour string `json:"detour,omitempty"`
 }
 type GroupConfig struct {
-	Tag      string   `json:"tag"`
-	Mode     string   `json:"mode"`
-	Members  []string `json:"members"`
-	Selected string   `json:"selected,omitempty"`
+	Tag      string         `json:"tag"`
+	Mode     string         `json:"mode"`
+	Members  []string       `json:"members"`
+	Selected string         `json:"selected,omitempty"`
+	URLTest  *URLTestConfig `json:"url_test,omitempty"`
 }
 type RouteRule struct {
 	Domains        []string `json:"domains,omitempty"`
@@ -82,6 +84,9 @@ type compiledGroup struct {
 	selected string
 	cursor   atomic.Uint64
 	active   atomic.Uint32
+	test     *compiledURLTest
+	healthMu sync.RWMutex
+	health   map[string]URLHealth
 }
 type routeTable struct {
 	outbounds map[string]compiledOutbound
@@ -92,6 +97,7 @@ type routeTable struct {
 type Router struct {
 	table                      atomic.Pointer[routeTable]
 	listenPort, maxConnections int
+	owner                      *Engine
 }
 
 func ReadRouterConfig(reader io.Reader) (RouterConfig, error) {
@@ -148,6 +154,9 @@ func (r *Router) Reload(c RouterConfig) error {
 		return err
 	}
 	r.table.Store(table)
+	if r.owner != nil {
+		r.owner.syncURLTesting()
+	}
 	return nil
 }
 func (r *Router) Select(group, tag string) error {
@@ -159,11 +168,18 @@ func (r *Router) Select(group, tag string) error {
 		}
 		groups := make(map[string]*compiledGroup, len(old.groups))
 		for k, v := range old.groups {
-			groups[k] = v
+			if v.test != nil {
+				groups[k] = &compiledGroup{mode: v.mode, members: v.members, selected: v.selected, test: v.test}
+			} else {
+				groups[k] = v
+			}
 		}
 		groups[group] = &compiledGroup{mode: g.mode, members: g.members, selected: tag}
 		replacement := &routeTable{outbounds: old.outbounds, groups: groups, rules: old.rules, final: old.final}
 		if r.table.CompareAndSwap(old, replacement) {
+			if r.owner != nil {
+				r.owner.syncURLTesting()
+			}
 			return nil
 		}
 	}
@@ -222,7 +238,7 @@ func compileRoutes(c RouterConfig) (*routeTable, error) {
 		if _, ok := t.outbounds[g.Tag]; ok {
 			return nil, errors.New("ROUTE_TAG_DUPLICATE")
 		}
-		if !contains([]string{"selector", "failover", "round_robin"}, g.Mode) {
+		if !contains([]string{"selector", "failover", "round_robin", "url_test"}, g.Mode) {
 			return nil, errors.New("ROUTE_GROUP_MODE")
 		}
 		selected := g.Selected
@@ -240,6 +256,18 @@ func compileRoutes(c RouterConfig) (*routeTable, error) {
 			seen[m] = true
 		}
 		t.groups[g.Tag] = &compiledGroup{mode: g.Mode, members: append([]string(nil), g.Members...), selected: selected}
+		if g.Mode == "url_test" {
+			if g.URLTest == nil {
+				return nil, errors.New("URL_TEST_CONFIGURATION")
+			}
+			compiled, err := compileURLTest(*g.URLTest)
+			if err != nil {
+				return nil, err
+			}
+			t.groups[g.Tag].test = compiled
+		} else if g.URLTest != nil {
+			return nil, errors.New("URL_TEST_GROUP_MODE")
+		}
 	}
 	exists := func(tag string) bool { _, o := t.outbounds[tag]; _, g := t.groups[tag]; return o || g }
 	if !exists(t.final) {
@@ -281,6 +309,14 @@ func compileRoutes(c RouterConfig) (*routeTable, error) {
 	for tag := range t.groups {
 		if err := visit(tag, 0); err != nil {
 			return nil, err
+		}
+		if g := t.groups[tag]; g.test != nil {
+			for _, member := range g.members {
+				out, ok := t.outbounds[member]
+				if !ok || out.config.Protocol == "block" {
+					return nil, errors.New("URL_TEST_LEAF_REQUIRED")
+				}
+			}
 		}
 	}
 	for _, rule := range c.Rules {
@@ -421,6 +457,8 @@ func (t *routeTable) target(ctx context.Context, network, host string, port int)
 }
 func groupMembers(g *compiledGroup) []string {
 	switch g.mode {
+	case "url_test":
+		return g.healthMembers()
 	case "selector":
 		return []string{g.selected}
 	case "round_robin":
@@ -467,8 +505,12 @@ func (t *routeTable) tcp(ctx context.Context, tag, host string, port, depth int)
 		return nil, errors.New("ROUTE_DEPTH")
 	}
 	if g, ok := t.groups[tag]; ok {
+		members := groupMembers(g)
+		if len(members) == 0 {
+			return nil, errors.New("NO_HEALTHY_OUTBOUND")
+		}
 		var last error
-		for _, member := range groupMembers(g) {
+		for _, member := range members {
 			conn, err := t.tcp(ctx, member, host, port, depth+1)
 			if err == nil {
 				if g.mode == "failover" {
@@ -523,8 +565,12 @@ func (t *routeTable) udp(ctx context.Context, tag, host string, port, depth int)
 		return nil, errors.New("ROUTE_DEPTH")
 	}
 	if g, ok := t.groups[tag]; ok {
+		members := groupMembers(g)
+		if len(members) == 0 {
+			return nil, errors.New("NO_HEALTHY_OUTBOUND")
+		}
 		var last error
-		for _, member := range groupMembers(g) {
+		for _, member := range members {
 			s, err := t.udp(ctx, member, host, port, depth+1)
 			if err == nil {
 				if g.mode == "failover" {

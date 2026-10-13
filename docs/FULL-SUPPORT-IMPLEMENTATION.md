@@ -46,7 +46,7 @@ states its boundary. "Pending" must not be advertised as supported.
 | Process and interface rules | Partial: SDK-supplied metadata; native OS process/interface discovery still pending |
 | Direct/proxy/block and split tunneling | Added routing decisions; Windows host policy and direct-name bootstrap integration still require acceptance |
 | Selector, balancer and failover | Added selector, round-robin and bounded connection-establishment failover; reuse the last successful alternative, at most 16 attempts including nested groups; no replay of delivered application data |
-| URL testing / healthy-node selection | Pending HTTPS/body probes, bounded scheduling and health state |
+| URL testing / healthy-node selection | Added opt-in url_test groups: verified HTTPS/status/body, multiple sites, fastest verified member, protected shared budget, at most 16 probes/round and four concurrently, five-second minimum round cadence, gradual catalog scan and redacted health API. Local 1,700-node, cancellation/reload/body/trust tests passed; public-node and UDP acceptance remain separate; see URL-TESTING.md |
 | Multi-hop / outbound detour | Partial: tested TCP proxy chain; UDP chain/carrier compatibility pending |
 | Dynamic routing | Added validated atomic replacement; existing connections retain their selected path |
 | DNS inside tunnel, DoH, local TCP/UDP DNS, IPv4 preference / IPv6 | Baseline retained, with shared routing for upstream connections |
@@ -266,3 +266,30 @@ dirty tree; publication and its exact CI are confirmed separately.
 
 Remaining report entries still require implementation and their own acceptance.
 No application files, private profiles or private keys are repository artifacts.
+
+Published SSH server: `9564b422a013324e82b377fb49c2a4916d1bc975`.
+CI run `38385999782` completed successfully on that exact revision: all six
+jobs, including Windows/Linux/macOS, portable builds and the Android AAR.
+
+## 0.5.9 extension
+
+Optional HTTPS/body-verified health groups and redacted health controls are
+implemented; see [URL-TESTING.md](URL-TESTING.md). Tests cover blocked responses,
+certificate/body rejection, site fallback, 1,700-member scheduling bounds,
+manual throttling, local protection failure and reload/owner lifetime.
+Full core/mobile/CLI race tests and vet passed. The first full wire run failed
+the existing eight-flow mKCP loss/reordering fixture; its isolated rerun passed.
+Review found that the reference sender reversed its entire pending backlog
+before choosing a flight, potentially starving older missing packets, and did
+not apply the advertised receive window. The fixture now bounds/reorders the
+oldest 64 eligible segments; data sizes, eight flows, loss and duplication
+remain unchanged. No production mKCP code was modified. A subsequent combined
+wire run passed 175 tests (173 passed, two old optional skips); that run preceded
+the final oldest-flight refinement, whose complete five-case mKCP rerun passed
+separately. The initial failure remains recorded as a failure, not an all-pass.
+
+Eleven portable executable builds, Windows C ABI lifecycle/restart and binary
+packaging/license hashes passed. The stripped Windows executable is 18,403,840
+bytes. The local pre-publication package records a dirty tree; publication and
+exact remote CI are confirmed separately. Remaining report entries are still
+pending.
