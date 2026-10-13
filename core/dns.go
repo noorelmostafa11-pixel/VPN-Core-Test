@@ -12,20 +12,27 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 // One pooled HTTPS transport per engine; bounded concurrency and cache. It
 // always dials through the configured node, never through the physical network.
 type dnsRelay struct {
-	engine    *Engine
-	http      *http.Client
-	transport *http.Transport
-	servers   []string
-	slots     chan struct{}
-	mu        sync.Mutex
-	cache     map[string]dnsEntry
-	names     map[string]dnsName
+	engine     *Engine
+	http       *http.Client
+	transport  *http.Transport
+	servers    []string
+	slots      chan struct{}
+	mu         sync.Mutex
+	cache      map[string]dnsEntry
+	names      map[string]dnsName
+	policy     atomic.Pointer[dnsPolicy]
+	policyID   atomic.Uint64
+	fakeNames  map[string]string
+	fakeIPs    map[string]string
+	fakeNext   uint32
+	fakeActive atomic.Bool
 }
 type dnsEntry struct {
 	wire   []byte
@@ -61,7 +68,7 @@ func newDNSRelay(e *Engine) *dnsRelay {
 		if err != nil {
 			return nil, err
 		}
-		c, err := Dial(ctx, e.config, host, p)
+		c, err := e.dialTCP(ctx, host, p)
 		if err != nil {
 			return nil, err
 		}
@@ -105,7 +112,15 @@ func dnsEmpty(h dnsmessage.Header, q dnsmessage.Question, code dnsmessage.RCode)
 }
 func (d *dnsRelay) exchange(ctx context.Context, query []byte) ([]byte, error) {
 	var last error
-	for _, server := range d.servers {
+	servers := d.servers
+	if policy, ok := ctx.Value(dnsPolicyKey{}).(*dnsPolicy); ok && policy != nil {
+		_, q, err := parseDNSQuestion(query)
+		if err != nil {
+			return nil, err
+		}
+		servers = policy.serversFor(strings.TrimSuffix(q.Name.String(), "."))
+	}
+	for _, server := range servers {
 		request, err := http.NewRequestWithContext(ctx, "POST", server, bytes.NewReader(query))
 		if err != nil {
 			return nil, err
@@ -154,6 +169,15 @@ func (d *dnsRelay) answer(ctx context.Context, query []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if policy := d.policy.Load(); policy != nil {
+		ctx = context.WithValue(ctx, dnsPolicyKey{}, policy)
+		name := strings.TrimSuffix(q.Name.String(), ".")
+		if action := policy.actionFor(name); action == "block" {
+			return dnsEmpty(h, q, dnsmessage.RCodeNameError), nil
+		} else if action == "fakeip" && (q.Type == dnsmessage.TypeA || q.Type == dnsmessage.TypeAAAA) {
+			return d.fakeAnswer(h, q)
+		}
+	}
 	select {
 	case d.slots <- struct{}{}:
 		defer func() { <-d.slots }()
@@ -198,6 +222,9 @@ func (d *dnsRelay) answer(ctx context.Context, query []byte) ([]byte, error) {
 }
 func (d *dnsRelay) cached(ctx context.Context, query []byte) ([]byte, error) {
 	key := string(query[2:])
+	if p, ok := ctx.Value(dnsPolicyKey{}).(*dnsPolicy); ok {
+		key = itoa(int(p.id)) + ":" + key
+	}
 	now := time.Now()
 	d.mu.Lock()
 	entry, ok := d.cache[key]

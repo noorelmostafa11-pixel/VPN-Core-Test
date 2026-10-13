@@ -248,6 +248,14 @@ func (c Config) Validate() error {
 	if c.MaxConnections < 1 || c.MaxConnections > 512 || c.ConnectTimeout <= 0 || c.IdleTimeout <= 0 {
 		return errors.New("ENGINE_LIMIT_INVALID")
 	}
+	if c.Routing != nil {
+		if _, err := compileRoutes(*c.Routing); err != nil {
+			return err
+		}
+	}
+	if isProxyProtocol(c.Protocol) {
+		return validateProxyConfig(c)
+	}
 	if !contains([]string{"vless", "vmess", "trojan", "ss"}, c.Protocol) || !hostValid(c.Server) || c.Port < 1 || c.Port > 65535 {
 		return errors.New("PARSE_INVALID: protocol or endpoint")
 	}
@@ -359,6 +367,11 @@ func (c Config) Inspect() map[string]any {
 		c.ALPN = []string{}
 	}
 	m := map[string]any{"schema": "vpn-core-inspect-v3", "protocol": c.Protocol, "transport": c.Transport, "security": c.Security, "flow": c.Flow, "cipher": c.Cipher, "fingerprint": c.Fingerprint, "plugin": c.Plugin, "plugin_mux": c.PluginMux, "websocket_early_data": c.EarlyData, "websocket_path_ed_invalid": c.InvalidPathED, "alter_id": c.AlterID, "alpn": c.ALPN, "mode": c.Mode, "header_type": c.Header, "certificate_verification": true, "legacy_insecure_requested": c.InsecureRequested, "uri_parsed": true, "config_valid": true, "network_test_performed": false, "connectable_by_this_build": true, "missing_features": []string{}, "source_uri_preserved": true}
+	if c.Routing != nil {
+		m["routing_enabled"], m["outbound_count"], m["route_count"], m["group_count"] = true, len(c.Routing.Outbounds), len(c.Routing.Rules), len(c.Routing.Groups)
+		m["source_uri_preserved"] = false
+		m["protocol"], m["transport"] = "routing", "policy"
+	}
 	if c.Protocol == "vless" {
 		summary := c.Encryption
 		if strings.HasPrefix(summary, "mlkem") {

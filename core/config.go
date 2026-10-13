@@ -32,6 +32,8 @@ type Config struct {
 	Options, PluginOptions                                                      map[string]string
 	Extra, FinalMask                                                            json.RawMessage
 	OriginalURI                                                                 string
+	Username                                                                    string
+	Routing                                                                     *RouterConfig
 	Compatibility                                                               []string
 	PluginMux, OnlyCustomRoots, InsecureRequested, InvalidPathED                bool
 	Sniffing, NativeDNS, PreferIPv4, PreferTCP                                  bool
@@ -229,6 +231,9 @@ func ParseURI(uri string) (Config, error) {
 	}
 	proto, body, ok := strings.Cut(uri, "://")
 	c.Protocol = strings.ToLower(proto)
+	if ok && contains([]string{"http", "https", "socks", "socks4", "socks4a", "socks5", "socks5h", "direct", "block"}, c.Protocol) {
+		return parseProxyURI(uri)
+	}
 	if !ok || !contains([]string{"vless", "vmess", "trojan", "ss"}, c.Protocol) {
 		return fail(errors.New("PARSE_INVALID: unknown scheme"))
 	}
@@ -657,14 +662,30 @@ func ReadConfig(path string) (Config, error) {
 		return Config{}, e
 	}
 	defer f.Close()
-	b, e := io.ReadAll(io.LimitReader(f, 131073))
+	b, e := io.ReadAll(io.LimitReader(f, 1048577))
 	if e != nil {
 		return Config{}, e
+	}
+	if len(b) > 1048576 {
+		return Config{}, errors.New("PARSE_INVALID: config too large")
+	}
+	b = bytes.TrimPrefix(b, []byte{239, 187, 191})
+	if bytes.HasPrefix(bytes.TrimSpace(b), []byte{'{'}) {
+		routing, err := ReadRouterConfig(bytes.NewReader(b))
+		if err != nil {
+			return Config{}, err
+		}
+		c := defaults()
+		c.Protocol, c.Transport, c.Security = "direct", "raw", "none"
+		c.ListenPort, c.Routing = routing.ListenPort, &routing
+		if routing.MaxConnections != 0 {
+			c.MaxConnections = routing.MaxConnections
+		}
+		return c, nil
 	}
 	if len(b) > 131072 {
 		return Config{}, errors.New("PARSE_INVALID: config too large")
 	}
-	b = bytes.TrimPrefix(b, []byte{239, 187, 191})
 	q := map[string]string{}
 	scan := bufio.NewScanner(bytes.NewReader(b))
 	scan.Buffer(make([]byte, 4096), 131073)

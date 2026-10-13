@@ -48,6 +48,13 @@ func hooks(p Protector, r Resolver) core.Hooks {
 	return h
 }
 func newEngine(uri string, p Protector, r Resolver) (*core.Engine, error) {
+	if strings.HasPrefix(strings.TrimSpace(uri), "{") {
+		config, err := core.ReadRouterConfig(strings.NewReader(uri))
+		if err != nil {
+			return nil, err
+		}
+		return core.NewRouterEngine(context.Background(), config, hooks(p, r))
+	}
 	c, e := core.ParseURI(uri)
 	if e != nil {
 		return nil, e

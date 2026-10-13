@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/noorelmostafa11-pixel/VPN-Core-Test/core"
+	"io"
 	"net"
 	"os"
 	"os/signal"
@@ -29,8 +30,13 @@ func run() int {
 	tunFD := flag.Int("tun-fd", -1, "duplicate an established TUN descriptor")
 	tunMTU := flag.Int("tun-mtu", 1500, "native TUN MTU")
 	tunOnly := flag.Bool("tun-only", false, "disable the SOCKS listener")
+	noSOCKS := flag.Bool("no-socks", false, "disable SOCKS for server-only or HTTP/mixed configurations")
 	dnsListen := flag.String("dns-listen", "", "local UDP/TCP DNS over HTTPS through the node, e.g. 127.0.0.1:53")
 	bindInterface := flag.String("bind-interface", "", "Windows physical uplink for upstream sockets")
+	httpListen := flag.String("http-listen", "", "optional loopback HTTP proxy")
+	mixedListen := flag.String("mixed-listen", "", "optional loopback HTTP/SOCKS proxy")
+	apiListen := flag.String("api-listen", "", "optional loopback management API")
+	apiTokenFile := flag.String("api-token-file", "", "management bearer token file (32-256 characters)")
 	flag.Parse()
 	if *version {
 		fmt.Println("vpn-core", core.Version, "Go; project-owned protocols; SOCKS5 TCP + UDP; native TUN")
@@ -135,6 +141,44 @@ func run() int {
 		return 1
 	}
 	defer engine.Close()
+	if c.Routing != nil {
+		for _, server := range c.Routing.Inbounds {
+			address, err := engine.StartServer(server)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				return 1
+			}
+			fmt.Fprintln(os.Stderr, "Server listening on", address)
+		}
+	}
+	for _, listener := range []struct {
+		address string
+		start   func(string) (net.Addr, error)
+	}{{*httpListen, engine.StartHTTP}, {*mixedListen, engine.StartMixed}} {
+		if listener.address != "" {
+			if _, err := listener.start(listener.address); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				return 1
+			}
+		}
+	}
+	if *apiListen != "" {
+		file, err := os.Open(*apiTokenFile)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "API_TOKEN_FILE_FAILED")
+			return 1
+		}
+		b, err := io.ReadAll(io.LimitReader(file, 257))
+		file.Close()
+		if err != nil || len(b) > 256 {
+			fmt.Fprintln(os.Stderr, "API_TOKEN_FILE_FAILED")
+			return 1
+		}
+		if _, err = engine.StartManagementAPI(*apiListen, strings.TrimSpace(string(b))); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+	}
 	dns6 := false
 	if *dnsListen != "" {
 		if _, e = engine.StartDNS(*dnsListen); e != nil {
@@ -176,7 +220,7 @@ func run() int {
 		return 2
 	}
 	port := 0
-	if !*tunOnly {
+	if !*tunOnly && !*noSOCKS {
 		a, e := engine.StartSOCKS()
 		if e != nil {
 			fmt.Fprintln(os.Stderr, e)

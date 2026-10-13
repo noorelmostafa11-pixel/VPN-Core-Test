@@ -693,6 +693,12 @@ func Address(host string, port int) ([]byte, error) {
 
 // Dial opens a project-owned proxy stream. Destination DNS stays inside the proxy.
 func Dial(ctx context.Context, c Config, host string, port int) (net.Conn, error) {
+	if c.Routing != nil {
+		return nil, errors.New("ROUTE_ENGINE_REQUIRED")
+	}
+	if isProxyProtocol(c.Protocol) {
+		return dialProxy(ctx, c, host, port)
+	}
 	return dialProtocol(ctx, c, host, port, false)
 }
 func dialProtocol(ctx context.Context, c Config, host string, port int, udp bool) (net.Conn, error) {

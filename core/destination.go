@@ -39,6 +39,11 @@ func (c *prefixConn) CloseWrite() error {
 }
 
 func (e *Engine) destination(c net.Conn, host string, port int) (net.Conn, string) {
+	if e.dns != nil {
+		if name := e.dns.fakeName(host); name != "" {
+			return c, name
+		}
+	}
 	if !e.config.Sniffing || !sniffEligible(host, port) {
 		return c, host
 	}

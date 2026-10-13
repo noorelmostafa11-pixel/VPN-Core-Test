@@ -113,7 +113,8 @@ func (e *Engine) StartTUN(device PacketDevice, mtu int) (*Tunnel, error) {
 				return
 			}
 			flow, host := e.destination(client, net.IP(id.LocalAddress.AsSlice()).String(), int(id.LocalPort))
-			server, dialErr := Dial(ctx, e.config, host, int(id.LocalPort))
+			flowCtx := e.flowContext(ctx, client.RemoteAddr(), net.IP(id.LocalAddress.AsSlice()).String())
+			server, dialErr := e.dialTCP(flowCtx, host, int(id.LocalPort))
 			if dialErr != nil {
 				e.emit(Event{Event: "failure", ReasonCode: reasonCode(dialErr)})
 				return
@@ -245,7 +246,7 @@ func (t *Tunnel) udpFlow(client net.Conn, host string, port int) {
 			}
 		}
 	}
-	server, err := DialPacket(t.ctx, t.engine.config, host, port)
+	server, err := t.engine.dialPacket(t.engine.flowContext(t.ctx, client.RemoteAddr(), host), host, port)
 	if err != nil {
 		t.engine.emit(Event{Event: "failure", ReasonCode: reasonCode(err)})
 		return

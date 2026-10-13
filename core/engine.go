@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const Version = "0.5.2-go"
+const Version = "0.5.3-go"
 
 type Event struct {
 	Protocol     string `json:"protocol,omitempty"`
@@ -37,7 +37,7 @@ type Event struct {
 }
 type Stats struct{ Uploaded, Downloaded, Accepted, Rejected, Active uint64 }
 
-// Engine owns one node and a bounded set of connections. Close cancels and joins
+// Engine owns its optional routing policy and a bounded set of connections. Close cancels and joins
 // all workers before returning; host hook resources can then be released.
 type Engine struct {
 	config                                     Config
@@ -52,19 +52,40 @@ type Engine struct {
 	slots                                      chan struct{}
 	events                                     chan Event
 	dns                                        *dnsRelay
+	router                                     *Router
 	sniffBudget                                time.Duration
 	next, up, down, accepted, rejected, active atomic.Uint64
 }
 
 func NewEngine(parent context.Context, c Config, h Hooks) (*Engine, error) {
-	if e := c.Validate(); e != nil {
+	base := c
+	base.Routing = nil
+	if e := base.Validate(); e != nil {
 		return nil, e
+	}
+	var routing *routeTable
+	if c.Routing != nil {
+		var err error
+		routing, err = compileRoutes(*c.Routing)
+		if err != nil {
+			return nil, err
+		}
 	}
 	ctx, cancel := context.WithCancel(WithHooks(parent, h))
 	e := &Engine{config: c, ctx: ctx, cancel: cancel, closeDone: make(chan struct{}), closers: map[io.Closer]bool{}, slots: make(chan struct{}, c.MaxConnections), events: make(chan Event, 256), sniffBudget: 150 * time.Millisecond}
+	if routing != nil {
+		e.router = &Router{listenPort: c.ListenPort, maxConnections: c.MaxConnections}
+		e.router.table.Store(routing)
+	}
 	if c.NativeDNS {
 		e.dns = newDNSRelay(e)
 		e.track(e.dns)
+		if c.Routing != nil && c.Routing.DNS != nil {
+			if err := e.ConfigureDNS(*c.Routing.DNS); err != nil {
+				e.Close()
+				return nil, err
+			}
+		}
 	}
 	return e, nil
 }
@@ -72,6 +93,9 @@ func (e *Engine) Events() <-chan Event { return e.events }
 func (e *Engine) emit(v Event) {
 	v.Timestamp = time.Now().UnixMilli()
 	v.Protocol, v.Transport = e.config.Protocol, e.config.Transport
+	if e.router != nil {
+		v.Protocol, v.Transport = "routing", "policy"
+	}
 	v.Active, v.Limit = e.active.Load(), e.config.MaxConnections
 	select {
 	case e.events <- v:
@@ -280,6 +304,7 @@ func (e *Engine) handleSOCKS(c net.Conn) {
 		return
 	}
 	client := c
+	flowCtx := e.flowContext(e.ctx, c.RemoteAddr(), host)
 	earlyReply := e.config.Sniffing && sniffEligible(host, port)
 	if earlyReply {
 		// A SOCKS client sends its HTTP/TLS prefix only after acceptance.
@@ -290,7 +315,7 @@ func (e *Engine) handleSOCKS(c net.Conn) {
 		c.SetDeadline(time.Time{})
 		client, host = e.destination(c, host, port)
 	}
-	upstream, err := Dial(e.ctx, e.config, host, port)
+	upstream, err := e.dialTCP(flowCtx, host, port)
 	if err != nil {
 		c.SetWriteDeadline(time.Now().Add(500 * time.Millisecond))
 		if !earlyReply {
@@ -512,7 +537,7 @@ func (e *Engine) serveUDP(control net.Conn, requested []byte) error {
 		}
 		mu.Unlock()
 		if s == nil {
-			s, err = DialPacket(ctx, e.config, host, port)
+			s, err = e.dialPacket(e.flowContext(ctx, control.RemoteAddr(), host), host, port)
 			if err != nil {
 				e.emit(dialFailure(e.next.Add(1), err))
 				continue

@@ -451,8 +451,14 @@ func (s *ssPackets) ReadPacket() (Datagram, error) {
 	return packet, nil
 }
 func DialPacket(ctx context.Context, c Config, host string, port int) (PacketStream, error) {
+	if c.Routing != nil {
+		return nil, errors.New("ROUTE_ENGINE_REQUIRED")
+	}
 	if e := c.Validate(); e != nil {
 		return nil, e
+	}
+	if isProxyProtocol(c.Protocol) {
+		return dialProxyPacket(ctx, c, host, port)
 	}
 	a, e := Address(host, port)
 	if e != nil {

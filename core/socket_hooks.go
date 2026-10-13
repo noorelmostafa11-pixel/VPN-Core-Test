@@ -16,6 +16,9 @@ import (
 type Hooks struct {
 	Protect func(context.Context, int64) error
 	Resolve func(context.Context, string) ([]net.IPAddr, error)
+	// Dial is an optional stream detour. A dialer must honor context and
+	// return an error rather than silently switching to a direct connection.
+	Dial func(context.Context, string, string) (net.Conn, error)
 }
 type hooksKey struct{}
 
@@ -23,6 +26,9 @@ type hooksKey struct{}
 // system DNS. Proxy destinations still resolve at the node; no recursive DNS
 // dependency or URI rewrite is introduced.
 func PinBootstrap(ctx context.Context, c Config, h Hooks) (Hooks, []net.IPAddr, error) {
+	if c.Routing != nil {
+		return pinRoutingBootstrap(ctx, c, h)
+	}
 	hosts := []string{c.Server}
 	if c.Transport == "xhttp" {
 		x, err := c.xSettings()
@@ -118,6 +124,9 @@ func outboundDial(ctx context.Context, network, address string, timeout time.Dur
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
+	}
+	if h, ok := ctx.Value(hooksKey{}).(Hooks); ok && h.Dial != nil {
+		return h.Dial(ctx, network, address)
 	}
 	host, port, e := net.SplitHostPort(address)
 	if e != nil {

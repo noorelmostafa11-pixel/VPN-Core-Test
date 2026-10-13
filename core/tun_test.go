@@ -123,115 +123,122 @@ func vlessOracle(t *testing.T) (string, func()) {
 func TestNativeTUNFlows(t *testing.T) {
 	for _, v6 := range []bool{false, true} {
 		for _, datagram := range []bool{false, true} {
-			t.Run(itoa(boolInt(v6))+"/"+itoa(boolInt(datagram)), func(t *testing.T) {
-				uri, stop := vlessOracle(t)
-				defer stop()
-				cfg, err := ParseURI(uri)
-				if err != nil {
-					t.Fatal(err)
-				}
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				engine, err := NewEngine(ctx, cfg, Hooks{})
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer engine.Close()
-				device := &memoryDevice{in: make(chan []byte, 256), out: make(chan []byte, 256), stop: make(chan struct{})}
-				tun, err := engine.StartTUN(device, 1500)
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer tun.Close()
-				client := stack.New(stack.Options{NetworkProtocols: []stack.NetworkProtocolFactory{ipv4.NewProtocol, ipv6.NewProtocol}, TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol, udp.NewProtocol}})
-				link := channel.New(256, 1500, "")
-				defer link.Close()
-				defer client.Close()
-				if e := client.CreateNIC(1, link); e != nil {
-					t.Fatal(e)
-				}
-				proto := ipv4.ProtocolNumber
-				source := net.ParseIP("10.77.0.2").To4()
-				destination := net.ParseIP("192.0.2.10").To4()
-				bits := 32
-				subnet := header.IPv4EmptySubnet
-				if v6 {
-					proto = ipv6.ProtocolNumber
-					source = net.ParseIP("fd77::2").To16()
-					destination = net.ParseIP("2001:db8::10").To16()
-					bits = 128
-					subnet = header.IPv6EmptySubnet
-				}
-				client.AddProtocolAddress(1, tcpip.ProtocolAddress{Protocol: proto, AddressWithPrefix: tcpip.AddressWithPrefix{Address: tcpip.AddrFromSlice(source), PrefixLen: bits}}, stack.AddressProperties{})
-				client.SetRouteTable([]tcpip.Route{{Destination: subnet, NIC: 1}})
-				var pumps sync.WaitGroup
-				pumps.Add(2)
-				go func() {
-					defer pumps.Done()
-					for {
-						packet := link.ReadContext(ctx)
-						if packet == nil {
-							return
-						}
-						v := packet.ToView()
-						p := append([]byte{}, v.AsSlice()...)
-						v.Release()
-						packet.DecRef()
-						select {
-						case device.in <- p:
-						case <-ctx.Done():
-							return
-						}
-					}
-				}()
-				go func() {
-					defer pumps.Done()
-					for {
-						select {
-						case b := <-device.out:
-							p := stack.NewPacketBuffer(stack.PacketBufferOptions{Payload: buffer.MakeWithData(b)})
-							link.InjectInbound(proto, p)
-							p.DecRef()
-						case <-ctx.Done():
-							return
-						}
-					}
-				}()
-				defer func() { cancel(); pumps.Wait() }()
-				target := tcpip.FullAddress{NIC: 1, Addr: tcpip.AddrFromSlice(destination), Port: 443}
-				var conn net.Conn
-				if datagram {
-					conn, err = gonet.DialUDP(client, nil, &target, proto)
-				} else {
-					conn, err = gonet.DialContextTCP(ctx, client, target, proto)
-				}
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer conn.Close()
-				conn.SetDeadline(time.Now().Add(3 * time.Second))
-				payload := bytes.Repeat([]byte("native-tun-verified\x00\xff"), 100)
-				if datagram {
-					payload = payload[:1200]
-				}
-				if _, err = conn.Write(payload); err != nil {
-					t.Fatal(err)
-				}
-				received := make([]byte, len(payload))
-				if datagram {
-					n, e := conn.Read(received)
-					if e != nil || n != len(payload) {
-						t.Fatalf("UDP read %d: %v", n, e)
-					}
-				} else {
-					if _, err = io.ReadFull(conn, received); err != nil {
+			for _, routed := range []bool{false, true} {
+				t.Run(itoa(boolInt(v6))+"/"+itoa(boolInt(datagram))+"/"+itoa(boolInt(routed)), func(t *testing.T) {
+					uri, stop := vlessOracle(t)
+					defer stop()
+					cfg, err := ParseURI(uri)
+					if err != nil {
 						t.Fatal(err)
 					}
-				}
-				if !bytes.Equal(payload, received) {
-					t.Fatal("TUN payload mismatch")
-				}
-			})
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
+					var engine *Engine
+					if routed {
+						engine, err = NewRouterEngine(ctx, RouterConfig{Outbounds: []OutboundConfig{{Tag: "node", URI: uri}, {Tag: "deny", URI: "block://"}}, Rules: []RouteRule{{CIDRs: []string{"192.0.2.10/32", "2001:db8::10/128"}, SourceCIDRs: []string{"10.77.0.0/16", "fd77::/16"}, Ports: []int{443}, Outbound: "node"}}, Final: "deny"}, Hooks{})
+					} else {
+						engine, err = NewEngine(ctx, cfg, Hooks{})
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer engine.Close()
+					device := &memoryDevice{in: make(chan []byte, 256), out: make(chan []byte, 256), stop: make(chan struct{})}
+					tun, err := engine.StartTUN(device, 1500)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer tun.Close()
+					client := stack.New(stack.Options{NetworkProtocols: []stack.NetworkProtocolFactory{ipv4.NewProtocol, ipv6.NewProtocol}, TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol, udp.NewProtocol}})
+					link := channel.New(256, 1500, "")
+					defer link.Close()
+					defer client.Close()
+					if e := client.CreateNIC(1, link); e != nil {
+						t.Fatal(e)
+					}
+					proto := ipv4.ProtocolNumber
+					source := net.ParseIP("10.77.0.2").To4()
+					destination := net.ParseIP("192.0.2.10").To4()
+					bits := 32
+					subnet := header.IPv4EmptySubnet
+					if v6 {
+						proto = ipv6.ProtocolNumber
+						source = net.ParseIP("fd77::2").To16()
+						destination = net.ParseIP("2001:db8::10").To16()
+						bits = 128
+						subnet = header.IPv6EmptySubnet
+					}
+					client.AddProtocolAddress(1, tcpip.ProtocolAddress{Protocol: proto, AddressWithPrefix: tcpip.AddressWithPrefix{Address: tcpip.AddrFromSlice(source), PrefixLen: bits}}, stack.AddressProperties{})
+					client.SetRouteTable([]tcpip.Route{{Destination: subnet, NIC: 1}})
+					var pumps sync.WaitGroup
+					pumps.Add(2)
+					go func() {
+						defer pumps.Done()
+						for {
+							packet := link.ReadContext(ctx)
+							if packet == nil {
+								return
+							}
+							v := packet.ToView()
+							p := append([]byte{}, v.AsSlice()...)
+							v.Release()
+							packet.DecRef()
+							select {
+							case device.in <- p:
+							case <-ctx.Done():
+								return
+							}
+						}
+					}()
+					go func() {
+						defer pumps.Done()
+						for {
+							select {
+							case b := <-device.out:
+								p := stack.NewPacketBuffer(stack.PacketBufferOptions{Payload: buffer.MakeWithData(b)})
+								link.InjectInbound(proto, p)
+								p.DecRef()
+							case <-ctx.Done():
+								return
+							}
+						}
+					}()
+					defer func() { cancel(); pumps.Wait() }()
+					target := tcpip.FullAddress{NIC: 1, Addr: tcpip.AddrFromSlice(destination), Port: 443}
+					var conn net.Conn
+					if datagram {
+						conn, err = gonet.DialUDP(client, nil, &target, proto)
+					} else {
+						conn, err = gonet.DialContextTCP(ctx, client, target, proto)
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer conn.Close()
+					conn.SetDeadline(time.Now().Add(3 * time.Second))
+					payload := bytes.Repeat([]byte("native-tun-verified\x00\xff"), 100)
+					if datagram {
+						payload = payload[:1200]
+					}
+					if _, err = conn.Write(payload); err != nil {
+						t.Fatal(err)
+					}
+					received := make([]byte, len(payload))
+					if datagram {
+						n, e := conn.Read(received)
+						if e != nil || n != len(payload) {
+							t.Fatalf("UDP read %d: %v", n, e)
+						}
+					} else {
+						if _, err = io.ReadFull(conn, received); err != nil {
+							t.Fatal(err)
+						}
+					}
+					if !bytes.Equal(payload, received) {
+						t.Fatal("TUN payload mismatch")
+					}
+				})
+			}
 		}
 	}
 }
