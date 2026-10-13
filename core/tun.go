@@ -66,13 +66,24 @@ func (t *Tunnel) Close() error {
 // StartTUN consumes device packets directly. No SOCKS listener or external
 // tun-to-socks process is involved. The engine owns and closes the device.
 func (e *Engine) StartTUN(device PacketDevice, mtu int) (*Tunnel, error) {
+	return e.startTUN(device, mtu, false)
+}
+
+// Authenticated protocol servers may relay loopback destinations, matching
+// other server inbounds. Public OS/mobile packet injection retains its policy.
+func (e *Engine) startTUN(device PacketDevice, mtu int, allowLoopback bool) (*Tunnel, error) {
 	if mtu < 1280 || mtu > 65535 {
 		return nil, errors.New("TUN_MTU_INVALID")
 	}
 	ctx, cancel := context.WithCancel(e.ctx)
 	t := &Tunnel{engine: e, device: device, ctx: ctx, cancel: cancel, done: make(chan struct{})}
 	t.link = channel.New(256, uint32(mtu), "")
-	t.stack = stack.New(stack.Options{NetworkProtocols: []stack.NetworkProtocolFactory{ipv4.NewProtocol, ipv6.NewProtocol}, TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol, udp.NewProtocol}, HandleLocal: false})
+	v4, v6 := ipv4.NewProtocol, ipv6.NewProtocol
+	if allowLoopback {
+		v4 = ipv4.NewProtocolWithOptions(ipv4.Options{AllowExternalLoopbackTraffic: true})
+		v6 = ipv6.NewProtocolWithOptions(ipv6.Options{AllowExternalLoopbackTraffic: true})
+	}
+	t.stack = stack.New(stack.Options{NetworkProtocols: []stack.NetworkProtocolFactory{v4, v6}, TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol, udp.NewProtocol}, HandleLocal: false})
 	if err := t.stack.CreateNIC(1, t.link); err != nil {
 		cancel()
 		t.stack.Close()

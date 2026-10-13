@@ -29,7 +29,7 @@ states its boundary. "Pending" must not be advertised as supported.
 | Hysteria 1 and 2 | Hysteria 2 client/server added: TCP/UDP, BBR/reno/negotiated Brutal, Salamander/Gecko, native/Chrome, trust/pins/ECH configuration, bounded reuse/reconnect/close; standalone official 2.13.0 TCP/UDP in both directions passed. Hysteria 1 and extra options (port hopping, realms, fake TCP) remain pending; see HYSTERIA2.md |
 | TUIC | Pending client/server, authentication and both UDP relay modes |
 | AnyTLS | Pending client/server, session reuse, padding updates and UDP-over-TCP |
-| WireGuard VPN | Pending protocol endpoint; current TUN device dependency is not protocol support |
+| WireGuard VPN | Client/server added: official encrypted device, protected sockets, bounded reuse/queues/workers, TCP/UDP IPv4/IPv6, PSK, encrypted DNS and native server forwarding. Independent Python Noise_IK/encrypted TCP/UDP/auth/source tests passed. Kernel/public-node and Windows route/DNS acceptance remain separate; see WIREGUARD.md |
 | Remote HTTP/HTTPS proxy | Added HTTP CONNECT and verified TLS path; preserve response read-ahead |
 | Remote SOCKS4/4a/5 | Added, including SOCKS5 credentials and UDP association; SOCKS4 is IPv4 TCP by specification |
 | SSH, Naive, Tor | SSH TCP outbound added: password/private keys/known-hosts, protected sockets, bounded setup/close, independent Paramiko 5.0.0 payload/auth/host-key tests passed. Naive, Tor and SSH server remain pending; see SSH.md |
@@ -173,3 +173,26 @@ the previous 0.5.3 build was 15,208,448 bytes. No throughput/latency claim is
 inferred from size or passing tests.
 The report's remaining items still require implementation; this extension does
 not establish full report coverage or Xray/sing-box parity.
+
+Published 0.5.4: `9f2e32f01ccb9069007295922c0dd153d4862ac4`.
+Its CI passed Windows/Linux/portable/Android but failed macOS on large UDP
+payloads. Apple defaults to a 9216-byte UDP send space. Fix
+`2898066e32e6e17a437237be09b55333b51b3f5e` sizes only the affected sockets'
+buffers, with no system sysctl change. CI run `38353373600` completed
+successfully on the exact fix: all six jobs, including macOS and Android AAR.
+The earlier failing run is retained as a failure. iOS bindings still require
+macOS/Xcode/host entitlements and are not inferred from the Android result.
+
+## 0.5.5 extension
+
+WireGuard client/server implementation and bounded device lifecycle are
+described in [WIREGUARD.md](WIREGUARD.md). Independent encrypted protocol
+payload/authentication/source-prefix tests passed locally. This addition does
+not change the original OS/mobile TUN packet loopback policy. Full local
+validation passed: race tests for core/mobile/CLI, vet, 170 independent wire
+tests (168 passed, two existing optional skips), eleven executable cross-builds,
+Windows C ABI lifecycle/restart smoke and binary packaging/license hashes.
+New tests include repeated connections, PSKs, encrypted DNS and bounded
+admission/close. The stripped Windows executable is 17,908,736 bytes.
+Publication and its remote CI are checked separately. Other pending report entries
+remain pending; no application files or private profiles are deliverables.

@@ -112,5 +112,41 @@
     "replacement": "hysteria_utls_quic.go.replacement",
     "original_sha256": "c508d29853058084016b3985562e8cc0f148490b4618416d5e976e861a4688d9",
     "patched_sha256": "6b79c975f87f0ff21e2ec161efe5d862028f1a8f773f486380863c8715a9b005"
+  },
+  {
+    "path": "vendor/golang.zx2c4.com/wireguard/device/device.go",
+    "replacement": "wireguard_device.go.replacement",
+    "original_sha256": "4759b09a3a73388195cd47a629234a9f6f17d597fb09e11f4b2ceac91b884f28",
+    "patched_sha256": "63691cf1493bafc7fca27be6dadb9b1f2b54cace23630e8d50d63c0117a376bd"
+  },
+  {
+    "path": "vendor/golang.zx2c4.com/wireguard/tun/netstack/tun.go",
+    "replacement": "wireguard_netstack.go.replacement",
+    "original_sha256": "593bfb8df9be328926e2bf245ee8a48290a8a5480100c80002a380ffe7f08453",
+    "patched_sha256": "4c8821cc3931034c6ccaa47a4344ed0b2b082acf07c3ca0d040a22595ee68d3f"
+  },
+  {
+    "path": "vendor/golang.zx2c4.com/wireguard/device/queueconstants_default.go",
+    "replacement": "wireguard_queue_default.go.replacement",
+    "original_sha256": "26adc0bf101d2a1c74c2c5b0f25d799c32066e83434b8a6cca5f274f706d031b",
+    "patched_sha256": "ae81db523cca4ea2db92032acef09d5fd1eb2420a045645c41a794513a915094"
+  },
+  {
+    "path": "vendor/golang.zx2c4.com/wireguard/device/queueconstants_windows.go",
+    "replacement": "wireguard_queue_windows.go.replacement",
+    "original_sha256": "5d7ce94696d1896eccd666f24ff12c461bb43587826eaf47d5676172e79fd5f7",
+    "patched_sha256": "cf40af5c0b64dc734518c6da36679a683128486ee6f816ecea9f46f54c962a17"
+  },
+  {
+    "path": "vendor/golang.zx2c4.com/wireguard/device/queueconstants_android.go",
+    "replacement": "wireguard_queue_android.go.replacement",
+    "original_sha256": "4d678e7163481e571dfa32e363e78cf9eaddbb48471d5f2013b3ca7a9da7b38f",
+    "patched_sha256": "50ebbaf04cc9522d0719210fc1f8c2267e1c9d6503392b1bb3253cb4021b50bd"
+  },
+  {
+    "path": "vendor/golang.zx2c4.com/wireguard/device/queueconstants_ios.go",
+    "replacement": "wireguard_queue_ios.go.replacement",
+    "original_sha256": "e4bb8c1b97ebb674f623b8eee84768b4f03395daac628cf514b95527326f3441",
+    "patched_sha256": "28bad5fc7e40900636ca58def7e79a171dec18e843da4026e6cfce0c0c9edf53"
   }
 ]

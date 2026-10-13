@@ -1,0 +1,18 @@
+/* SPDX-License-Identifier: MIT
+ *
+ * Copyright (C) 2017-2025 WireGuard LLC. All Rights Reserved.
+ */
+
+package device
+
+
+/* Reduce memory consumption for Android */
+
+const (
+	QueueStagedSize            = 16
+	QueueOutboundSize          = 64
+	QueueInboundSize           = 64
+	QueueHandshakeSize         = 64
+	MaxSegmentSize             = 9216 // Covers the configured MTU ceiling plus encapsulation
+	PreallocatedBuffersPerPool = 0 // Queue and peer limits bound outstanding allocations
+)

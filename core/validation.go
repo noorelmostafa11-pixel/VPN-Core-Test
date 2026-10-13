@@ -259,6 +259,9 @@ func (c Config) Validate() error {
 	if c.Protocol == "ssh" {
 		return validateSSH(c)
 	}
+	if c.Protocol == "wireguard" {
+		return validateWireGuard(c)
+	}
 	if isProxyProtocol(c.Protocol) {
 		return validateProxyConfig(c)
 	}

@@ -436,7 +436,7 @@ func groupMembers(g *compiledGroup) []string {
 	}
 }
 func terminalRouteError(err error) bool {
-	return errors.Is(err, context.Canceled) || strings.Contains(err.Error(), "SOCKET_PROTECTION_FAILED") || strings.Contains(err.Error(), "ROUTE_BLOCKED") || strings.Contains(err.Error(), "ROUTE_ATTEMPT_LIMIT")
+	return errors.Is(err, context.Canceled) || strings.Contains(err.Error(), "SOCKET_PROTECTION_FAILED") || strings.Contains(err.Error(), "ROUTE_BLOCKED") || strings.Contains(err.Error(), "ROUTE_ATTEMPT_LIMIT") || strings.Contains(err.Error(), "PROTOCOL_CLIENT_LIMIT")
 }
 
 type routeBudgetKey struct{}
@@ -493,7 +493,7 @@ func (t *routeTable) tcp(ctx context.Context, tag, host string, port, depth int)
 		return nil, err
 	}
 	if o.detour != "" {
-		if o.config.Protocol == "hysteria2" {
+		if o.config.Protocol == "hysteria2" || o.config.Protocol == "wireguard" {
 			return nil, errors.New("DETOUR_UDP_UNSUPPORTED")
 		}
 		h, _ := ctx.Value(hooksKey{}).(Hooks)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"sync"
 	"time"
 )
@@ -99,10 +100,23 @@ func (c *clientCache) get(ctx context.Context, key string, open func(context.Con
 	creator := entry == nil
 	var retire *cachedClient
 	if creator {
-		if len(c.entries) >= 64 {
+		wireFull := false
+		if strings.HasPrefix(key, "wireguard:") {
+			count := 0
+			for k := range c.entries {
+				if strings.HasPrefix(k, "wireguard:") {
+					count++
+				}
+			}
+			wireFull = count >= 8
+		}
+		if len(c.entries) >= 64 || wireFull {
 			var oldestKey string
 			var oldest *cachedClient
 			for k, v := range c.entries {
+				if wireFull && !strings.HasPrefix(k, "wireguard:") {
+					continue
+				}
 				if v.refs == 0 && v.client != nil && (oldest == nil || v.used.Before(oldest.used)) {
 					oldestKey, oldest = k, v
 				}

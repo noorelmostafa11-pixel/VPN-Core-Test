@@ -454,6 +454,9 @@ func DialPacket(ctx context.Context, c Config, host string, port int) (PacketStr
 	if c.Protocol == "ssh" {
 		return nil, errors.New("SSH_TCP_ONLY")
 	}
+	if c.Protocol == "wireguard" {
+		return dialWireGuardPacket(ctx, c, host, port)
+	}
 	if c.Routing != nil {
 		return nil, errors.New("ROUTE_ENGINE_REQUIRED")
 	}

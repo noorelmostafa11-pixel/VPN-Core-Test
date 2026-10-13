@@ -17,14 +17,15 @@ import (
 // ServerConfig is explicit and independent of the client's node URI. Client
 // credentials and server certificates are never included in inspection output.
 type ServerConfig struct {
-	Protocol string            `json:"protocol"`
-	Listen   string            `json:"listen"`
-	UUIDs    []string          `json:"uuids,omitempty"`
-	Password string            `json:"password,omitempty"`
-	Cipher   string            `json:"cipher,omitempty"`
-	CertFile string            `json:"cert_file,omitempty"`
-	KeyFile  string            `json:"key_file,omitempty"`
-	Options  map[string]string `json:"options,omitempty"`
+	Protocol  string                 `json:"protocol"`
+	Listen    string                 `json:"listen"`
+	UUIDs     []string               `json:"uuids,omitempty"`
+	Password  string                 `json:"password,omitempty"`
+	Cipher    string                 `json:"cipher,omitempty"`
+	CertFile  string                 `json:"cert_file,omitempty"`
+	KeyFile   string                 `json:"key_file,omitempty"`
+	Options   map[string]string      `json:"options,omitempty"`
+	WireGuard *WireGuardServerConfig `json:"wireguard,omitempty"`
 }
 type serverSpec struct {
 	config       ServerConfig
@@ -36,6 +37,12 @@ type serverSpec struct {
 
 func compileServer(c ServerConfig) (serverSpec, error) {
 	s := serverSpec{config: c, users: map[[16]byte]bool{}}
+	if c.Protocol == "wireguard" {
+		return s, validateWireServer(c)
+	}
+	if c.WireGuard != nil {
+		return s, errors.New("SERVER_OPTION_UNSUPPORTED")
+	}
 	if !contains([]string{"vless", "trojan", "ss", "hysteria2"}, c.Protocol) {
 		return s, errors.New("SERVER_PROTOCOL_UNSUPPORTED")
 	}
@@ -103,6 +110,9 @@ func (e *Engine) StartServer(c ServerConfig) (net.Addr, error) {
 	}
 	if c.Protocol == "hysteria2" {
 		return e.startHysteriaServer(s)
+	}
+	if c.Protocol == "wireguard" {
+		return e.startWireServer(c)
 	}
 	l, err := net.Listen("tcp", c.Listen)
 	if err != nil {
