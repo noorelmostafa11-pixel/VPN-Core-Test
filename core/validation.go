@@ -253,8 +253,21 @@ func (c Config) Validate() error {
 			return err
 		}
 	}
+	if c.Protocol == "ss" && c.Plugin == "shadowtls" {
+		converted, err := shadowFromSS(c)
+		if err != nil {
+			return err
+		}
+		return converted.Validate()
+	}
 	if c.Protocol == "hysteria2" {
 		return validateHysteria(c)
+	}
+	if c.Protocol == "tuic" {
+		return validateTUIC(c)
+	}
+	if c.Protocol == "shadowtls" {
+		return validateShadowTLS(c)
 	}
 	if c.Protocol == "ssh" {
 		return validateSSH(c)

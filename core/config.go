@@ -231,6 +231,12 @@ func ParseURI(uri string) (Config, error) {
 	}
 	proto, body, ok := strings.Cut(uri, "://")
 	c.Protocol = strings.ToLower(proto)
+	if ok && c.Protocol == "shadowtls" {
+		return parseShadowTLSURI(uri)
+	}
+	if ok && c.Protocol == "tuic" {
+		return parseTUICURI(uri)
+	}
 	if ok && c.Protocol == "anytls" {
 		return parseAnyTLSURI(uri)
 	}
@@ -636,6 +642,10 @@ func (c *Config) parsePlugin() error {
 	}
 	c.PluginOptions = q
 	switch c.Plugin {
+	case "shadow-tls", "shadowtls":
+		c.Plugin = "shadowtls"
+		c.ServerName = option(q, c.Server, "host", "sni")
+		c.Fingerprint = option(q, "chrome", "fp", "fingerprint")
 	case "simple-obfs", "obfs-local":
 		c.PluginMode = option(q, "http", "obfs")
 		c.Transport = "obfs-" + c.PluginMode

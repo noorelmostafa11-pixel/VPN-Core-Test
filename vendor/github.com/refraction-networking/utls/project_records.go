@@ -4,3 +4,15 @@ import "errors"
 func(c *Conn) ProjectAdvanceInbound(){c.in.Lock();defer c.in.Unlock();c.in.incSeq()}
 func(c *Conn) ProjectAdvanceOutbound(){c.out.Lock();defer c.out.Unlock();c.out.incSeq()}
 func(c *Conn) ProjectDecodeRecord(record []byte)([]byte,uint8,error){c.in.Lock();defer c.in.Unlock();if c.vers!=VersionTLS13||len(record)<5||len(record)>18437||int(record[3])*256+int(record[4])+5!=len(record){return nil,0,errors.New("record bounds")};data,kind,err:=c.in.decrypt(record);return data,uint8(kind),err}
+
+// ProjectShadowTLSResidual authenticates a possible leftover TLS record before
+// ShadowTLS v2 treats it as proxy data. Failed AEAD verification does not advance
+// the TLS sequence or emit an alert. Stateful CBC/stream ciphers are excluded.
+func(c *Conn) ProjectShadowTLSResidual(record []byte)bool{
+ c.in.Lock();defer c.in.Unlock()
+ if !c.isHandshakeComplete.Load()||len(record)<5||len(record)>18437||int(record[3])*256+int(record[4])+5!=len(record){return false}
+ if _,ok:=c.in.cipher.(aead);!ok{return false}
+ copyRecord:=append([]byte(nil),record...)
+ _,_,err:=c.in.decrypt(copyRecord)
+ return err==nil
+}

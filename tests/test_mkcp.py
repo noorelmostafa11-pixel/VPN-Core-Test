@@ -63,7 +63,7 @@ class KCPPeer:
                     conv,cmd,opt=struct.unpack('!HBB',data[:4]);data=data[4:];key=(address,conv)
                     if key not in self.sessions:
                         tcp=socket.create_connection(('127.0.0.1',self.crypto.port),5);tcp.settimeout(15)
-                        s=dict(conv=conv,address=address,tcp=tcp,next=0,send=0,received={},pending={},lock=threading.Lock(),dropped=set(),ended=False,closed=False);self.sessions[key]=s;threading.Thread(target=self.target,args=(s,),daemon=True).start()
+                        s=dict(conv=conv,address=address,tcp=tcp,next=0,send=0,remote_window=64,received={},pending={},lock=threading.Lock(),dropped=set(),ended=False,closed=False);self.sessions[key]=s;threading.Thread(target=self.target,args=(s,),daemon=True).start()
                     s=self.sessions[key]
                     if cmd==1:
                         timestamp,number,first,size=struct.unpack('!IIIH',data[:14]);payload=data[14:14+size]
@@ -76,6 +76,7 @@ class KCPPeer:
                     elif cmd==0:
                         window,nextnum,timestamp,count=struct.unpack('!IIIB',data[:13]);acked=set(struct.unpack('!'+str(count)+'I',data[13:13+count*4])) if count else set()
                         with s['lock']:
+                            s['remote_window']=max(s['remote_window'],window)
                             for n in list(s['pending']):
                                 if n<nextnum or n in acked:del s['pending'][n]
                     elif cmd in (2,3) and opt&1 and not s['closed']:
@@ -84,7 +85,12 @@ class KCPPeer:
                 except socket.timeout:pass
                 for s in list(self.sessions.values()):
                     with s['lock']:
-                        items=list(s['pending'].items())
+                        # Bound the sender's flight to its oldest 64 pending
+                        # segments, inside the advertised receive window.
+                        # Reverse that flight rather than the entire backlog:
+                        # newly queued high numbers must not starve missing low
+                        # numbers and their retransmissions.
+                        items=sorted((n,value) for n,value in s['pending'].items() if n<s['remote_window'])[:64]
                         if self.loss:items=list(reversed(items))
                         for n,value in items[:64]:
                             payload,sent,tries=value

@@ -36,6 +36,13 @@ type serverSpec struct {
 }
 
 func compileServer(c ServerConfig) (serverSpec, error) {
+	if c.Protocol == "ssh" {
+		_, err := compileSSHServer(c)
+		return serverSpec{config: c}, err
+	}
+	if c.Protocol == "shadowtls" {
+		return compileShadowServer(c)
+	}
 	s := serverSpec{config: c, users: map[[16]byte]bool{}}
 	if c.Protocol == "wireguard" {
 		return s, validateWireServer(c)
@@ -43,7 +50,7 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 	if c.WireGuard != nil {
 		return s, errors.New("SERVER_OPTION_UNSUPPORTED")
 	}
-	if !contains([]string{"vless", "trojan", "ss", "hysteria2", "anytls"}, c.Protocol) {
+	if !contains([]string{"vless", "trojan", "ss", "hysteria2", "anytls", "tuic"}, c.Protocol) {
 		return s, errors.New("SERVER_PROTOCOL_UNSUPPORTED")
 	}
 	host, p, err := net.SplitHostPort(c.Listen)
@@ -71,6 +78,14 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 			return s, err
 		}
 	}
+	if c.Protocol == "tuic" {
+		if s.tls == nil {
+			return s, errors.New("TUIC_SERVER_TLS_REQUIRED")
+		}
+		if err := validateTUICServer(c); err != nil {
+			return s, err
+		}
+	}
 	if c.Protocol == "hysteria2" {
 		if s.tls == nil {
 			return s, errors.New("HYSTERIA_SERVER_TLS_REQUIRED")
@@ -78,7 +93,7 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 		if err := validateHysteriaServer(c); err != nil {
 			return s, err
 		}
-	} else if c.Protocol != "anytls" && len(c.Options) > 0 {
+	} else if c.Protocol != "anytls" && c.Protocol != "tuic" && len(c.Options) > 0 {
 		return s, errors.New("SERVER_OPTION_UNSUPPORTED")
 	}
 	if c.Protocol == "vless" {
@@ -116,6 +131,12 @@ func (e *Engine) StartServer(c ServerConfig) (net.Addr, error) {
 	if err != nil {
 		return nil, err
 	}
+	if c.Protocol == "shadowtls" {
+		return e.startShadowServer(s)
+	}
+	if c.Protocol == "ssh" {
+		return e.startSSHServer(c)
+	}
 	if c.Protocol == "hysteria2" {
 		return e.startHysteriaServer(s)
 	}
@@ -124,6 +145,9 @@ func (e *Engine) StartServer(c ServerConfig) (net.Addr, error) {
 	}
 	if c.Protocol == "anytls" {
 		return e.startAnyServer(s)
+	}
+	if c.Protocol == "tuic" {
+		return e.startTUICServer(s)
 	}
 	l, err := net.Listen("tcp", c.Listen)
 	if err != nil {

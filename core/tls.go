@@ -47,6 +47,7 @@ type settings struct {
 	Pins            []string `json:"pins"`
 	Names           []string `json:"names"`
 	TimeoutMS       int      `json:"timeout_ms"`
+	ShadowTLS       string   `json:"-"`
 }
 
 type address string
@@ -402,11 +403,21 @@ func configuredTLS(ctx context.Context, conn net.Conn, c settings) (*utls.UConn,
 		}
 	}
 	minimum := uint16(utls.VersionTLS12)
-	if c.Security == "reality" || c.ECH != "" || c.Vision || c.LegacyXTLS != "" {
+	if c.Security == "reality" || c.ECH != "" || c.Vision || c.LegacyXTLS != "" || c.ShadowTLS != "" {
 		minimum = utls.VersionTLS13
 	}
 	if err = enforceTLSVersions(u, cfg, minimum); err != nil {
 		return nil, "", providerError(302)
+	}
+	if c.ShadowTLS != "" {
+		hello := u.HandshakeState.Hello
+		if hello == nil {
+			return nil, "", errors.New("SHADOWTLS_CLIENT_HELLO_INVALID")
+		}
+		if err = shadowSignHello(hello.Raw, c.ShadowTLS); err != nil {
+			return nil, "", err
+		}
+		hello.SessionId = append([]byte(nil), hello.Raw[39:71]...)
 	}
 	if c.Security == "reality" {
 		if err = prepareReality(u, cfg, c); err != nil {

@@ -451,6 +451,22 @@ func (s *ssPackets) ReadPacket() (Datagram, error) {
 	return packet, nil
 }
 func DialPacket(ctx context.Context, c Config, host string, port int) (PacketStream, error) {
+	if c.Routing != nil {
+		return nil, errors.New("ROUTE_ENGINE_REQUIRED")
+	}
+	if c.Protocol == "ss" && c.Plugin == "shadowtls" {
+		converted, err := shadowFromSS(c)
+		if err != nil {
+			return nil, err
+		}
+		return dialShadowTLSPacket(ctx, converted, host, port)
+	}
+	if c.Protocol == "tuic" {
+		return dialTUICPacket(ctx, c, host, port)
+	}
+	if c.Protocol == "shadowtls" {
+		return dialShadowTLSPacket(ctx, c, host, port)
+	}
 	if c.Protocol == "ssh" {
 		return nil, errors.New("SSH_TCP_ONLY")
 	}
@@ -459,9 +475,6 @@ func DialPacket(ctx context.Context, c Config, host string, port int) (PacketStr
 	}
 	if c.Protocol == "anytls" {
 		return dialAnyTLSPacket(ctx, c, host, port)
-	}
-	if c.Routing != nil {
-		return nil, errors.New("ROUTE_ENGINE_REQUIRED")
 	}
 	if c.Protocol == "hysteria2" {
 		return dialHysteriaPacket(ctx, c, host, port)

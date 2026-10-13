@@ -25,14 +25,14 @@ states its boundary. "Pending" must not be advertised as supported.
 | --- | --- |
 | VLESS, VMess, Trojan, Shadowsocks clients | Baseline; retain independent wire tests |
 | SS2022, VLESS REALITY/Vision/encryption, VMess legacy/alter-ID | Baseline client scope; retain authentication and cipher tests |
-| ShadowTLS v2 and v3; Shadowsocks with ShadowTLS | Pending client/server and independent-reference tests |
+| ShadowTLS v2 and v3; Shadowsocks with ShadowTLS | Client/server added: verified TLS, v2 challenge, strict v3 handshake/data integrity, standalone/SIP003 Shadowsocks and optional UOT v2 UDP. Independent sing-box 1.14.3 payloads passed both directions with the documented v2 ticket boundary. Embedded SS2022, non-strict v3 and broader multi-user/SNI options remain pending; see SHADOWTLS.md |
 | Hysteria 1 and 2 | Hysteria 2 client/server added: TCP/UDP, BBR/reno/negotiated Brutal, Salamander/Gecko, native/Chrome, trust/pins/ECH configuration, bounded reuse/reconnect/close; standalone official 2.13.0 TCP/UDP in both directions passed. Hysteria 1 and extra options (port hopping, realms, fake TCP) remain pending; see HYSTERIA2.md |
-| TUIC | Pending client/server, authentication and both UDP relay modes |
+| TUIC | v5 client/server added: TLS-exporter authentication, TCP, native/QUIC UDP, fragmentation, direct Full Cone relay, bounded reuse/close and independent sing-box 1.14.3 payloads both modes/directions. Additional congestion selection, uTLS, 0-RTT and per-user passwords remain pending; see TUIC.md |
 | AnyTLS | Client/server added: session reuse, bounded padding updates, v1/v2 server framing, verified TLS, TCP and UOT v2 connect/non-connect UDP. Official 0.0.13 client/server payload tests in both directions passed; see ANYTLS.md |
 | WireGuard VPN | Client/server added: official encrypted device, protected sockets, bounded reuse/queues/workers, TCP/UDP IPv4/IPv6, PSK, encrypted DNS and native server forwarding. Independent Python Noise_IK/encrypted TCP/UDP/auth/source tests passed. Kernel/public-node and Windows route/DNS acceptance remain separate; see WIREGUARD.md |
 | Remote HTTP/HTTPS proxy | Added HTTP CONNECT and verified TLS path; preserve response read-ahead |
 | Remote SOCKS4/4a/5 | Added, including SOCKS5 credentials and UDP association; SOCKS4 is IPv4 TCP by specification |
-| SSH, Naive, Tor | SSH TCP outbound added: password/private keys/known-hosts, protected sockets, bounded setup/close, independent Paramiko 5.0.0 payload/auth/host-key tests passed. Naive, Tor and SSH server remain pending; see SSH.md |
+| SSH, Naive, Tor | SSH TCP client and forwarding server added: password/public keys/host identity, protected sockets, shared channel budget, bounded setup/close and independent Paramiko 5.0.0 payload/auth tests. Server supports one username/listener; reverse forwarding remains pending. Naive and Tor remain pending; see SSH.md |
 | Snell, Tailcat | Pending: establish exact reference version and protocol scope before implementation |
 | Raw TCP, UDP, WS/early data, HTTP Upgrade, gRPC/multi, HTTP2/h2c | Baseline carriers; retain regression tests |
 | XHTTP modes, metadata, padding and download settings | Baseline implemented scope; preserve original URI semantics |
@@ -46,7 +46,7 @@ states its boundary. "Pending" must not be advertised as supported.
 | Process and interface rules | Partial: SDK-supplied metadata; native OS process/interface discovery still pending |
 | Direct/proxy/block and split tunneling | Added routing decisions; Windows host policy and direct-name bootstrap integration still require acceptance |
 | Selector, balancer and failover | Added selector, round-robin and bounded connection-establishment failover; reuse the last successful alternative, at most 16 attempts including nested groups; no replay of delivered application data |
-| URL testing / healthy-node selection | Pending HTTPS/body probes, bounded scheduling and health state |
+| URL testing / healthy-node selection | Added opt-in url_test groups: verified HTTPS/status/body, multiple sites, fastest verified member, protected shared budget, at most 16 probes/round and four concurrently, five-second minimum round cadence, gradual catalog scan and redacted health API. Local 1,700-node, cancellation/reload/body/trust tests passed; public-node and UDP acceptance remain separate; see URL-TESTING.md |
 | Multi-hop / outbound detour | Partial: tested TCP proxy chain; UDP chain/carrier compatibility pending |
 | Dynamic routing | Added validated atomic replacement; existing connections retain their selected path |
 | DNS inside tunnel, DoH, local TCP/UDP DNS, IPv4 preference / IPv6 | Baseline retained, with shared routing for upstream connections |
@@ -215,3 +215,81 @@ core/mobile/CLI, vet, 172 wire tests (170 passed, two existing optional skips),
 eleven executable cross-builds, Windows C ABI lifecycle/restart and binary
 packaging. Publication and its CI are checked separately. Other pending report
 entries remain pending.
+
+## 0.5.7 extension
+
+TUIC v5 clients/servers and ShadowTLS v2/v3 with Shadowsocks and optional UOT v2
+are implemented; see [TUIC.md](TUIC.md) and [SHADOWTLS.md](SHADOWTLS.md). Full
+report coverage remains incomplete; their additional options and all other
+pending entries remain explicit.
+
+Local validation passed: full core/mobile/CLI race tests and vet, eleven
+executable cross-builds, Windows C ABI lifecycle/restart and binary packaging.
+The combined wire run executed 173 tests with 170 passed and three optional
+skips. The skipped Xray reference class was then run separately against the
+installed independent Xray and passed its VLESS/Trojan/SS payload cases; the
+two old optional skips remain. New sing-box 1.14.3 TUIC and ShadowTLS payload
+cases passed. Initial reference failures involving Windows UDP buffer limits
+and ShadowTLS v2 TLS tickets remain documented in the respective protocol
+records. Local tests are not public-node/host-route Internet acceptance.
+
+The stripped Windows executable is 18,263,552 bytes, compared with 18,010,624
+for the previous build. No throughput/latency improvement is inferred from
+tests or binary size. The local pre-publication build records a dirty tree;
+it is not represented as a clean published release. Publication and CI require
+their own confirmation.
+
+Remote main advanced independently to
+`d3442fea7d65ee02e4e807b6c457c5cf2f738d19` while this work ran: the owner's
+commit adds a manual node-acceptance workflow only. It is preserved without
+modification; the original protocol-source baseline remains `63cc65b...`.
+
+Published 0.5.7 and its strict-server/fixture follow-ups are included in
+`9c974a24009059ad3743ee846d029ea17b012d46`. The initial strict-version unit
+fixture used an incorrect SessionID offset and failed locally; it was
+accidentally committed before its result was checked. The fixture correction
+passed locally. CI run `38383029494` completed successfully on that exact final
+revision: all six jobs, including macOS, Windows, Linux, portable builds and
+Android AAR. The superseded runs were cancelled, not reported as passing.
+
+## 0.5.8 extension
+
+SSH forwarding servers now support explicit host keys, password and authorized
+public keys, shared channel limits, physical/channel idle ownership, protected
+routing and joined close; see [SSH.md](SSH.md). Independent Paramiko clients
+passed payload/authentication/channel-rejection tests with both authentication
+methods. Full local validation passed: race tests for core/mobile/CLI, vet,
+175 wire tests (173 passed, two existing optional skips), eleven executable
+cross-builds, Windows C ABI lifecycle/restart and binary packaging. The stripped
+Windows executable is 18,358,272 bytes. This pre-publication package records a
+dirty tree; publication and its exact CI are confirmed separately.
+
+Remaining report entries still require implementation and their own acceptance.
+No application files, private profiles or private keys are repository artifacts.
+
+Published SSH server: `9564b422a013324e82b377fb49c2a4916d1bc975`.
+CI run `38385999782` completed successfully on that exact revision: all six
+jobs, including Windows/Linux/macOS, portable builds and the Android AAR.
+
+## 0.5.9 extension
+
+Optional HTTPS/body-verified health groups and redacted health controls are
+implemented; see [URL-TESTING.md](URL-TESTING.md). Tests cover blocked responses,
+certificate/body rejection, site fallback, 1,700-member scheduling bounds,
+manual throttling, local protection failure and reload/owner lifetime.
+Full core/mobile/CLI race tests and vet passed. The first full wire run failed
+the existing eight-flow mKCP loss/reordering fixture; its isolated rerun passed.
+Review found that the reference sender reversed its entire pending backlog
+before choosing a flight, potentially starving older missing packets, and did
+not apply the advertised receive window. The fixture now bounds/reorders the
+oldest 64 eligible segments; data sizes, eight flows, loss and duplication
+remain unchanged. No production mKCP code was modified. A subsequent combined
+wire run passed 175 tests (173 passed, two old optional skips); that run preceded
+the final oldest-flight refinement, whose complete five-case mKCP rerun passed
+separately. The initial failure remains recorded as a failure, not an all-pass.
+
+Eleven portable executable builds, Windows C ABI lifecycle/restart and binary
+packaging/license hashes passed. The stripped Windows executable is 18,403,840
+bytes. The local pre-publication package records a dirty tree; publication and
+exact remote CI are confirmed separately. Remaining report entries are still
+pending.
