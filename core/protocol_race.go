@@ -9,6 +9,48 @@ import (
 	"time"
 )
 
+// WireGuard identifies one peer by its static key. Concurrent handshakes from
+// two sockets can make that peer roam to a losing socket, so endpoint fallback
+// is sequential. Prefer IPv4 and reserve time for every available alternative.
+func sequentialProtocolClients(ctx context.Context, ips []net.IPAddr, open func(context.Context, net.IPAddr) (io.Closer, error)) (io.Closer, error) {
+	ordered := make([]net.IPAddr, 0, len(ips))
+	for _, ip := range ips {
+		if ip.IP.To4() != nil {
+			ordered = append(ordered, ip)
+		}
+	}
+	for _, ip := range ips {
+		if ip.IP.To4() == nil {
+			ordered = append(ordered, ip)
+		}
+	}
+	if len(ordered) > 16 {
+		ordered = ordered[:16]
+	}
+	var last error = errors.New("BOOTSTRAP_DNS_FAILED")
+	for i, ip := range ordered {
+		attempt := ctx
+		cancel := func() {}
+		if deadline, ok := ctx.Deadline(); ok && i < len(ordered)-1 {
+			remaining := time.Until(deadline) / time.Duration(len(ordered)-i)
+			if remaining > 2*time.Second {
+				remaining = 2 * time.Second
+			}
+			attempt, cancel = context.WithTimeout(ctx, remaining)
+		}
+		client, err := open(attempt, ip)
+		cancel()
+		if err == nil {
+			return client, nil
+		}
+		last = err
+		if ctx.Err() != nil || terminalRouteError(err) {
+			return nil, err
+		}
+	}
+	return nil, last
+}
+
 // Protocol handshakes, rather than UDP socket creation, determine reachability.
 // At most two attempts run together. All losing attempts are canceled and joined.
 func raceProtocolClients(ctx context.Context, ips []net.IPAddr, open func(context.Context, net.IPAddr) (io.Closer, error)) (io.Closer, error) {

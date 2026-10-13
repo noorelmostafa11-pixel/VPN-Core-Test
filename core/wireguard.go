@@ -172,7 +172,7 @@ func newWireClient(ctx context.Context, c Config) (io.Closer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return raceProtocolClients(ctx, ips, func(attempt context.Context, ip net.IPAddr) (io.Closer, error) {
+	return sequentialProtocolClients(ctx, ips, func(attempt context.Context, ip net.IPAddr) (io.Closer, error) {
 		local, _ := wireAddresses(c.Options["local-address"])
 		var dns []netip.Addr
 		if c.Options["dns"] != "" {

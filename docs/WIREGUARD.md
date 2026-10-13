@@ -26,9 +26,12 @@ detours are not accepted. Outer transport is UDP; the peer must be reachable
 over UDP. TUN/local proxies/SDK routing can use the resulting TCP/UDP streams.
 
 Before returning a new client, the engine waits for authenticated WireGuard
-key establishment. It races available endpoint families after 250 ms, favors
-working IPv4, and joins losing attempts. Destination TCP connections use
-the same successful-family selection. Invalid peer keys or PSKs time out;
+key establishment. It tries IPv4 endpoints first and reserves setup time for
+remaining alternatives, with at most two seconds on an endpoint when others
+remain. Handshakes are sequential: simultaneous sockets using the same static
+key can otherwise make the server roam to a losing socket. Failed attempts are
+closed and joined. Destination TCP connections still use the 250 ms successful-
+family race. Invalid peer keys or PSKs time out;
 `Device.Up` alone is never treated as proof of connectivity.
 
 Server routing profile:

@@ -71,7 +71,7 @@ func wireFixture(t *testing.T) (Config, *wn.Net, *wd.Device) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg.ConnectTimeout = time.Second
+	cfg.ConnectTimeout = 5 * time.Second
 	return cfg, network, dev
 }
 func wireTCPPeer(t *testing.T, n *wn.Net, host string) string {
