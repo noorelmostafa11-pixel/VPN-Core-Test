@@ -36,7 +36,13 @@ type serverSpec struct {
 }
 
 func compileServer(c ServerConfig) (serverSpec, error) {
-	if c.Protocol == "shadowtls" {return compileShadowServer(c)}
+	if c.Protocol == "ssh" {
+		_, err := compileSSHServer(c)
+		return serverSpec{config: c}, err
+	}
+	if c.Protocol == "shadowtls" {
+		return compileShadowServer(c)
+	}
 	s := serverSpec{config: c, users: map[[16]byte]bool{}}
 	if c.Protocol == "wireguard" {
 		return s, validateWireServer(c)
@@ -73,8 +79,12 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 		}
 	}
 	if c.Protocol == "tuic" {
-		if s.tls == nil { return s, errors.New("TUIC_SERVER_TLS_REQUIRED") }
-		if err := validateTUICServer(c); err != nil { return s, err }
+		if s.tls == nil {
+			return s, errors.New("TUIC_SERVER_TLS_REQUIRED")
+		}
+		if err := validateTUICServer(c); err != nil {
+			return s, err
+		}
 	}
 	if c.Protocol == "hysteria2" {
 		if s.tls == nil {
@@ -121,7 +131,12 @@ func (e *Engine) StartServer(c ServerConfig) (net.Addr, error) {
 	if err != nil {
 		return nil, err
 	}
-	if c.Protocol == "shadowtls" {return e.startShadowServer(s)}
+	if c.Protocol == "shadowtls" {
+		return e.startShadowServer(s)
+	}
+	if c.Protocol == "ssh" {
+		return e.startSSHServer(c)
+	}
 	if c.Protocol == "hysteria2" {
 		return e.startHysteriaServer(s)
 	}

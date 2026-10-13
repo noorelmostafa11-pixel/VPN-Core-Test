@@ -125,3 +125,56 @@ class SSHReferenceTests(unittest.TestCase):
                 c, code = self.connect(port)
                 with c:
                     self.assertNotEqual(code, 0)
+
+    def test_independent_client_against_core_server_password_and_public_key(self):
+        host_key=paramiko.RSAKey.generate(2048);authorized=paramiko.RSAKey.generate(2048)
+        for public_key in [False,True]:
+            with self.subTest(public_key=public_key),tempfile.TemporaryDirectory(prefix='vpn-ssh-server-reference-') as temp,socket.socket() as echo:
+                root=pathlib.Path(temp);host_path=root/'host-key';host_key.write_private_key_file(str(host_path));authorized_path=root/'authorized_keys';authorized_path.write_text(authorized.get_name()+' '+authorized.get_base64()+'\n',encoding='ascii')
+                echo.bind(('127.0.0.1',0));echo.listen();echo.settimeout(.2);stop=threading.Event();workers=[]
+                def handle(c):
+                    try:
+                        with c:
+                            c.settimeout(3)
+                            while data:=c.recv(65535):c.sendall(data)
+                    except OSError:pass
+                def accept():
+                    while not stop.is_set():
+                        try:c,_=echo.accept()
+                        except OSError:continue
+                        w=threading.Thread(target=handle,args=(c,));workers.append(w);w.start()
+                listener=threading.Thread(target=accept);listener.start();port=free_port();options={'username':'user'}
+                if public_key:options['authorized-keys']=str(authorized_path)
+                spec={'protocol':'ssh','listen':f'127.0.0.1:{port}','key_file':str(host_path),'options':options}
+                if not public_key:spec['password']='secret'
+                profile={'outbounds':[{'tag':'direct','uri':'direct://'}],'final':'direct','inbounds':[spec]};config=root/'server.json';config.write_text(json.dumps(profile),encoding='utf-8')
+                with (root/'project.log').open('w') as log:
+                    process=subprocess.Popen([str(BIN),'--config',str(config),'--no-socks'],stdout=log,stderr=log);transports=[]
+                    try:
+                        deadline=time.monotonic()+6
+                        while True:
+                            if process.poll() is not None:self.fail('SSH core server exited before readiness')
+                            try:
+                                with socket.create_connection(('127.0.0.1',port),.2):break
+                            except OSError:
+                                if time.monotonic()>deadline:self.fail('SSH listener readiness timeout')
+                                time.sleep(.03)
+                        for cycle in range(16):
+                            transport=paramiko.Transport(('127.0.0.1',port));transports.append(transport)
+                            transport.connect(hostkey=host_key,username='user',password=None if public_key else 'secret',pkey=authorized if public_key else None)
+                            with transport.open_channel('direct-tcpip',echo.getsockname(),('192.0.2.99',4444)) as channel:
+                                channel.settimeout(4);body=b'Independent SSH server payload\x00\xff'*512;channel.sendall(body);self.assertEqual(exact(channel,len(body)),body)
+                            with self.assertRaises(paramiko.SSHException):transport.open_session(timeout=2)
+                            transport.close();transport.join(timeout=3);self.assertFalse(transport.is_alive())
+                        bad=paramiko.Transport(('127.0.0.1',port));transports.append(bad)
+                        with self.assertRaises(paramiko.AuthenticationException):bad.connect(hostkey=host_key,username='user',password='wrong')
+                    except BaseException as error:
+                        log.flush();error.add_note((root/'project.log').read_text(errors='replace')[-2500:]);raise
+                    finally:
+                        for transport in transports:transport.close();transport.join(timeout=3);self.assertFalse(transport.is_alive())
+                        if process.poll() is None:process.terminate()
+                        try:process.wait(timeout=5)
+                        except subprocess.TimeoutExpired:process.kill();process.wait(timeout=3)
+                        stop.set();listener.join(timeout=2)
+                        for w in workers:w.join(timeout=4);self.assertFalse(w.is_alive())
+                        self.assertFalse(listener.is_alive())

@@ -1,8 +1,10 @@
-# Go core 0.5.3
+# Go core 0.5.8
 
 Optional routing, DNS policy, remote HTTP/SOCKS, local HTTP/mixed and initial
 server support are described in [the full implementation record](FULL-SUPPORT-IMPLEMENTATION.md).
 This is an incremental extension; the remaining protocol/server gaps are explicit.
+TUIC v5, ShadowTLS v2/v3, Hysteria 2, AnyTLS, WireGuard and SSH extensions
+have individual implementation and acceptance records linked from that table.
 
 The implementation in `core/`, `cmd/` and `mobile/` is Go. It does not invoke a
 C++ core, Xray/sing-box engine, external tun-to-socks process, or TLS helper DLL.

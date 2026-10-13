@@ -32,7 +32,7 @@ states its boundary. "Pending" must not be advertised as supported.
 | WireGuard VPN | Client/server added: official encrypted device, protected sockets, bounded reuse/queues/workers, TCP/UDP IPv4/IPv6, PSK, encrypted DNS and native server forwarding. Independent Python Noise_IK/encrypted TCP/UDP/auth/source tests passed. Kernel/public-node and Windows route/DNS acceptance remain separate; see WIREGUARD.md |
 | Remote HTTP/HTTPS proxy | Added HTTP CONNECT and verified TLS path; preserve response read-ahead |
 | Remote SOCKS4/4a/5 | Added, including SOCKS5 credentials and UDP association; SOCKS4 is IPv4 TCP by specification |
-| SSH, Naive, Tor | SSH TCP outbound added: password/private keys/known-hosts, protected sockets, bounded setup/close, independent Paramiko 5.0.0 payload/auth/host-key tests passed. Naive, Tor and SSH server remain pending; see SSH.md |
+| SSH, Naive, Tor | SSH TCP client and forwarding server added: password/public keys/host identity, protected sockets, shared channel budget, bounded setup/close and independent Paramiko 5.0.0 payload/auth tests. Server supports one username/listener; reverse forwarding remains pending. Naive and Tor remain pending; see SSH.md |
 | Snell, Tailcat | Pending: establish exact reference version and protocol scope before implementation |
 | Raw TCP, UDP, WS/early data, HTTP Upgrade, gRPC/multi, HTTP2/h2c | Baseline carriers; retain regression tests |
 | XHTTP modes, metadata, padding and download settings | Baseline implemented scope; preserve original URI semantics |
@@ -243,3 +243,26 @@ Remote main advanced independently to
 `d3442fea7d65ee02e4e807b6c457c5cf2f738d19` while this work ran: the owner's
 commit adds a manual node-acceptance workflow only. It is preserved without
 modification; the original protocol-source baseline remains `63cc65b...`.
+
+Published 0.5.7 and its strict-server/fixture follow-ups are included in
+`9c974a24009059ad3743ee846d029ea17b012d46`. The initial strict-version unit
+fixture used an incorrect SessionID offset and failed locally; it was
+accidentally committed before its result was checked. The fixture correction
+passed locally. CI run `38383029494` completed successfully on that exact final
+revision: all six jobs, including macOS, Windows, Linux, portable builds and
+Android AAR. The superseded runs were cancelled, not reported as passing.
+
+## 0.5.8 extension
+
+SSH forwarding servers now support explicit host keys, password and authorized
+public keys, shared channel limits, physical/channel idle ownership, protected
+routing and joined close; see [SSH.md](SSH.md). Independent Paramiko clients
+passed payload/authentication/channel-rejection tests with both authentication
+methods. Full local validation passed: race tests for core/mobile/CLI, vet,
+175 wire tests (173 passed, two existing optional skips), eleven executable
+cross-builds, Windows C ABI lifecycle/restart and binary packaging. The stripped
+Windows executable is 18,358,272 bytes. This pre-publication package records a
+dirty tree; publication and its exact CI are confirmed separately.
+
+Remaining report entries still require implementation and their own acceptance.
+No application files, private profiles or private keys are repository artifacts.
