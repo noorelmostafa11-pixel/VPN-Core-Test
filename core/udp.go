@@ -451,8 +451,14 @@ func (s *ssPackets) ReadPacket() (Datagram, error) {
 	return packet, nil
 }
 func DialPacket(ctx context.Context, c Config, host string, port int) (PacketStream, error) {
+	if c.Protocol == "ssh" {
+		return nil, errors.New("SSH_TCP_ONLY")
+	}
 	if c.Routing != nil {
 		return nil, errors.New("ROUTE_ENGINE_REQUIRED")
+	}
+	if c.Protocol == "hysteria2" {
+		return dialHysteriaPacket(ctx, c, host, port)
 	}
 	if e := c.Validate(); e != nil {
 		return nil, e

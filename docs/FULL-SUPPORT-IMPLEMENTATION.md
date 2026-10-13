@@ -26,13 +26,13 @@ states its boundary. "Pending" must not be advertised as supported.
 | VLESS, VMess, Trojan, Shadowsocks clients | Baseline; retain independent wire tests |
 | SS2022, VLESS REALITY/Vision/encryption, VMess legacy/alter-ID | Baseline client scope; retain authentication and cipher tests |
 | ShadowTLS v2 and v3; Shadowsocks with ShadowTLS | Pending client/server and independent-reference tests |
-| Hysteria 1 and 2 | Pending authentication, TCP/UDP, congestion control, obfuscation and reconnect tests |
+| Hysteria 1 and 2 | Hysteria 2 client/server added: TCP/UDP, BBR/reno/negotiated Brutal, Salamander/Gecko, native/Chrome, trust/pins/ECH configuration, bounded reuse/reconnect/close; standalone official 2.13.0 TCP/UDP in both directions passed. Hysteria 1 and extra options (port hopping, realms, fake TCP) remain pending; see HYSTERIA2.md |
 | TUIC | Pending client/server, authentication and both UDP relay modes |
 | AnyTLS | Pending client/server, session reuse, padding updates and UDP-over-TCP |
 | WireGuard VPN | Pending protocol endpoint; current TUN device dependency is not protocol support |
 | Remote HTTP/HTTPS proxy | Added HTTP CONNECT and verified TLS path; preserve response read-ahead |
 | Remote SOCKS4/4a/5 | Added, including SOCKS5 credentials and UDP association; SOCKS4 is IPv4 TCP by specification |
-| SSH, Naive, Tor | Pending client implementations and reference/version/platform constraints |
+| SSH, Naive, Tor | SSH TCP outbound added: password/private keys/known-hosts, protected sockets, bounded setup/close, independent Paramiko 5.0.0 payload/auth/host-key tests passed. Naive, Tor and SSH server remain pending; see SSH.md |
 | Snell, Tailcat | Pending: establish exact reference version and protocol scope before implementation |
 | Raw TCP, UDP, WS/early data, HTTP Upgrade, gRPC/multi, HTTP2/h2c | Baseline carriers; retain regression tests |
 | XHTTP modes, metadata, padding and download settings | Baseline implemented scope; preserve original URI semantics |
@@ -148,3 +148,28 @@ The last cross-build/wire/.NET run preceded only the increase in routing JSON
 and catalog limits plus rejection of unsupported runtime-budget replacement;
 those changes have dedicated tests and a subsequent full race run. CI on the
 published revision must be checked independently before claiming its result.
+
+## 0.5.4 extension
+
+Hysteria 2 clients and servers and SSH TCP outbounds are implemented; see
+[HYSTERIA2.md](HYSTERIA2.md) and [SSH.md](SSH.md). No application files or private
+profiles are included. Binary builds now preserve license snapshots and hashes
+in their build manifest; packaging uses those exact snapshots. Mobile staging
+includes every newly patched Hysteria/QUIC module.
+
+The first complete Hysteria wire run (165 tests) had one mKCP loss/reordering
+failure while cross-builds ran concurrently. Its standalone rerun passed.
+That initial run is retained as a failure, not counted as an all-pass result.
+The final combined SSH/Hysteria wire run passed: 167 tests run, 165 passed,
+two existing optional cases skipped. The official Hysteria fixture passed six
+TCP/UDP client/server/obfuscation combinations; Paramiko tests passed SSH
+payloads and authentication/host-key rejection. Full Go race tests and vet
+passed. Eleven final executable cross-builds passed (Windows/Linux/macOS/
+FreeBSD/OpenBSD amd64 and arm64, plus Android arm64). Windows C ABI library
+and binary packaging built successfully; license snapshots/hashes were verified.
+These are local results; remote CI and Android AAR/iOS bindings require their
+own confirmation. The stripped Windows executable is 17,406,464 bytes;
+the previous 0.5.3 build was 15,208,448 bytes. No throughput/latency claim is
+inferred from size or passing tests.
+The report's remaining items still require implementation; this extension does
+not establish full report coverage or Xray/sing-box parity.

@@ -16,7 +16,7 @@ with tempfile.TemporaryDirectory(prefix='vpn-mobile-') as directory:
  stage=pathlib.Path(directory)
  for name in ['core','mobile']:shutil.copytree(ROOT/name,stage/name)
  for name in ['go.mod','go.sum']:shutil.copy2(ROOT/name,stage/name)
- for module in ['github.com/refraction-networking/utls','github.com/quic-go/quic-go']:
+ for module in ['github.com/refraction-networking/utls','github.com/quic-go/quic-go','github.com/apernet/hysteria/core/v2','github.com/apernet/hysteria/extras/v2','github.com/apernet/quic-go']:
   info=json.loads(subprocess.check_output(['go','list','-mod=mod','-m','-json',module],cwd=ROOT,text=True))
   destination=stage/'components'/module;shutil.copytree(ROOT/'vendor'/module,destination)
   shutil.copy2(info['GoMod'],destination/'go.mod')

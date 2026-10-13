@@ -1,5 +1,22 @@
 # Original project code and runtime notices
 
+## Go branch additions
+
+The following historical description refers to the original C++ implementation.
+On the Go branch, project-authored code under `core`, `cmd`, `mobile`, `scripts`
+and `tests` remains reserved under NOTICE.md. Upstream libraries in `vendor`
+and cryptographic primitives in `core/thirdparty` retain their own licenses.
+Hysteria 2 protocol code is the official MIT licensed core/v2 and extras/v2
+2.13.0; its QUIC dependency is an MIT licensed quic-go fork. They are embedded
+libraries; the runtime does not launch an external Hysteria or VPN engine.
+See docs/COMPONENTS.md, docs/HYSTERIA2.md and the preserved licenses for their
+authors and exact provenance. Original code ownership does not extend to
+upstream components or published protocol specifications. Component patch
+checksums cover every reviewed modification; mobile builds stage those same
+patched sources. Binary packages include the component licenses.
+
+## Original main implementation
+
 The files in `src`, `scripts`, `tests`, and the top-level project files in
 `tls-provider` were written for this Vpn project.
 They do not contain copied Xray, V2Ray or Trojan engine source and are not a

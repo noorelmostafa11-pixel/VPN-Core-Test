@@ -17,13 +17,14 @@ import (
 // ServerConfig is explicit and independent of the client's node URI. Client
 // credentials and server certificates are never included in inspection output.
 type ServerConfig struct {
-	Protocol string   `json:"protocol"`
-	Listen   string   `json:"listen"`
-	UUIDs    []string `json:"uuids,omitempty"`
-	Password string   `json:"password,omitempty"`
-	Cipher   string   `json:"cipher,omitempty"`
-	CertFile string   `json:"cert_file,omitempty"`
-	KeyFile  string   `json:"key_file,omitempty"`
+	Protocol string            `json:"protocol"`
+	Listen   string            `json:"listen"`
+	UUIDs    []string          `json:"uuids,omitempty"`
+	Password string            `json:"password,omitempty"`
+	Cipher   string            `json:"cipher,omitempty"`
+	CertFile string            `json:"cert_file,omitempty"`
+	KeyFile  string            `json:"key_file,omitempty"`
+	Options  map[string]string `json:"options,omitempty"`
 }
 type serverSpec struct {
 	config       ServerConfig
@@ -35,7 +36,7 @@ type serverSpec struct {
 
 func compileServer(c ServerConfig) (serverSpec, error) {
 	s := serverSpec{config: c, users: map[[16]byte]bool{}}
-	if !contains([]string{"vless", "trojan", "ss"}, c.Protocol) {
+	if !contains([]string{"vless", "trojan", "ss", "hysteria2"}, c.Protocol) {
 		return s, errors.New("SERVER_PROTOCOL_UNSUPPORTED")
 	}
 	host, p, err := net.SplitHostPort(c.Listen)
@@ -54,6 +55,16 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 	}
 	if c.Protocol == "trojan" && s.tls == nil {
 		return s, errors.New("TROJAN_SERVER_TLS_REQUIRED")
+	}
+	if c.Protocol == "hysteria2" {
+		if s.tls == nil {
+			return s, errors.New("HYSTERIA_SERVER_TLS_REQUIRED")
+		}
+		if err := validateHysteriaServer(c); err != nil {
+			return s, err
+		}
+	} else if len(c.Options) > 0 {
+		return s, errors.New("SERVER_OPTION_UNSUPPORTED")
 	}
 	if c.Protocol == "vless" {
 		if len(c.UUIDs) == 0 || len(c.UUIDs) > 128 {
@@ -89,6 +100,9 @@ func (e *Engine) StartServer(c ServerConfig) (net.Addr, error) {
 	s, err := compileServer(c)
 	if err != nil {
 		return nil, err
+	}
+	if c.Protocol == "hysteria2" {
+		return e.startHysteriaServer(s)
 	}
 	l, err := net.Listen("tcp", c.Listen)
 	if err != nil {

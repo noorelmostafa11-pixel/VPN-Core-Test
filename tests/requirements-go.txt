@@ -2,3 +2,4 @@ cryptography==50.0.2
 h2==4.4.1
 blake3==1.0.11
 pycryptodome==3.24.0
+paramiko==5.0.0

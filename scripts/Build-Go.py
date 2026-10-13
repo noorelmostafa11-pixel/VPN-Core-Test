@@ -35,13 +35,21 @@ def main():
   call(['python','scripts/Get-Wintun.py','--build',output,'--arch',arch])
  for name in ('NOTICE.md','OWNERSHIP.md'):shutil.copy2(ROOT/name,output/name)
  allowed={exe,'NOTICE.md','OWNERSHIP.md'}
+ # Component licenses accompany binaries even when no source is distributed.
+ license_files=[]
+ for folder in ['vendor','core/thirdparty','third_party']:
+  for source in (ROOT/folder).rglob('*'):
+   if source.is_file() and source.name.lower().startswith(('license','notice','copying')):
+    relative=pathlib.Path('licenses')/source.relative_to(ROOT)
+    destination=output/relative;destination.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,destination)
+    license_files.append({'file':relative.as_posix(),'bytes':source.stat().st_size,'sha256':hashlib.sha256(source.read_bytes()).hexdigest()})
  if target=='windows':
   for name in ('Set-Windows-Tunnel.ps1','Windows-Tunnel.psm1','Run-Native-Tunnel.ps1','Watch-Native-Network.ps1'):
    shutil.copy2(ROOT/'scripts'/name,output/name);allowed.add(name)
   shutil.copy2(ROOT/'docs/WINDOWS-TUNNEL.md',output/'WINDOWS-TUNNEL.md');allowed.add('WINDOWS-TUNNEL.md')
  if a.shared:allowed.update({shared,pathlib.Path(shared).with_suffix('.h').name})
  if a.wintun:allowed.update({'wintun.dll','WINTUN-LICENSE.txt'})
- files=[{'file':x.name,'bytes':x.stat().st_size,'sha256':hashlib.sha256(x.read_bytes()).hexdigest()} for x in output.iterdir() if x.is_file() and x.name in allowed]
+ files=[{'file':x.name,'bytes':x.stat().st_size,'sha256':hashlib.sha256(x.read_bytes()).hexdigest()} for x in output.iterdir() if x.is_file() and x.name in allowed]+license_files
  meta={'version':(ROOT/'VERSION').read_text().strip(),'target':target,'arch':arch,'go':version,'source_commit':commit,'source_tree_dirty':dirty,'files':sorted(files,key=lambda x:x['file'])}
  (output/'build-provenance.json').write_text(json.dumps(meta,indent=2)+'\n');(output/'build-hashes.json').write_text(json.dumps(meta['files'],indent=2)+'\n');print('Built',output)
 if __name__=='__main__':main()

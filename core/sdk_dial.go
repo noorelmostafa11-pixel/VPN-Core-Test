@@ -63,7 +63,7 @@ func (e *Engine) DialContext(ctx context.Context, network, address string) (net.
 		return nil, errors.New("CONNECTION_LIMIT")
 	}
 	h, _ := e.ctx.Value(hooksKey{}).(Hooks)
-	flow, cancel := context.WithCancel(WithHooks(ctx, h))
+	flow, cancel := context.WithCancel(context.WithValue(WithHooks(ctx, h), runtimeKey{}, e))
 	stopParent := context.AfterFunc(e.ctx, cancel)
 	finish := func() { stopParent(); cancel() }
 	conn, err := e.dialTCP(flow, host, port)

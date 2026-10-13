@@ -696,6 +696,12 @@ func Dial(ctx context.Context, c Config, host string, port int) (net.Conn, error
 	if c.Routing != nil {
 		return nil, errors.New("ROUTE_ENGINE_REQUIRED")
 	}
+	if c.Protocol == "ssh" {
+		return dialSSH(ctx, c, host, port)
+	}
+	if c.Protocol == "hysteria2" {
+		return dialHysteria(ctx, c, host, port)
+	}
 	if isProxyProtocol(c.Protocol) {
 		return dialProxy(ctx, c, host, port)
 	}

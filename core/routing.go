@@ -440,6 +440,11 @@ func terminalRouteError(err error) bool {
 }
 
 type routeBudgetKey struct{}
+type routeReuseKey struct{}
+type routeReuse struct {
+	table *routeTable
+	tag   string
+}
 type routeBudget struct{ remaining atomic.Int32 }
 
 func initialRouteBudget(ctx context.Context, depth int) context.Context {
@@ -488,6 +493,9 @@ func (t *routeTable) tcp(ctx context.Context, tag, host string, port, depth int)
 		return nil, err
 	}
 	if o.detour != "" {
+		if o.config.Protocol == "hysteria2" {
+			return nil, errors.New("DETOUR_UDP_UNSUPPORTED")
+		}
 		h, _ := ctx.Value(hooksKey{}).(Hooks)
 		base := h
 		h.Dial = func(inner context.Context, network, address string) (net.Conn, error) {
@@ -507,7 +515,7 @@ func (t *routeTable) tcp(ctx context.Context, tag, host string, port, depth int)
 		}
 		ctx = WithHooks(ctx, h)
 	}
-	return Dial(ctx, o.config, host, port)
+	return Dial(context.WithValue(ctx, routeReuseKey{}, routeReuse{t, tag}), o.config, host, port)
 }
 func (t *routeTable) udp(ctx context.Context, tag, host string, port, depth int) (PacketStream, error) {
 	ctx = initialRouteBudget(ctx, depth)
@@ -543,7 +551,7 @@ func (t *routeTable) udp(ctx context.Context, tag, host string, port, depth int)
 	if o.detour != "" {
 		return nil, errors.New("DETOUR_UDP_UNSUPPORTED")
 	}
-	return DialPacket(ctx, o.config, host, port)
+	return DialPacket(context.WithValue(ctx, routeReuseKey{}, routeReuse{t, tag}), o.config, host, port)
 }
 func (e *Engine) dialTCP(ctx context.Context, host string, port int) (net.Conn, error) {
 	if e.dns != nil {

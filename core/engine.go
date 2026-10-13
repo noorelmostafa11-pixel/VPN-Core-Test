@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const Version = "0.5.3-go"
+const Version = "0.5.4-go"
 
 type Event struct {
 	Protocol     string `json:"protocol,omitempty"`
@@ -53,6 +53,7 @@ type Engine struct {
 	events                                     chan Event
 	dns                                        *dnsRelay
 	router                                     *Router
+	clients                                    *clientCache
 	sniffBudget                                time.Duration
 	next, up, down, accepted, rejected, active atomic.Uint64
 }
@@ -73,6 +74,7 @@ func NewEngine(parent context.Context, c Config, h Hooks) (*Engine, error) {
 	}
 	ctx, cancel := context.WithCancel(WithHooks(parent, h))
 	e := &Engine{config: c, ctx: ctx, cancel: cancel, closeDone: make(chan struct{}), closers: map[io.Closer]bool{}, slots: make(chan struct{}, c.MaxConnections), events: make(chan Event, 256), sniffBudget: 150 * time.Millisecond}
+	e.ctx = context.WithValue(e.ctx, runtimeKey{}, e)
 	if routing != nil {
 		e.router = &Router{listenPort: c.ListenPort, maxConnections: c.MaxConnections}
 		e.router.table.Store(routing)

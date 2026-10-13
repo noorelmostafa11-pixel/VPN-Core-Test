@@ -9,7 +9,7 @@
     "path": "vendor/github.com/refraction-networking/utls/u_quic.go",
     "replacement": "u_quic.go.replacement",
     "original_sha256": "8a8dbd4285d88418b999f39bfc90ba09fcaa462fee7e98a80dfeaf07471b902f",
-    "patched_sha256": "a5531f853938e3403c2379f62286bb7739ac258f58a9b5c0022d45c487969958"
+    "patched_sha256": "c5e68528a264838995f7fa2dc1490dca0bd9d9fda42941c1f3c0aed25002f8a5"
   },
   {
     "path": "vendor/github.com/refraction-networking/utls/project_records.go",
@@ -52,5 +52,65 @@
     "replacement": "u_parrots.go.replacement",
     "original_sha256": "122612d4248fe283a8f411eb98ff8efc1bcd68558ba430696740cf2a26c5f108",
     "patched_sha256": "d707369c909078a7522fb7c8a93afb21a79686c2a911110083d7197de3435e1e"
+  },
+  {
+    "path": "vendor/github.com/apernet/hysteria/core/v2/client/client.go",
+    "replacement": "hysteria_client.go.replacement",
+    "original_sha256": "04b9a54d40841a167ec6337ad47e4bd0b81144874afde67b7b1eefb1e3604557",
+    "patched_sha256": "afc89df0005f7071422a3a4f32a083d08f0789319196eae557d5827f971c1156"
+  },
+  {
+    "path": "vendor/github.com/apernet/hysteria/core/v2/client/udp.go",
+    "replacement": "hysteria_client_udp.go.replacement",
+    "original_sha256": "4bb9c51b8d8cb1a77b3555a23b0321417f9724bd031838d2c7412cc992b9c574",
+    "patched_sha256": "2d5e3fd22c313dace7564f4c0ed4bd0113afd1d33cfafdcdac94c014fdff5823"
+  },
+  {
+    "path": "vendor/github.com/apernet/hysteria/core/v2/server/config.go",
+    "replacement": "hysteria_server_config.go.replacement",
+    "original_sha256": "a24497dc5ea470ba9b5b34da2f0e26996e82ee0e8969a5731bfdaa16dbe4463d",
+    "patched_sha256": "6ee8b318a5f954614dc6c7935b2897f8b5c12de475fcb5cad3c65119f8301fc1"
+  },
+  {
+    "path": "vendor/github.com/apernet/hysteria/core/v2/server/server.go",
+    "replacement": "hysteria_server.go.replacement",
+    "original_sha256": "8ba9ddb7ad12791394ad46996252bb7bdaae21b1041102b5c3d73789cc379244",
+    "patched_sha256": "a0d543c0f403db1113bcc29256936f93757e6b4489869e6a4a06d5e85ae71fd3"
+  },
+  {
+    "path": "vendor/github.com/apernet/hysteria/core/v2/server/udp.go",
+    "replacement": "hysteria_server_udp.go.replacement",
+    "original_sha256": "5c0234cc2ca2065597598d47bb99c94bc58ab0e9b525d083c4062513ab04cdd4",
+    "patched_sha256": "e7fad4309ae35adfcbe1622487c918572cbc69c5b8ba7dc52fc2d036ca760c28"
+  },
+  {
+    "path": "vendor/github.com/apernet/hysteria/core/v2/server/copy.go",
+    "replacement": "hysteria_server_copy.go.replacement",
+    "original_sha256": "7d855c80f357eca1c6332d73ae1c71c5ad63f92d11200e5282401ffea8ce63a0",
+    "patched_sha256": "7bd9accdb354147a038120d9dafb9a19f5b7e2c2ff29060ecc616dc7d8bc490b"
+  },
+  {
+    "path": "vendor/github.com/apernet/hysteria/core/v2/internal/protocol/proxy.go",
+    "replacement": "hysteria_protocol.go.replacement",
+    "original_sha256": "55f25354b9fe04bebdef60cb95e7fcceee646f2cdbba10189a078a0c27ca6eb5",
+    "patched_sha256": "9bc297b92a73f943fd644added552c3d75b6c25b1b5ebcddf8cd5fffe383ac3a"
+  },
+  {
+    "path": "vendor/github.com/apernet/hysteria/core/v2/internal/frag/frag.go",
+    "replacement": "hysteria_frag.go.replacement",
+    "original_sha256": "246aed0a20fd9a00255c1d74b8dd49d5f5e9bf6f7593376cad35dfa4976091d3",
+    "patched_sha256": "633d189b382c2773c22e42ad53a63bf6ae813ebfc3b88321e9788680ec1eb9c6"
+  },
+  {
+    "path": "vendor/github.com/apernet/hysteria/extras/v2/obfs/gecko.go",
+    "replacement": "hysteria_gecko.go.replacement",
+    "original_sha256": "6373883a1f9fcae1adbfbc9b64d39d278c8dd2034219ff4eac3517f5b02de382",
+    "patched_sha256": "60fdfee36b6183b75c9813c85a9d37de6e8b4f107f73b62442a333c4f461d4db"
+  },
+  {
+    "path": "vendor/github.com/apernet/quic-go/internal/handshake/tls_conn_utls.go",
+    "replacement": "hysteria_utls_quic.go.replacement",
+    "original_sha256": "c508d29853058084016b3985562e8cc0f148490b4618416d5e976e861a4688d9",
+    "patched_sha256": "6b79c975f87f0ff21e2ec161efe5d862028f1a8f773f486380863c8715a9b005"
   }
 ]

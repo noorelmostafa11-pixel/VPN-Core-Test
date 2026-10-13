@@ -231,6 +231,12 @@ func ParseURI(uri string) (Config, error) {
 	}
 	proto, body, ok := strings.Cut(uri, "://")
 	c.Protocol = strings.ToLower(proto)
+	if ok && c.Protocol == "ssh" {
+		return parseSSHURI(uri)
+	}
+	if ok && (c.Protocol == "hysteria2" || c.Protocol == "hy2") {
+		return parseHysteriaURI(uri)
+	}
 	if ok && contains([]string{"http", "https", "socks", "socks4", "socks4a", "socks5", "socks5h", "direct", "block"}, c.Protocol) {
 		return parseProxyURI(uri)
 	}
