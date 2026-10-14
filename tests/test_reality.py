@@ -134,7 +134,7 @@ class RealityTests(unittest.TestCase):
         return f'vless://{old.ID}@127.0.0.1:{p.port}?security=reality&type=tcp&sni=localhost&fp={fp}&pbk={public}&sid=a1b2c3d4'
 
     def test_01_authenticated_profiles(self):
-        for fp in ['chrome','firefox','safari','ios','edge','qq']:
+        for fp in ['native','chrome','firefox','safari','ios','edge','qq']:
             with self.subTest(fp=fp):
                 p=RealityPeer()
                 try:

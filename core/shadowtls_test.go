@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -9,13 +10,82 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 )
 
+func TestShadowTLSV2ResidualChallengeDrainBoundsAndAuthentication(t *testing.T) {
+	for _, mode := range []string{"none", "coalesced", "delayed", "corrupt", "partial", "eight", "limit"} {
+		t.Run(mode, func(t *testing.T) {
+			server, client := net.Pipe()
+			release, done := make(chan struct{}), make(chan struct{})
+			defer func() { client.Close(); close(release); <-done }()
+			var records [][]byte
+			n := 2
+			if mode == "none" {
+				n = 0
+			}
+			if mode == "eight" {
+				n = 8
+			}
+			if mode == "limit" {
+				n = 9
+			}
+			for i := 0; i < n; i++ {
+				records = append(records, shadowRecord(23, []byte("authenticated ticket")))
+			}
+			go func() {
+				defer close(done)
+				defer server.Close()
+				switch mode {
+				case "coalesced":
+					writeAll(server, bytes.Join(records, nil))
+				case "partial":
+					writeAll(server, []byte{23, 3})
+				default:
+					for _, record := range records {
+						if mode == "delayed" {
+							time.Sleep(2 * time.Millisecond)
+						}
+						if err := writeAll(server, record); err != nil {
+							return
+						}
+					}
+				}
+				<-release
+			}()
+			challenge := shadowMAC("synthetic password")
+			verify := func(record []byte) bool {
+				return mode != "corrupt" && bytes.Equal(record[5:], []byte("authenticated ticket"))
+			}
+			err := drainShadowRecords(client, bufio.NewReaderSize(client, 32768), challenge, 20*time.Millisecond, verify)
+			if mode == "corrupt" || mode == "partial" || mode == "limit" {
+				if err == nil {
+					t.Fatal("unsafe residual accepted")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := shadowMAC("synthetic password")
+			for _, record := range records {
+				want.Write(record)
+			}
+			if !bytes.Equal(challenge.Sum(nil), want.Sum(nil)) {
+				t.Fatal("ticket challenge omitted server bytes")
+			}
+		})
+	}
+}
+
 func shadowFixture(t *testing.T, version string) (Config, *Engine) {
+	return shadowFixtureCipher(t, version, "aes-256-gcm")
+}
+func shadowFixtureCipher(t *testing.T, version, method string) (Config, *Engine) {
 	t.Helper()
 	cert, _ := testServerCertificate(t)
 	backend := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "synthetic handshake web server") }))
@@ -23,17 +93,22 @@ func shadowFixture(t *testing.T, version string) (Config, *Engine) {
 	backend.StartTLS()
 	t.Cleanup(backend.Close)
 	server := testServerEngine(t)
-	a, err := server.StartServer(ServerConfig{Protocol: "shadowtls", Listen: "127.0.0.1:0", Password: "shadow-auth", Cipher: "aes-256-gcm", Options: map[string]string{"version": version, "handshake": strings.TrimPrefix(backend.URL, "https://"), "ss-password": "ss-auth", "uot": "2"}})
+	secret := "ss-auth"
+	if stringsHasModern(method) {
+		secret = ssServerTestSecret(method, 1)
+	}
+	a, err := server.StartServer(ServerConfig{Protocol: "shadowtls", Listen: "127.0.0.1:0", Password: "shadow-auth", Cipher: method, Options: map[string]string{"version": version, "handshake": strings.TrimPrefix(backend.URL, "https://"), "ss-password": secret, "uot": "2"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := ParseURI("shadowtls://shadow-auth@" + a.String() + "?version=" + version + "&method=aes-256-gcm&ss-password=ss-auth&uot=2&sni=127.0.0.1")
+	c, err := ParseURI("shadowtls://shadow-auth@" + a.String() + "?version=" + version + "&method=" + method + "&ss-password=" + url.QueryEscape(secret) + "&uot=2&sni=127.0.0.1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	c.CAFile = cert
 	return c, server
 }
+
 func TestShadowTLSBothVersionsTCPUDPAndOwnerClose(t *testing.T) {
 	for _, version := range []string{"2", "3"} {
 		t.Run(version, func(t *testing.T) {
@@ -80,6 +155,40 @@ func TestShadowTLSBothVersionsTCPUDPAndOwnerClose(t *testing.T) {
 				t.Fatal(server.Stats())
 			}
 		})
+	}
+}
+
+func TestShadowTLS2022EmbeddedTCPUDP(t *testing.T) {
+	for _, version := range []string{"2", "3"} {
+		for _, method := range []string{"2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm", "2022-blake3-chacha20-poly1305"} {
+			t.Run(version+"/"+method, func(t *testing.T) {
+				cfg, server := shadowFixtureCipher(t, version, method)
+				client, err := NewEngine(context.Background(), cfg, Hooks{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer client.Close()
+				target := echoPeer(t)
+				for i := 0; i < 4; i++ {
+					c, err := client.DialContext(context.Background(), "tcp", target)
+					if err != nil {
+						t.Fatal(err)
+					}
+					payloadCheck(t, c)
+				}
+				h, p, _ := splitProtocolTarget(udpEchoPeer(t))
+				stream, err := client.dialPacket(client.ctx, h, p)
+				if err != nil {
+					t.Fatal(err)
+				}
+				checkHysteriaUDP(t, stream)
+				server.Close()
+				client.Close()
+				if server.Stats().Active != 0 {
+					t.Fatal("embedded SS2022 leaked")
+				}
+			})
+		}
 	}
 }
 func TestShadowTLSAuthTrustProtectionAndTimeout(t *testing.T) {

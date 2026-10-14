@@ -7,7 +7,6 @@ import (
 	"errors"
 	"hash"
 	"net"
-	"strings"
 	"sync"
 	"time"
 )
@@ -43,9 +42,6 @@ func compileShadowServer(c ServerConfig) (serverSpec, error) {
 			return s, errors.New("SHADOWTLS_SERVER_CONFIGURATION")
 		}
 	} else {
-		if strings.HasPrefix(c.Cipher, "2022-") {
-			return s, errors.New("SERVER_SS_METHOD_UNSUPPORTED")
-		}
 		s.client = defaults()
 		s.client.Protocol, s.client.Security, s.client.Transport = "ss", "none", "raw"
 		s.client.Cipher, s.client.Password = c.Cipher, c.Options["ss-password"]
@@ -54,6 +50,10 @@ func compileShadowServer(c ServerConfig) (serverSpec, error) {
 			return s, errors.New("SERVER_PASSWORD_INVALID")
 		}
 		if err = s.client.Validate(); err != nil {
+			return s, err
+		}
+		s.ss, err = newSSServerState(s.client, map[string]string{"udp": "false"})
+		if err != nil {
 			return s, err
 		}
 		if v := c.Options["uot"]; v != "" && v != "2" {
@@ -265,7 +265,13 @@ func (e *Engine) serveShadow(raw net.Conn, s serverSpec) {
 		e.relay(conn, remote)
 		return
 	}
-	client, a, err := serverSSConn(conn, s.client)
+	var client net.Conn
+	var a []byte
+	if s.ss.codec.modern {
+		client, a, err = ss2022ServerConn(conn, s.ss)
+	} else {
+		client, a, err = serverSSConn(conn, s.client)
+	}
 	if err != nil {
 		return
 	}

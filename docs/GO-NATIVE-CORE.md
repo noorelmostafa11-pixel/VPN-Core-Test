@@ -1,14 +1,16 @@
-# vpn-core 0.5.9-go — Core guide
+# vpn-core 0.5.16-go — Core guide
 
 vpn-core is a publicly available, general-purpose Go networking core for
 desktop and mobile VPN/proxy applications. This guide describes the current
-`main` implementation: standalone execution, protocol clients and selected
+source implementation on the selected branch: standalone execution, protocol clients and selected
 servers, native TUN, routing, DNS, application integration and packaging.
 The source version is defined in [VERSION](../VERSION); GitHub Releases are
 published separately from source updates and workflow artifacts.
 
-The latest additions are HTTPS/body-verified outbound health selection, SSH
-forwarding servers, TUIC v5 and ShadowTLS v2/v3. Hysteria 2, AnyTLS and WireGuard
+The latest additions include WebSocket/HTTP Upgrade protocol servers, VLESS hybrid encryption/REALITY/Vision servers, SS2022/native UDP Shadowsocks servers, SS2022
+inside ShadowTLS, VMess servers and VMess/VLESS MUX/XUDP server
+framing, HTTPS/body-verified outbound health selection, SSH
+forwarding servers, TUIC v5, ShadowTLS v2/v3 and Hysteria 1. Hysteria 2, AnyTLS and WireGuard
 clients/servers are also included. Protocol-specific acceptance records and
 remaining work are tracked in the
 [capability register](FULL-SUPPORT-IMPLEMENTATION.md).
@@ -33,7 +35,7 @@ export built from Go; it is not required by the executable or Go SDK.
   HTTP/3, QUIC, mKCP packet headers/loss recovery, v2ray-plugin/mux and simple-obfs.
 - TLS 1.2/1.3, supported uTLS fingerprints, ECH on supported paths, certificate
   names/pins/custom roots, legacy XTLS and FinalMask fragmentation.
-- Hysteria 2, WireGuard, AnyTLS, TUIC v5 and ShadowTLS v2/v3 clients, with the
+- Hysteria 1/2, WireGuard, AnyTLS, TUIC v5 and ShadowTLS v2/v3 clients, with the
   TCP/UDP and authentication scope documented in their individual guides.
 - SSH direct-tcpip forwarding with verified host identity; remote HTTP CONNECT,
   HTTPS CONNECT and SOCKS4/4a/5, including SOCKS5 authentication and UDP.
@@ -50,9 +52,11 @@ protection, flow admission and shutdown use the same engine as client traffic.
 
 | Server | Implemented scope and boundary |
 | --- | --- |
-| VLESS | Raw TCP with optional TLS and UDP-over-TCP; server Vision/REALITY/encryption and additional carriers remain pending |
+| VLESS | Raw TCP with optional TLS/REALITY, UDP-over-TCP and MUX/XUDP; Vision adds padding/direct policy. Hybrid decryption adds three wire modes, key chains, bounded tickets/replay and optional Vision. REALITY target mirroring/PQ and additional carriers remain pending; [Vision](VLESS-SERVER.md), [REALITY](REALITY-SERVER.md), [encryption](VLESS-ENCRYPTION-SERVER.md) |
+| VMess | Raw TCP/optional TLS, AEAD/opt-in legacy alter-ID, TCP/UDP/MUX, encrypted and masked/padded bodies; [guide](VMESS-SERVER.md) |
 | Trojan | TLS TCP and UDP-over-TCP |
-| Shadowsocks | Raw TCP with legacy/AEAD2017 methods; SS2022 and native UDP server support remain pending |
+| Shadowsocks | All 35 methods over TCP/native UDP, SS2022 fixed identity chains, bounded replay/session handling and optional TCP TLS; [guide](SHADOWSOCKS-SERVER.md) |
+| Hysteria 1 | Binary v3 TCP/UDP, xplus, negotiated Brutal and bounded lifetime; [guide](HYSTERIA1.md) |
 | Hysteria 2 | Authenticated TCP/UDP and documented congestion/obfuscation options; [guide](HYSTERIA2.md) |
 | WireGuard | Encrypted device and native server packet forwarding, including TCP/UDP IPv4/IPv6; [guide](WIREGUARD.md) |
 | AnyTLS | Authenticated TLS streams, session reuse, padding and optional UOT v2 UDP; [guide](ANYTLS.md) |
@@ -60,8 +64,8 @@ protection, flow admission and shutdown use the same engine as client traffic.
 | ShadowTLS v2/v3 | Authenticated relay with embedded Shadowsocks or an explicit data backend; optional embedded UOT v2 UDP; [guide](SHADOWTLS.md) |
 | SSH | Password/public-key direct-tcpip forwarding for one configured username per listener; reverse forwarding remains pending; [guide](SSH.md) |
 
-VMess servers are not implemented. Additional protocol options, general mux,
-GeoIP/geosite loaders, Redirect/TProxy, Hysteria 1, Naive, Tor, Snell and Tailcat
+Additional protocol options, general outbound mux, cross-parent XUDP migration,
+GeoIP/geosite loaders, Redirect/TProxy, Naive, Tor, Snell and Tailcat
 remain outside the current scope; consult the capability register before
 configuring them.
 
@@ -69,6 +73,10 @@ The executable starts loopback SOCKS5 TCP/UDP by default. `--http-listen` and
 `--mixed-listen` add loopback HTTP or combined HTTP/SOCKS listeners.
 `--no-socks` disables the default SOCKS listener for HTTP/server-only setups.
 Configured protocol servers use their explicit listen addresses and credentials.
+
+Optional `transport` adds WebSocket/early data or HTTP Upgrade on
+VLESS/VMess/Trojan/Shadowsocks TCP servers; see [server carriers](SERVER-CARRIERS.md)
+for TLS, encrypted Vision, UDP and remaining carrier boundaries.
 They do not configure host routes or firewall policy.
 
 ## Routing, DNS and HTTPS health selection
@@ -312,7 +320,7 @@ python scripts/Package-Go.py --build build/windows-amd64
 ```
 
 The package name is derived from `VERSION` and the build provenance, for example
-`dist/vpn-core-0.5.9-go-windows-amd64.zip`. It contains only manifest-listed
+`dist/vpn-core-0.5.12-go-windows-amd64.zip`. It contains only manifest-listed
 runtime files, build provenance/hashes, the core guide and component license
 snapshots. Desktop workflow artifacts contain these packaged ZIPs; the outer
 artifact download ZIP is a separate wrapper. The Android artifact contains
@@ -325,7 +333,7 @@ version:
 1. Use packages from a successfully validated build of the intended main
    revision, with matching source provenance.
 2. Open [Draft a new release](https://github.com/noorelmostafa11-pixel/VPN-Core-Test/releases/new),
-   create a new tag such as `v0.5.9-go` and select the intended `main` revision.
+   create a new tag such as `v0.5.12-go` and select the intended `main` revision.
 3. Add an English title and release notes, then attach the inner packaged ZIPs
    and/or Android AAR. Include package SHA-256 sidecars if you generate them;
    the packager itself writes hashes inside the ZIP rather than an outer

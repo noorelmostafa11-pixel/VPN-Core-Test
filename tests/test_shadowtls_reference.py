@@ -2,6 +2,7 @@
 import contextlib,hashlib,json,os,pathlib,shutil,socket,ssl,subprocess,tempfile,threading,time,unittest
 from urllib.parse import quote
 from test_core import BIN,exact,free_port
+from test_ss_server_reference import secret
 import test_hysteria_reference as hyref
 
 class ShadowTLSReferenceTests(unittest.TestCase):
@@ -11,7 +12,7 @@ class ShadowTLSReferenceTests(unittest.TestCase):
         if not cls.reference.is_file():raise unittest.SkipTest('set VPN_CORE_REFERENCE_SINGBOX to sing-box 1.14.3 executable')
     def socks(self,*args):return hyref.HysteriaReferenceTests.socks(self,*args)
     @contextlib.contextmanager
-    def pair(self,project_server,version,plugin=False):
+    def pair(self,project_server,version,plugin=False,method='aes-256-gcm'):
         with tempfile.TemporaryDirectory(prefix='vpn-shadowtls-reference-') as temp:
             root=pathlib.Path(temp);cert,key=root/'cert.pem',root/'key.pem';server,socks,ss=free_port(),free_port(),free_port()
             openssl=shutil.which('openssl')
@@ -40,17 +41,18 @@ class ShadowTLSReferenceTests(unittest.TestCase):
                     except OSError:continue
                     w=threading.Thread(target=handle,args=(c,));workers.append(w);w.start()
             listener=threading.Thread(target=accept);listener.start()
+            ss_password=secret(method) if method.startswith('2022-') else 'ss-auth'
             if project_server:
-                project={'outbounds':[{'tag':'direct','uri':'direct://'}],'final':'direct','inbounds':[{'protocol':'shadowtls','listen':f'127.0.0.1:{server}','password':'shadow-auth','cipher':'aes-256-gcm','options':{'version':str(version),'handshake':f'127.0.0.1:{backend_port}','ss-password':'ss-auth','uot':'2'}}]}
-                reference={'inbounds':[{'type':'socks','listen':'127.0.0.1','listen_port':socks}],'outbounds':[{'type':'shadowsocks','tag':'ss','server':'127.0.0.1','server_port':server,'method':'aes-256-gcm','password':'ss-auth','detour':'shadow','udp_over_tcp':{'enabled':True,'version':2}},{'type':'shadowtls','tag':'shadow','server':'127.0.0.1','server_port':server,'version':version,'password':'shadow-auth','tls':{'enabled':True,'server_name':'localhost','certificate_path':str(cert)}}]}
+                project={'outbounds':[{'tag':'direct','uri':'direct://'}],'final':'direct','inbounds':[{'protocol':'shadowtls','listen':f'127.0.0.1:{server}','password':'shadow-auth','cipher':method,'options':{'version':str(version),'handshake':f'127.0.0.1:{backend_port}','ss-password':ss_password,'uot':'2'}}]}
+                reference={'inbounds':[{'type':'socks','listen':'127.0.0.1','listen_port':socks}],'outbounds':[{'type':'shadowsocks','tag':'ss','server':'127.0.0.1','server_port':server,'method':method,'password':ss_password,'detour':'shadow','udp_over_tcp':{'enabled':True,'version':2}},{'type':'shadowtls','tag':'shadow','server':'127.0.0.1','server_port':server,'version':version,'password':'shadow-auth','tls':{'enabled':True,'server_name':'localhost','certificate_path':str(cert)}}]}
             else:
                 inbound={'type':'shadowtls','tag':'shadow','listen':'127.0.0.1','listen_port':server,'version':version,'handshake':{'server':'127.0.0.1','server_port':backend_port},'detour':'ss'}
                 if version==3:inbound['users']=[{'password':'shadow-auth'}];inbound['strict_mode']=True
                 else:inbound['password']='shadow-auth'
-                reference={'inbounds':[inbound,{'type':'shadowsocks','tag':'ss','listen':'127.0.0.1','listen_port':ss,'method':'aes-256-gcm','password':'ss-auth'}],'outbounds':[{'type':'direct'}]}
+                reference={'inbounds':[inbound,{'type':'shadowsocks','tag':'ss','listen':'127.0.0.1','listen_port':ss,'method':method,'password':ss_password}],'outbounds':[{'type':'direct'}]}
                 if plugin:
-                    uri=f'ss://aes-256-gcm:ss-auth@127.0.0.1:{server}?plugin='+quote(f'shadow-tls;version={version};password=shadow-auth;host=localhost;uot=2;pinsha256={pin}',safe='')
-                else:uri=f'shadowtls://shadow-auth@127.0.0.1:{server}?version={version}&method=aes-256-gcm&ss-password=ss-auth&uot=2&sni=localhost&pinsha256={pin}'
+                    uri=f'ss://{method}:{quote(ss_password,safe='')}@127.0.0.1:{server}?plugin='+quote(f'shadow-tls;version={version};password=shadow-auth;host=localhost;uot=2;pinsha256={pin}',safe='')
+                else:uri=f'shadowtls://shadow-auth@127.0.0.1:{server}?version={version}&method={method}&ss-password={quote(ss_password,safe='')}&uot=2&sni=localhost&pinsha256={pin}'
                 project={'listen_port':socks,'outbounds':[{'tag':'shadow','uri':uri}],'final':'shadow'}
             pp,rp=root/'project.json',root/'reference.json';pp.write_text(json.dumps(project),encoding='utf-8');rp.write_text(json.dumps(reference),encoding='utf-8');processes=[]
             with (root/'project.log').open('w') as plog,(root/'reference.log').open('w') as rlog:
@@ -61,7 +63,12 @@ class ShadowTLSReferenceTests(unittest.TestCase):
                     while True:
                         if any(p.poll() is not None for p in processes):self.fail('ShadowTLS process stopped before readiness')
                         try:
-                            with socket.create_connection(('127.0.0.1',socks),.2):break
+                            # The project SOCKS listener starts before its remote
+                            # reference server. Check both endpoints before the
+                            # first payload; do not retry delivered application data.
+                            for ready_port in (socks,server):
+                                with socket.create_connection(('127.0.0.1',ready_port),.2):pass
+                            break
                         except OSError:
                             if time.monotonic()>deadline:self.fail('ShadowTLS readiness timeout')
                             time.sleep(.03)
@@ -77,6 +84,11 @@ class ShadowTLSReferenceTests(unittest.TestCase):
                     for w in workers:w.join(timeout=4);self.assertFalse(w.is_alive())
                     backend.close();self.assertFalse(listener.is_alive())
     def test_reference_tcp_udp_versions_directions_and_ss_plugin(self):
+        self.payload_cases()
+    def test_reference_embedded_ss2022_versions_directions_and_plugin(self):
+        for method in ['2022-blake3-aes-128-gcm','2022-blake3-aes-256-gcm','2022-blake3-chacha20-poly1305']:
+            with self.subTest(method=method):self.payload_cases(method)
+    def payload_cases(self,method='aes-256-gcm'):
         for project_server,plugin in [(False,False),(False,True),(True,False)]:
             for version in [2,3]:
                 with self.subTest(project_server=project_server,version=version,plugin=plugin),socket.socket() as tcp,socket.socket(type=socket.SOCK_DGRAM) as udp:
@@ -99,8 +111,8 @@ class ShadowTLSReferenceTests(unittest.TestCase):
                     listeners=[threading.Thread(target=accept),threading.Thread(target=echo_udp)]
                     for w in listeners:w.start()
                     try:
-                        with self.pair(project_server,version,plugin) as socks:
-                            for cycle in range(8):
+                        with self.pair(project_server,version,plugin,method) as socks:
+                            for cycle in range(64 if version==2 and not project_server else 8):
                                 c,_=self.socks(socks,1,tcp.getsockname())
                                 with c:
                                     body=b'ShadowTLS independent payload\x00\xff'*256;c.sendall(body);self.assertEqual(exact(c,len(body)),body)

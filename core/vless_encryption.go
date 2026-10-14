@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdh"
@@ -10,10 +11,8 @@ import (
 
 	"encoding/binary"
 
-	"errors"
 	"io"
 	"lukechampine.com/blake3"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -41,37 +40,11 @@ func parseEncryption(text string) (encryptionConfig, error) {
 	}
 	c.resume = parts[2] == "0rtt"
 	seenKey := false
-	totalPadding := 0
 	for _, part := range parts[3:] {
 		if len(part) < 20 {
-			if seenKey {
+			if seenKey || appendEncryptionPadding(&c.padding, part) != nil {
 				return c, providerError(500)
 			}
-			fields := strings.Split(part, "-")
-			if len(fields) != 3 {
-				return c, providerError(500)
-			}
-			var p [3]int
-			for i, value := range fields {
-				n, err := strconv.Atoi(value)
-				if err != nil || n < 0 || n > 65535 {
-					return c, providerError(500)
-				}
-				p[i] = n
-			}
-			if p[0] > 100 {
-				return c, providerError(500)
-			}
-			if len(c.padding) == 0 && (p[0] < 100 || p[1] < 35 || p[2] < 35) {
-				return c, providerError(500)
-			}
-			if len(c.padding)%2 == 0 {
-				totalPadding += max(p[1], p[2])
-			}
-			if totalPadding > 65553 || len(c.padding) > 16 {
-				return c, providerError(500)
-			}
-			c.padding = append(c.padding, p)
 			continue
 		}
 		seenKey = true
@@ -197,10 +170,7 @@ func putTicket(id [32]byte, saved savedTicket) {
 func forgetTicket(id [32]byte) { ticketMu.Lock(); delete(tickets, id); ticketMu.Unlock() }
 
 type encryptionSession struct {
-	mu                   sync.Mutex
 	wire                 net.Conn
-	up, down             *byteQueue
-	state, code          int
 	config               encryptionConfig
 	cacheID              [32]byte
 	united               []byte
@@ -208,26 +178,10 @@ type encryptionSession struct {
 	upCTR, downCTR       cipher.Stream
 	pendingRandom        bool
 	deadline             time.Time
-	accepted, encoded    uint64
-	uploadDone           bool
+	paddingContext       context.Context
 }
 
-func (s *encryptionSession) fail(err error) {
-	code := 503
-	var pe providerError
-	if errors.As(err, &pe) {
-		code = int(pe)
-	}
-	s.mu.Lock()
-	s.state = -1
-	s.code = code
-	s.mu.Unlock()
-	_ = s.wire.Close()
-	s.up.close(err)
-	s.down.close(err)
-	forgetTicket(s.cacheID)
-}
-func (s *encryptionSession) writeWire(data []byte) error { _, err := s.wire.Write(data); return err }
+func (s *encryptionSession) writeWire(data []byte) error { return writeAll(s.wire, data) }
 func (s *encryptionSession) clientPrefix() (iv, nfs, relays []byte, err error) {
 	iv = make([]byte, 16)
 	if _, err = rand.Read(iv); err != nil {
@@ -333,7 +287,17 @@ func (s *encryptionSession) sendPadding(message []byte, lengths []int, gaps []ti
 			if time.Now().Add(gaps[i]).After(s.deadline) {
 				return providerError(504)
 			}
-			time.Sleep(gaps[i])
+			ctx := s.paddingContext
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			timer := time.NewTimer(gaps[i])
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
 		}
 	}
 	return nil
@@ -479,106 +443,4 @@ func (s *encryptionSession) handshake() error {
 		}
 	}
 	return nil
-}
-func (s *encryptionSession) upload() error {
-	buffer := make([]byte, 8192)
-	for {
-		n, err := s.up.Read(buffer)
-		if n > 0 {
-			header := []byte{23, 3, 3, byte((n + 16) >> 8), byte(n + 16)}
-			payload, e := s.upCipher.seal(buffer[:n], header)
-			if e != nil {
-				return e
-			}
-			if s.upCTR != nil {
-				s.upCTR.XORKeyStream(header, header)
-			}
-			if e = s.writeWire(append(header, payload...)); e != nil {
-				return e
-			}
-			s.up.mu.Lock()
-			s.encoded += uint64(n)
-			s.up.mu.Unlock()
-		}
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				s.up.mu.Lock()
-				s.uploadDone = true
-				s.up.mu.Unlock()
-				return nil
-			}
-			return err
-		}
-	}
-}
-func (s *encryptionSession) download() error {
-	if s.pendingRandom {
-		random, err := readN(s.wire, 16)
-		if err != nil {
-			return err
-		}
-		s.downCipher, err = newRecordAEAD(random, s.united)
-		if err != nil {
-			return err
-		}
-		if s.config.mode == "random" {
-			s.downCTR, err = keyCTR(s.united, random)
-			if err != nil {
-				return err
-			}
-		}
-	}
-	for {
-		header, err := readN(s.wire, 5)
-		if err != nil {
-			return err
-		}
-		if s.downCTR != nil {
-			s.downCTR.XORKeyStream(header, header)
-		}
-		count := int(binary.BigEndian.Uint16(header[3:]))
-		if header[0] != 23 || header[1] != 3 || header[2] != 3 || count < 17 || count > 16640 {
-			return providerError(502)
-		}
-		payload, err := readN(s.wire, count)
-		if err != nil {
-			return err
-		}
-		plain, err := s.downCipher.open(payload, header)
-		if err != nil {
-			return err
-		}
-		if _, err = s.down.Write(plain); err != nil {
-			return err
-		}
-	}
-}
-func (s *encryptionSession) run(timeout int) {
-	s.deadline = time.Now().Add(time.Duration(timeout) * time.Millisecond)
-	_ = s.wire.SetDeadline(s.deadline)
-	if err := s.handshake(); err != nil {
-		s.fail(err)
-		return
-	}
-	_ = s.wire.SetDeadline(time.Time{})
-	s.mu.Lock()
-	s.state = 1
-	s.mu.Unlock()
-	go func() {
-		if err := s.upload(); err != nil {
-			s.fail(err)
-		}
-	}()
-	if err := s.download(); err != nil {
-		if errors.Is(err, io.EOF) {
-			s.down.close(nil)
-			s.mu.Lock()
-			if s.state >= 0 {
-				s.state = 2
-			}
-			s.mu.Unlock()
-		} else {
-			s.fail(err)
-		}
-	}
 }

@@ -17,7 +17,12 @@ os.environ['VPN_CORE_TEST_BINARY']=str(binary);sys.path.insert(0,str(ROOT/'tests
 names=['test_core.CoreTests','test_expanded.ExpandedTests','test_pre_expansion.PreExpansionTests','test_reality.RealityTests','test_vision.VisionTests','test_legacy_xtls.LegacyXTLSTests','test_ws_plugins.WebSocketPluginTests','test_xhttp_modes.XHttpTests','test_mkcp.MKCPTests','test_ech.ECHTests','test_quic_carrier.QUICCarrierTests','test_support_additions.SupportAdditionTests','test_vless_encryption.VlessEncryptionTests','test_udp_sdk.UdpSdkTests','test_uri_compatibility.UriCompatibilityTests','test_compat_repairs.CompatibilityRepairTests','test_repair_transport_042.RepairTransportTests']
 suite=unittest.defaultTestLoader.loadTestsFromNames(names)
 suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_server_reference.ServerReferenceTests'))
+suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_vless_server_reference.VLESSVisionReferenceTests'))
+suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_vless_encryption_server_reference.VLESSEncryptionServerReferenceTests'))
+suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_server_carriers_reference.ServerCarrierReferenceTests'))
+suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_ss_server_reference.SSServerReferenceTests'))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_hysteria_reference.HysteriaReferenceTests'))
+suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_hysteria1_reference.Hysteria1ReferenceTests'))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_ssh_reference.SSHReferenceTests'))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_wireguard_reference.WireGuardReferenceTests'))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_anytls_reference.AnyTLSReferenceTests'))

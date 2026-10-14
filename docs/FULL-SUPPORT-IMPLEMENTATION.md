@@ -25,8 +25,8 @@ states its boundary. "Pending" must not be advertised as supported.
 | --- | --- |
 | VLESS, VMess, Trojan, Shadowsocks clients | Baseline; retain independent wire tests |
 | SS2022, VLESS REALITY/Vision/encryption, VMess legacy/alter-ID | Baseline client scope; retain authentication and cipher tests |
-| ShadowTLS v2 and v3; Shadowsocks with ShadowTLS | Client/server added: verified TLS, v2 challenge, strict v3 handshake/data integrity, standalone/SIP003 Shadowsocks and optional UOT v2 UDP. Independent sing-box 1.14.3 payloads passed both directions with the documented v2 ticket boundary. Embedded SS2022, non-strict v3 and broader multi-user/SNI options remain pending; see SHADOWTLS.md |
-| Hysteria 1 and 2 | Hysteria 2 client/server added: TCP/UDP, BBR/reno/negotiated Brutal, Salamander/Gecko, native/Chrome, trust/pins/ECH configuration, bounded reuse/reconnect/close; standalone official 2.13.0 TCP/UDP in both directions passed. Hysteria 1 and extra options (port hopping, realms, fake TCP) remain pending; see HYSTERIA2.md |
+| ShadowTLS v2 and v3; Shadowsocks with ShadowTLS | Client/server added: verified TLS, v2 challenge, strict v3 handshake/data integrity, standalone/SIP003 Shadowsocks including all three SS2022 ciphers and optional UOT v2 UDP. Independent sing-box 1.14.3 payloads passed both directions with the documented v2 ticket boundary. Non-strict v3 and broader multi-user/SNI options remain pending; see SHADOWTLS.md |
+| Hysteria 1 and 2 | Both client/server protocols added: Hysteria 1 v3 TCP/UDP/xplus, negotiated Brutal, verified native TLS and bounded reuse/lifetime; official 1.3.5 payloads passed both directions. Hysteria 2 adds BBR/reno/negotiated Brutal, Salamander/Gecko, native/Chrome and trust/pins/ECH configuration; official 2.13.0 payloads passed both directions. Port hopping, realms, fake TCP and wider authentication/fingerprint options remain pending; see HYSTERIA1.md and HYSTERIA2.md |
 | TUIC | v5 client/server added: TLS-exporter authentication, TCP, native/QUIC UDP, fragmentation, direct Full Cone relay, bounded reuse/close and independent sing-box 1.14.3 payloads both modes/directions. Additional congestion selection, uTLS, 0-RTT and per-user passwords remain pending; see TUIC.md |
 | AnyTLS | Client/server added: session reuse, bounded padding updates, v1/v2 server framing, verified TLS, TCP and UOT v2 connect/non-connect UDP. Official 0.0.13 client/server payload tests in both directions passed; see ANYTLS.md |
 | WireGuard VPN | Client/server added: official encrypted device, protected sockets, bounded reuse/queues/workers, TCP/UDP IPv4/IPv6, PSK, encrypted DNS and native server forwarding. Independent Python Noise_IK/encrypted TCP/UDP/auth/source tests passed. Kernel/public-node and Windows route/DNS acceptance remain separate; see WIREGUARD.md |
@@ -34,11 +34,11 @@ states its boundary. "Pending" must not be advertised as supported.
 | Remote SOCKS4/4a/5 | Added, including SOCKS5 credentials and UDP association; SOCKS4 is IPv4 TCP by specification |
 | SSH, Naive, Tor | SSH TCP client and forwarding server added: password/public keys/host identity, protected sockets, shared channel budget, bounded setup/close and independent Paramiko 5.0.0 payload/auth tests. Server supports one username/listener; reverse forwarding remains pending. Naive and Tor remain pending; see SSH.md |
 | Snell, Tailcat | Pending: establish exact reference version and protocol scope before implementation |
-| Raw TCP, UDP, WS/early data, HTTP Upgrade, gRPC/multi, HTTP2/h2c | Baseline carriers; retain regression tests |
+| Raw TCP, UDP, WS/early data, HTTP Upgrade, gRPC/multi, HTTP2/h2c | Baseline client carriers retained. WS/early-data and HTTP Upgrade server carriers added for VLESS/VMess/Trojan/Shadowsocks TCP; encrypted Vision retains parent carrier layers. Other server carriers remain pending; see SERVER-CARRIERS.md |
 | XHTTP modes, metadata, padding and download settings | Baseline implemented scope; preserve original URI semantics |
 | HTTP3, QUIC, mKCP, HTTP disguise, simple-obfs, v2ray-plugin | Baseline carriers, distinct from Hysteria/TUIC protocols |
 | TLS1.2/1.3, uTLS, ECH, REALITY, legacy XTLS, FinalMask | Baseline implemented scope; certificate verification remains enforced |
-| General multiplexing and XUDP/UoT | Pending; current plugin mux does not satisfy general mux |
+| General multiplexing and XUDP/UoT | Partial: VMess/VLESS MUX server framing, concurrent TCP and XUDP destination/Full Cone UDP added with bounded lifetime and independent Xray payload tests. General outbound MUX, cross-parent XUDP migration, smux and additional UOT paths remain pending; see MUX-SERVER.md |
 | Multiple configured outbounds | Added optional routing engine, shared flow budget |
 | Domain/suffix/regex and destination IP/CIDR rules | Added; original destination IP retained after sniffing |
 | GeoIP/geosite and named rule sets | Pending loaders, indexing, limits and update integrity |
@@ -60,13 +60,13 @@ states its boundary. "Pending" must not be advertised as supported.
 | SOCKS5 TCP/UDP inbound and native TUN | Baseline; retain packet/flow/lifecycle regression tests |
 | HTTP and mixed HTTP/SOCKS inbound | Added loopback listeners, CONNECT and HTTP body forwarding |
 | Redirect and TProxy | Pending platform-specific listeners and original-destination handling |
-| VLESS, Trojan, Shadowsocks server inbounds | Partial: raw TCP with optional TLS (required for Trojan); VLESS/Trojan UDP-over-TCP, Shadowsocks legacy/AEAD2017 TCP. Payload tests with an independent Xray 26.7.28 client passed for VLESS, Trojan, SS AES-256-GCM and ChaCha20-Poly1305. Vision/REALITY/encryption, server carriers, SS2022/native UDP and remaining options are pending |
-| VMess server inbound | Pending, including AEAD/legacy authentication and packet framing |
+| VLESS, Trojan, Shadowsocks server inbounds | Partial: raw TCP with optional TLS (required for Trojan); VLESS/Trojan UDP-over-TCP and VLESS MUX/XUDP. VLESS Vision adds native TLS 1.3, flow authentication, bounded padding/direct transitions and UDP-only MUX/XUDP. REALITY adds interoperable native TLS authentication/data transfer and protected HTTPS fallback; exact target mirroring/ML-DSA remain pending. Hybrid VLESS decryption adds three wire modes, fixed X25519/ML-KEM chains, bounded tickets/replay and optional Vision, using synchronous reusable record buffers. Shadowsocks implements all 35 methods over TCP/native UDP and SS2022 identity chains. Server carriers and wider options remain pending; see VLESS-SERVER.md, REALITY-SERVER.md, VLESS-ENCRYPTION-SERVER.md and SHADOWSOCKS-SERVER.md |
+| VMess server inbound | Added raw TCP/optional TLS, TCP/UDP/MUX, AEAD and opt-in legacy alter-ID, AES-GCM/ChaCha/CFB/none/zero, length masking/padding and authenticated lengths. Independent Xray 26.7.28 and V2Ray 4.45.2 payload tests passed; server carriers and remaining upstream options are pending; see VMESS-SERVER.md |
 | Other protocol server inbounds | Pending with their corresponding client protocols |
 | Reverse proxy / server fallback | Pending authenticated reverse channels and fallback semantics |
 | General management API | Added opt-in authenticated loopback stats, selection, route and DNS updates; wider API/events scope pending |
 | Statistics / connections / events | Baseline plus SDK flow accounting; richer per-outbound connection inventory pending |
-| Go SDK / C ABI / Android AAR / iOS packet hooks / Windows Wintun | Baseline interfaces retained; bind optional routing and new protocol controls across interfaces |
+| Go SDK / C ABI / Android AAR / iOS packet hooks / Windows Wintun | Baseline client/packet interfaces retained; Go server startup uses Engine.StartServer and the CLI launches configured inbounds. Mobile/C ABI server startup and broader optional controls still require bindings and acceptance |
 | Windows VPN service | Pending opt-in service host, lifecycle/recovery/install/remove acceptance |
 
 ## Acceptance requirements
@@ -293,3 +293,268 @@ packaging/license hashes passed. The stripped Windows executable is 18,403,840
 bytes. The local pre-publication package records a dirty tree; publication and
 exact remote CI are confirmed separately. Remaining report entries are still
 pending.
+
+## 0.5.10 extension
+
+Hysteria 1 binary v3 clients/servers now support TCP/UDP, xplus, negotiated
+Brutal rates, verified native TLS, protected routing and bounded reuse/close;
+see [HYSTERIA1.md](HYSTERIA1.md). The official 1.3.5 executable passed TCP/UDP
+both directions with and without obfuscation after correcting the advertised
+DATAGRAM limit for old peers. Its initial UDP failure is retained locally.
+Full core/mobile/CLI race tests and vet passed; a later Hysteria-only race run
+also covers the final reusable xplus receive buffer.
+
+Regression verification exposed two fixture issues. The ShadowTLS fixture
+waited for the project's SOCKS listener but not the independent server; it now
+waits for both before the first payload without retrying application data. A
+176-case run failed two ShadowTLS cases before that correction; its standalone
+rerun passed. A following 176-case run passed ShadowTLS but failed mKCP's
+eight-flow loss/reordering case. The earlier mKCP oldest-flight fix did not
+address the receiver loop sending a new aggregate flight after reading only
+one incoming packet, which could build a stale ACK/retransmission backlog.
+
+The mKCP fixture now drains at most 256 incoming packets before transmitting,
+and gives its single eight-flow socket a bounded 1 MiB receive buffer. All
+intentional drop/duplicate/reordering rules, MTU, eight flows and 190,001-byte
+payloads are retained. Merely increasing buffers failed. A temporary production
+socket-buffer change was reverted: with the corrected fixture, the original
+production mKCP code passed three eight-flow repetitions and all five mKCP
+cases (seven test invocations total). No production mKCP code is changed by
+this extension. The unsuccessful diagnostic runs are retained; these findings
+are not a diagnosis of every public-node failure.
+
+Remote main advanced independently to `84cb1865cc9de26d913d3f542d5fd43362036eed`
+after the owner merged the prior Go work and refreshed the public guides. Its
+documentation and manual node workflow are preserved in the feature branch;
+this implementation does not modify main. Remaining report entries still
+require implementation and their own acceptance. Final combined tests,
+packaging, publication and exact-head CI are recorded separately.
+
+The final combined wire run passed 176 tests: 174 passed and the two existing
+optional cases skipped. The initial run omitted AnyTLS because the reference
+path pointed to an executable instead of its directory; those two cases passed
+separately and were included in the final combined result above. Portable
+builds (eleven targets), Windows ABI lifecycle/restart and a clean Windows
+shared/Wintun package subsequently passed at published revision
+`ff4f4adb889c2d26a26b045f2fda3f1b85c5c46f`. Executable SHA256:
+`dc8dc483ca8ab6b696bd140bb83551c0d945ef0a34d6bcce0aeed8a301f67887`.
+At the last inspection, CI run `38491127393` had successful source and Android
+jobs with other jobs still running. The owner now checks workflows; no final
+remote conclusion is inferred. Local payload tests do not establish public-node
+Internet or host-route/DNS acceptance.
+
+## 0.5.11 extension
+
+VMess server authentication/body framing and VMess/VLESS MUX servers are added;
+see [VMESS-SERVER.md](VMESS-SERVER.md) and [MUX-SERVER.md](MUX-SERVER.md).
+Independent Xray clients passed modern TCP, default XUDP, authenticated lengths
+and concurrent MUX payloads over verified TLS. Official V2Ray 4.45.2 passed
+legacy alter-ID TCP/UDP for every framed security method and unframed TCP zero.
+The initial XUDP failure exposed rejection of 42-44-byte legal MUX headers;
+the corrected parser has deterministic coverage for all 16 padding lengths.
+
+Initial legacy fixture failures used modern pin fields unavailable in V2Ray 4
+and 3,800-byte packets exceeding its 2 KiB buffers. Fixture trust now uses the
+generated CA with name verification, and legacy reference payloads fit that
+documented buffer. The core still transfers atomic 60,000-byte UDP payloads in
+Go tests. The initial direct-MUX owner test launched its worker outside the
+engine and observed admission before the helper joined; it now uses engine
+ownership. Failure logs are retained rather than counted as successes.
+
+Core/mobile/CLI race tests and vet passed, including concurrent relay,
+protection failure, replay limits, corruption, nonce exhaustion and shutdown.
+Final combined regression, portable builds and clean package checks are recorded
+separately below. Remote workflow inspection is left to the owner as requested.
+Full report scope and varied-node Internet/OS host acceptance remain incomplete.
+
+The first full 181-case regression run failed one existing ShadowTLS v2 client
+case with enabled TLS backend tickets. Its current/previous-write challenge
+could advance past Finished before the client switched. Read-ahead alone and
+disabling unused resumption both failed and were reverted. The final correction
+authenticates and includes bounded residual records before the initial switch;
+see SHADOWTLS.md for the setup timing and remaining reference boundary. The
+expanded independent standalone/SIP003 v2 fixture passed 64 sessions each after
+this change. This is a production ShadowTLS correction; the original failure
+is retained separately from subsequent validation.
+
+Final combined wire validation passed: 181 tests run, 179 passed and the two
+existing optional cases skipped. Full core/mobile/CLI race tests and vet passed
+after the production correction; final timestamp/idle-expiry assertions also
+passed separately under the race detector. Eleven final executable cross-builds
+passed: Windows/Linux/macOS/FreeBSD/OpenBSD amd64 and arm64 plus Android arm64.
+The clean Windows shared/Wintun package and ABI result are recorded with the
+published source checkpoint. No remote workflow conclusion is inferred.
+
+## 0.5.12 extension
+
+Shadowsocks servers now implement all 35 existing cipher methods over native
+UDP, plus SS2022 TCP with fixed AES identity chains, optional verified TLS,
+bounded authentication/replay/session state and owner shutdown. SS2022 inside
+ShadowTLS supports TCP and explicit UOT v2 over both versions. Independent
+sing-box 1.14.3 tests transfer data in both directions and exercise identity
+chains; see [SHADOWSOCKS-SERVER.md](SHADOWSOCKS-SERVER.md).
+
+Authenticated UDP migration preserves the direct relay source socket and
+captures source metadata per queued request. Routed proxy cache entries include
+source IP and route tag, with explicit block rejection before reuse. Stopped
+relays keep their replay tombstone without refreshing it on rejected traffic.
+Queues, peer state and relay connections retain shared limits; disabling native
+UDP creates no UDP listener/workers.
+
+Initial TLS/transport fixture omissions and a random-padding corruption-offset
+panic were corrected in tests. Production fixes address rejection of the exact
+UOT virtual port-zero destination, repeated `table` permutation construction
+per UDP packet, and Windows automatic TCP/UDP port collisions. The table cache
+is lazy and per-codec; its pressure test keeps the original deadline and sizes.
+Automatic port selection retries at most eight candidates; explicit occupied
+ports still fail and roll back TCP. Failure logs and deterministic regressions
+are retained in the local acceptance record. These do not establish varied
+public-node Internet, Windows route/DNS recovery or mobile host acceptance.
+
+Final combined independent wire validation passed: 184 tests run, 182 passed
+and two existing optional cases skipped. Core/mobile/CLI race tests and vet
+passed after the final dual-bind correction. The same full suite retains the
+older protocol/cipher/carrier/client tests and Hysteria/SSH/WireGuard/AnyTLS/
+TUIC/ShadowTLS reference payloads. Targeted `table` pressure/concurrency and
+real-socket dual-bind recovery/ceiling/rollback checks passed separately.
+The owner requested immediate source publication and delegated remaining builds
+and package/ABI checks to the workflow. The owner subsequently clarified this
+means only final full builds: normal local race/wire checks continue. The local portable matrix was stopped;
+no completed 0.5.12 matrix or clean Windows package/ABI result is claimed.
+Previous 0.5.11 packages remain preserved. Workflow review remains with the
+owner, without waiting for or polling its result.
+
+## 0.5.13 extension
+
+VLESS Vision servers are implemented over native TLS 1.3. Flow/UUID/addon
+validation precedes forwarding; direct transitions preserve record boundaries
+and require observed inner TLS 1.3. Empty-flow UDP retains packet framing,
+and Vision listeners allow only UDP MUX subflows so TCP cannot bypass their
+flow requirement. No optional feature workers are added; see
+[VLESS-SERVER.md](VLESS-SERVER.md).
+
+Six targeted Go race tests passed real TCP/UDP and inner TLS payloads, owner
+loss, malformed addons, policy rejection, split direct transitions and
+half-close. Two independent official Xray 26.7.28 cases passed plain/inner-TLS/
+XUDP transfers and missing-flow rejection. The initial launcher omitted the
+tests module path and failed to import; it was corrected before the payload
+run. Full core/mobile/CLI race tests and vet subsequently passed.
+
+The workflow now installs hash-pinned Xray 26.7.28 reference executables into
+RUNNER_TEMP for actual wire tests, excluded from runtime packages. The Windows
+download/hash/executable-version path was checked locally. Final full matrix/
+package builds remain delegated to the workflow; local checks continue, with
+no waiting or polling of remote runs. Server REALITY, VLESS encryption and
+server carriers remain next work; broader report scope is still incomplete.
+
+Final combined independent wire validation passed: 186 tests run, 184 passed
+and two existing optional cases skipped. Core/mobile/CLI race tests passed in
+55.621 seconds and vet passed. The test-only pinned Windows Xray installer also
+passed archive hash and executable version verification. No local final full
+platform/package build or remote workflow conclusion is claimed.
+
+## 0.5.14 extension
+
+VLESS REALITY servers implement native TLS 1.3 authentication, TCP/UDP/MUX and
+optional Vision, listener-local bounded replay protection and one explicit
+protected fallback. Fragmented ClientHello records and extra bytes are retained
+unchanged. Exact target handshake/record mirroring, ML-DSA server signatures and
+wider upstream options remain pending; see [REALITY-SERVER.md](REALITY-SERVER.md).
+
+Initial browser handshakes failed because normal TLS declined the fixed
+Ed25519 signature required by REALITY. The authenticated native TLS adapter now
+sets the parsed signature-selection list, preserving original transcript bytes.
+The existing native REALITY client also lacked serialized hello bytes; it now
+serializes the same native hello before signing. Initial failures are retained
+separately. Seven client profiles passed with/without Vision, plus authentication,
+replay limits, fragmentation, fallback HTTPS bodies and owner/protection checks.
+Official Xray 26.7.28 passed plain and verified inner-TLS TCP plus XUDP, in both
+flow modes. Full core/mobile/CLI race tests passed in 59.178 seconds; vet passed.
+
+Final full platform/package builds remain delegated to the workflow. Normal
+local checks continue without waiting for or polling remote runs. Local payload
+acceptance does not establish complete camouflage, varied-node Internet or live
+Windows route/DNS recovery. VLESS encryption and server carriers are next.
+
+Final combined independent wire validation passed: 187 tests run, 185 passed
+and the two existing optional cases skipped, in 189.443 seconds. The full suite
+retains older client/carrier/cipher and newly added server payload coverage.
+No final local platform/package build or remote workflow result is claimed.
+
+## 0.5.15 extension
+
+VLESS hybrid encryption servers add the three existing wire modes, fixed
+X25519/ML-KEM-768 private-key chains, authenticated ephemeral exchange, AES-GCM/
+ChaCha negotiation, optional Vision and bounded 0-RTT tickets/replay state.
+Expired state is reclaimed lazily; no cache maintenance worker is created.
+Client/server records now run synchronously with lazy reusable direction-local
+buffers instead of two additional encryption workers and queues. Client ticket
+identities include their endpoint/security/name/path, isolating listeners that
+share keys. Vision direct transitions peel only VLESS AEAD, preserving the
+parent TLS/REALITY/carrier and full-random header masking. See
+[VLESS-ENCRYPTION-SERVER.md](VLESS-ENCRYPTION-SERVER.md).
+
+Targeted Go race checks passed modes, fixed chains, large atomic UDP, repeated/
+parallel transfers, verified inner TLS/Vision, listener ticket isolation,
+concurrent replay rejection, capacity/expiry, corrupt offers/records, protection
+and owner loss, cancellation, ChaCha resumption, nonce-boundary rekey and
+half-close. A fixture initially used a nonexistent hook field and failed to
+compile; it now supplies construction-time hooks. Failed evidence is retained.
+Official Xray 26.7.28 passed five configurations with plain/inner-TLS TCP and
+UDP/XUDP, static ML-KEM, 1/0-RTT, native TLS and Vision. Full core/mobile/CLI race
+checks passed in 60.098 seconds; vet passed. Combined wire results follow below.
+
+The first full 188-case wire run failed one wrapped encrypted-Vision inner-TLS
+case, and six standalone repetitions exposed a second full-random case. Normal
+TLS/data tests passed, but rejecting command 2 at this boundary intermittently
+stalled reference clients. The corrected layer-aware transition ends VLESS
+record encryption while retaining parent TLS/carriers and random header CTR.
+Six unchanged reference repetitions subsequently passed, alongside deterministic
+fragmented-header and layer-boundary race checks. The original failures are
+retained and are not counted as an all-pass regression result.
+
+Final full builds remain delegated to the workflow, without waiting or polling.
+Server carriers, stale-ticket connection retry and wider report options remain
+open; loopback acceptance does not establish varied public-node Internet or
+live Windows route/DNS recovery.
+
+Final combined independent wire validation passed: 188 tests run, 186 passed
+and two existing optional cases skipped, in 202.344 seconds. The hybrid fixture
+now also passes encryption with REALITY/Vision and verified inner TLS. Final
+core/mobile/CLI race checks passed in 66.893 seconds and vet passed after the
+layer-boundary correction. Only source is published; no final local platform/
+package build or remote workflow result is claimed.
+
+## 0.5.16 extension
+
+VLESS/VMess/Trojan/Shadowsocks TCP servers add optional WebSocket and HTTP
+Upgrade, with verified TLS, explicit bounded WS early data, path/host policy,
+preserved prefetched bytes and masked/unmasked frame roles. Existing workers,
+flow admission, routing and shutdown are reused; no HTTP pool/library or
+heartbeat worker is added. HTTP headers/frame/control/no-progress limits reject
+unbounded input before proxy forwarding. Encrypted Vision peels only its AEAD
+while retaining carrier/outer security; pure Vision and REALITY combinations
+with these carriers remain explicit limits. See [SERVER-CARRIERS.md](SERVER-CARRIERS.md).
+
+Targeted Go race checks passed four protocols/two carriers, repeated TCP,
+large atomic UDP-over-stream, TLS, early data/escaping/coalescing, fragmented
+mask/control frames, malformed settings/requests/limits, incomplete owner loss
+and native encrypted Vision with real inner TLS. SDK/encryption wrapper metadata
+now preserves negotiated TLS information. Initial test fixture credential fields
+and a missing metadata unwrap were corrected; failed runs remain recorded.
+Official Xray 26.7.28 passed both carrier matrices, plain/inner-TLS encrypted
+Vision and XUDP. Its Trojan first payload exceeded its fixed buffer before any
+header reached the project server. The fixture now authenticates a small first
+exchange before its unchanged large body/deadline checks; no core restriction
+or payload limit was weakened. Combined local results follow below.
+
+Further server carriers, wider listener options and report items remain open.
+Only final full builds are delegated to the workflow; local checks continue,
+without waiting or polling remote runs. No all-platform/public Internet or
+Windows host recovery acceptance is inferred.
+
+Final combined independent wire validation passed: 190 tests run, 188 passed
+and two existing optional cases skipped, in 223.859 seconds. Full core/mobile/
+CLI race checks passed in 65.527 seconds; vet passed. Native encrypted carrier
+inner-TLS/metadata cases and independent Xray matrices passed before that full
+run. No final local platform/package build or remote workflow result is claimed.

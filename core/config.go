@@ -231,6 +231,9 @@ func ParseURI(uri string) (Config, error) {
 	}
 	proto, body, ok := strings.Cut(uri, "://")
 	c.Protocol = strings.ToLower(proto)
+	if ok && (c.Protocol == "hysteria" || c.Protocol == "hysteria1") {
+		return parseHysteria1URI(uri)
+	}
 	if ok && c.Protocol == "shadowtls" {
 		return parseShadowTLSURI(uri)
 	}

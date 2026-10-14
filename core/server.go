@@ -8,7 +8,6 @@ import (
 	"errors"
 	"io"
 	"net"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -26,6 +25,8 @@ type ServerConfig struct {
 	KeyFile   string                 `json:"key_file,omitempty"`
 	Options   map[string]string      `json:"options,omitempty"`
 	WireGuard *WireGuardServerConfig `json:"wireguard,omitempty"`
+	Reality   *RealityServerConfig   `json:"reality,omitempty"`
+	Transport *ServerTransportConfig `json:"transport,omitempty"`
 }
 type serverSpec struct {
 	config       ServerConfig
@@ -33,9 +34,22 @@ type serverSpec struct {
 	passwordHash string
 	tls          *tls.Config
 	client       Config
+	vm           *vmServerAuth
+	ss           *ssServerState
+	vlessFlow    string
+	reality      *realityServerState
+	encryption   *vlessEncryptionServer
+	transport    *ServerTransportConfig
 }
 
 func compileServer(c ServerConfig) (serverSpec, error) {
+	transport, err := compileServerTransport(c)
+	if err != nil {
+		return serverSpec{}, err
+	}
+	if c.Reality != nil && c.Protocol != "vless" {
+		return serverSpec{}, errors.New("SERVER_OPTION_UNSUPPORTED")
+	}
 	if c.Protocol == "ssh" {
 		_, err := compileSSHServer(c)
 		return serverSpec{config: c}, err
@@ -43,14 +57,14 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 	if c.Protocol == "shadowtls" {
 		return compileShadowServer(c)
 	}
-	s := serverSpec{config: c, users: map[[16]byte]bool{}}
+	s := serverSpec{config: c, users: map[[16]byte]bool{}, transport: transport}
 	if c.Protocol == "wireguard" {
 		return s, validateWireServer(c)
 	}
 	if c.WireGuard != nil {
 		return s, errors.New("SERVER_OPTION_UNSUPPORTED")
 	}
-	if !contains([]string{"vless", "trojan", "ss", "hysteria2", "anytls", "tuic"}, c.Protocol) {
+	if !contains([]string{"vless", "vmess", "trojan", "ss", "hysteria", "hysteria2", "anytls", "tuic"}, c.Protocol) {
 		return s, errors.New("SERVER_PROTOCOL_UNSUPPORTED")
 	}
 	host, p, err := net.SplitHostPort(c.Listen)
@@ -60,7 +74,16 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 	if _, err = number(p, 0, 65535); err != nil {
 		return s, errors.New("SERVER_LISTEN_INVALID")
 	}
-	if c.CertFile != "" || c.KeyFile != "" {
+	if c.Reality != nil {
+		if c.CertFile != "" || c.KeyFile != "" {
+			return s, errors.New("REALITY_SERVER_CONFIGURATION")
+		}
+		s.reality, err = compileRealityServer(*c.Reality)
+		if err != nil {
+			return s, err
+		}
+		s.tls = &tls.Config{MinVersion: tls.VersionTLS13, MaxVersion: tls.VersionTLS13, SessionTicketsDisabled: true}
+	} else if c.CertFile != "" || c.KeyFile != "" {
 		pair, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
 		if err != nil {
 			return s, errors.New("SERVER_CERTIFICATE_INVALID")
@@ -69,6 +92,13 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 	}
 	if c.Protocol == "trojan" && s.tls == nil {
 		return s, errors.New("TROJAN_SERVER_TLS_REQUIRED")
+	}
+	if transport != nil && s.tls != nil {
+		s.tls.NextProtos = []string{"http/1.1"}
+	}
+	if c.Protocol == "vmess" {
+		s.vm, err = newVMServerAuth(c)
+		return s, err
 	}
 	if c.Protocol == "anytls" {
 		if s.tls == nil {
@@ -86,6 +116,14 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 			return s, err
 		}
 	}
+	if c.Protocol == "hysteria" {
+		if s.tls == nil {
+			return s, errors.New("HYSTERIA1_SERVER_TLS_REQUIRED")
+		}
+		if err := validateHysteria1Server(c); err != nil {
+			return s, err
+		}
+	}
 	if c.Protocol == "hysteria2" {
 		if s.tls == nil {
 			return s, errors.New("HYSTERIA_SERVER_TLS_REQUIRED")
@@ -93,10 +131,13 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 		if err := validateHysteriaServer(c); err != nil {
 			return s, err
 		}
-	} else if c.Protocol != "anytls" && c.Protocol != "tuic" && len(c.Options) > 0 {
+	} else if c.Protocol != "hysteria" && c.Protocol != "anytls" && c.Protocol != "tuic" && c.Protocol != "ss" && c.Protocol != "vless" && len(c.Options) > 0 {
 		return s, errors.New("SERVER_OPTION_UNSUPPORTED")
 	}
 	if c.Protocol == "vless" {
+		if err = compileVLESSServer(&s); err != nil {
+			return s, err
+		}
 		if len(c.UUIDs) == 0 || len(c.UUIDs) > 128 {
 			return s, errors.New("SERVER_USERS_INVALID")
 		}
@@ -115,11 +156,15 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 		s.passwordHash = hex.EncodeToString(h[:])
 	}
 	if c.Protocol == "ss" {
-		if !contains(ssMethods, c.Cipher) || strings.HasPrefix(c.Cipher, "2022-") {
+		if !contains(ssMethods, c.Cipher) {
 			return s, errors.New("SERVER_SS_METHOD_UNSUPPORTED")
 		}
 		s.client = defaults()
 		s.client.Protocol, s.client.Security, s.client.Transport, s.client.Password, s.client.Cipher = "ss", "none", "raw", c.Password, c.Cipher
+		s.ss, err = newSSServerState(s.client, c.Options)
+		if err != nil {
+			return s, err
+		}
 	}
 	return s, nil
 }
@@ -137,6 +182,9 @@ func (e *Engine) StartServer(c ServerConfig) (net.Addr, error) {
 	if c.Protocol == "ssh" {
 		return e.startSSHServer(c)
 	}
+	if c.Protocol == "hysteria" {
+		return e.startHy1Server(s)
+	}
 	if c.Protocol == "hysteria2" {
 		return e.startHysteriaServer(s)
 	}
@@ -149,15 +197,25 @@ func (e *Engine) StartServer(c ServerConfig) (net.Addr, error) {
 	if c.Protocol == "tuic" {
 		return e.startTUICServer(s)
 	}
-	l, err := net.Listen("tcp", c.Listen)
+	var l net.Listener
+	var datagrams *ssUDPServer
+	if s.ss != nil && s.ss.udp {
+		l, datagrams, err = e.listenSSServer(s.ss, c.Listen, net.Listen)
+	} else {
+		l, err = net.Listen("tcp", c.Listen)
+		if err == nil && !e.track(l) {
+			err = net.ErrClosed
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
-	if !e.track(l) {
-		return nil, net.ErrClosed
-	}
 	if !e.spawn(func() {
 		defer l.Close()
+		defer e.untrack(l)
+		if datagrams != nil {
+			defer datagrams.stop()
+		}
 		for {
 			raw, err := l.Accept()
 			if err != nil {
@@ -176,14 +234,42 @@ func (e *Engine) StartServer(c ServerConfig) (net.Addr, error) {
 				defer e.untrack(raw)
 				defer raw.Close()
 				e.accepted.Add(1)
-				raw.SetDeadline(time.Now().Add(e.config.ConnectTimeout))
+				deadline := time.Now().Add(e.config.ConnectTimeout)
+				raw.SetDeadline(deadline)
 				conn := raw
-				if s.tls != nil {
-					secure := tls.Server(raw, s.tls)
+				if s.reality != nil {
+					secured, handshakeErr := e.acceptReality(raw, s)
+					if handshakeErr != nil {
+						return
+					}
+					conn = secured
+				} else if s.tls != nil {
+					bounded := net.Conn(raw)
+					if s.vlessFlow != "" {
+						bounded = &recordBoundedConn{Conn: raw}
+					}
+					secure := tls.Server(bounded, s.tls)
 					if secure.HandshakeContext(e.ctx) != nil {
 						return
 					}
 					conn = secure
+					if s.vlessFlow != "" {
+						conn = &directConn{Conn: secure, raw: raw}
+					}
+				}
+				if s.transport != nil {
+					upgraded, handshakeErr := acceptServerUpgrade(conn, s.transport)
+					if handshakeErr != nil {
+						return
+					}
+					conn = upgraded
+				}
+				if s.encryption != nil {
+					encrypted, handshakeErr := s.encryption.handshake(e.ctx, conn, deadline)
+					if handshakeErr != nil {
+						return
+					}
+					conn = encrypted
 				}
 				e.serveServer(conn, s)
 			}) {
@@ -194,6 +280,10 @@ func (e *Engine) StartServer(c ServerConfig) (net.Addr, error) {
 		}
 	}) {
 		l.Close()
+		e.untrack(l)
+		if datagrams != nil {
+			datagrams.stop()
+		}
 		return nil, net.ErrClosed
 	}
 	e.emit(Event{Event: "ready"})
@@ -279,26 +369,12 @@ func (e *Engine) serveServer(raw net.Conn, s serverSpec) {
 	var address []byte
 	var err error
 	udp := false
+	mux := false
 	switch s.config.Protocol {
+	case "vmess":
+		client, address, udp, err = vmServerHeader(raw, s.vm)
 	case "vless":
-		var header [18]byte
-		if _, err = io.ReadFull(raw, header[:]); err != nil {
-			return
-		}
-		var id [16]byte
-		copy(id[:], header[1:17])
-		if header[0] != 0 || !s.users[id] || header[17] != 0 {
-			return
-		}
-		var command [1]byte
-		if _, err = io.ReadFull(raw, command[:]); err != nil {
-			return
-		}
-		if command[0] != 1 && command[0] != 2 {
-			return
-		}
-		udp = command[0] == 2
-		address, err = mappedServerAddress(raw)
+		client, address, udp, mux, err = vlessServerHeader(raw, s)
 	case "trojan":
 		var header [59]byte
 		if _, err = io.ReadFull(raw, header[:]); err != nil {
@@ -317,9 +393,23 @@ func (e *Engine) serveServer(raw net.Conn, s serverSpec) {
 			}
 		}
 	case "ss":
-		client, address, err = serverSSConn(raw, s.client)
+		if s.ss.codec.modern {
+			client, address, err = ss2022ServerConn(raw, s.ss)
+		} else {
+			client, address, err = serverSSConn(raw, s.client)
+		}
 	}
 	if err != nil {
+		return
+	}
+	if vm, ok := client.(*vmServerConn); ok {
+		mux = vm.mux
+	}
+	if mux {
+		if s.config.Protocol == "vless" && writeAll(raw, []byte{0, 0}) != nil {
+			return
+		}
+		e.serveMuxPolicy(client, s.vlessFlow != "")
 		return
 	}
 	host, port, err := decodeAddress(address)
@@ -331,7 +421,7 @@ func (e *Engine) serveServer(raw net.Conn, s serverSpec) {
 		if s.config.Protocol == "vless" && writeAll(raw, []byte{0, 0}) != nil {
 			return
 		}
-		packets := &streamPackets{Conn: client, address: address, trojan: s.config.Protocol == "trojan"}
+		packets := &streamPackets{Conn: client, address: address, trojan: s.config.Protocol == "trojan", vmess: s.config.Protocol == "vmess"}
 		e.serveServerPackets(ctx, packets)
 		return
 	}

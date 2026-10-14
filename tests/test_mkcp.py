@@ -1,4 +1,5 @@
 """Independent UDP mKCP codec/ARQ fixture relaying to the crypto oracle."""
+import select
 import concurrent.futures,hashlib,hmac,os,random,socket,struct,threading,time,unittest
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 import test_expanded as old
@@ -17,7 +18,12 @@ def disable_udp_reset(sock):
 class KCPPeer:
     def __init__(self,crypto,seed=None,loss=False,mtu=900,header='none'):
         self.header=header;self.header_size={'none':0,'srtp':4,'utp':4,'wireguard':4,'dtls':13,'wechat-video':13,'dns':33}[header]
-        self.crypto=crypto;self.seed=seed;self.loss=loss;self.mtu=mtu;self.errors=[];self.dropped=0;self.retransmitted=0;self.socket=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);self.socket.bind(('127.0.0.1',0));disable_udp_reset(self.socket);self.socket.settimeout(.01);self.port=self.socket.getsockname()[1];self.stop=threading.Event();self.sessions={};self.thread=threading.Thread(target=self.run,daemon=True);self.thread.start()
+        self.crypto=crypto;self.seed=seed;self.loss=loss;self.mtu=mtu;self.errors=[];self.dropped=0;self.retransmitted=0;self.socket=socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+        # One fixture socket multiplexes eight 64-segment flights and ACKs.
+        # Keep its receive space bounded but large enough for that aggregate;
+        # intentional first-send loss/reordering/duplicate ACKs stay unchanged.
+        self.socket.setsockopt(socket.SOL_SOCKET,socket.SO_RCVBUF,1024*1024)
+        self.socket.bind(('127.0.0.1',0));disable_udp_reset(self.socket);self.socket.settimeout(.01);self.port=self.socket.getsockname()[1];self.stop=threading.Event();self.sessions={};self.thread=threading.Thread(target=self.run,daemon=True);self.thread.start()
     def seal(self,data):
         prefix={'none':b'','srtp':b'\xb5\xe8\x00\x01','utp':b'\x12\x34\x01\x00','wireguard':b'\x04\x00\x00\x00',
                 'dtls':b'\x17\xfe\xfd'+bytes(10),'wechat-video':b'\xa1\x08'+bytes(4)+b'\x00\x10\x11\x18\x30\x22\x30',
@@ -56,32 +62,39 @@ class KCPPeer:
         try:
             while not self.stop.is_set():
                 try:
-                    wire,address=self.socket.recvfrom(65536)
-                    try:data=self.open(wire)
-                    except Exception:continue
-                    if len(data)<4:continue
-                    conv,cmd,opt=struct.unpack('!HBB',data[:4]);data=data[4:];key=(address,conv)
-                    if key not in self.sessions:
-                        tcp=socket.create_connection(('127.0.0.1',self.crypto.port),5);tcp.settimeout(15)
-                        s=dict(conv=conv,address=address,tcp=tcp,next=0,send=0,remote_window=64,received={},pending={},lock=threading.Lock(),dropped=set(),ended=False,closed=False);self.sessions[key]=s;threading.Thread(target=self.target,args=(s,),daemon=True).start()
-                    s=self.sessions[key]
-                    if cmd==1:
-                        timestamp,number,first,size=struct.unpack('!IIIH',data[:14]);payload=data[14:14+size]
-                        if len(payload)!=size:raise ValueError('data length')
-                        if self.loss and number%7==2 and number not in s['dropped']:s['dropped'].add(number);self.dropped+=1;continue
-                        if number>=s['next']:s['received'].setdefault(number,payload)
-                        while s['next'] in s['received']:s['tcp'].sendall(s['received'].pop(s['next']));s['next']+=1
-                        self.send(s,0,struct.pack('!IIIBI',s['next']+128,s['next'],timestamp,1,number))
-                        if self.loss and number%5==1:self.send(s,0,struct.pack('!IIIBI',s['next']+128,s['next'],timestamp,1,number))
-                    elif cmd==0:
-                        window,nextnum,timestamp,count=struct.unpack('!IIIB',data[:13]);acked=set(struct.unpack('!'+str(count)+'I',data[13:13+count*4])) if count else set()
-                        with s['lock']:
-                            s['remote_window']=max(s['remote_window'],window)
-                            for n in list(s['pending']):
-                                if n<nextnum or n in acked:del s['pending'][n]
-                    elif cmd in (2,3) and opt&1 and not s['closed']:
-                        first,received,rto=struct.unpack('!III',data[:12])
-                        if first<=s['next']:s['tcp'].shutdown(socket.SHUT_WR);s['closed']=True
+                    incoming=[self.socket.recvfrom(65536)]
+                    # Drain a bounded batch before sending another aggregate
+                    # flight. Sending after each single ACK can create a stale
+                    # ACK/retransmission backlog with eight simultaneous peers.
+                    for _ in range(255):
+                        if not select.select([self.socket],[],[],0)[0]:break
+                        incoming.append(self.socket.recvfrom(65536))
+                    for wire,address in incoming:
+                        try:data=self.open(wire)
+                        except Exception:continue
+                        if len(data)<4:continue
+                        conv,cmd,opt=struct.unpack('!HBB',data[:4]);data=data[4:];key=(address,conv)
+                        if key not in self.sessions:
+                            tcp=socket.create_connection(('127.0.0.1',self.crypto.port),5);tcp.settimeout(15)
+                            s=dict(conv=conv,address=address,tcp=tcp,next=0,send=0,remote_window=64,received={},pending={},lock=threading.Lock(),dropped=set(),ended=False,closed=False);self.sessions[key]=s;threading.Thread(target=self.target,args=(s,),daemon=True).start()
+                        s=self.sessions[key]
+                        if cmd==1:
+                            timestamp,number,first,size=struct.unpack('!IIIH',data[:14]);payload=data[14:14+size]
+                            if len(payload)!=size:raise ValueError('data length')
+                            if self.loss and number%7==2 and number not in s['dropped']:s['dropped'].add(number);self.dropped+=1;continue
+                            if number>=s['next']:s['received'].setdefault(number,payload)
+                            while s['next'] in s['received']:s['tcp'].sendall(s['received'].pop(s['next']));s['next']+=1
+                            self.send(s,0,struct.pack('!IIIBI',s['next']+128,s['next'],timestamp,1,number))
+                            if self.loss and number%5==1:self.send(s,0,struct.pack('!IIIBI',s['next']+128,s['next'],timestamp,1,number))
+                        elif cmd==0:
+                            window,nextnum,timestamp,count=struct.unpack('!IIIB',data[:13]);acked=set(struct.unpack('!'+str(count)+'I',data[13:13+count*4])) if count else set()
+                            with s['lock']:
+                                s['remote_window']=max(s['remote_window'],window)
+                                for n in list(s['pending']):
+                                    if n<nextnum or n in acked:del s['pending'][n]
+                        elif cmd in (2,3) and opt&1 and not s['closed']:
+                            first,received,rto=struct.unpack('!III',data[:12])
+                            if first<=s['next']:s['tcp'].shutdown(socket.SHUT_WR);s['closed']=True
                 except socket.timeout:pass
                 for s in list(self.sessions.values()):
                     with s['lock']:

@@ -110,6 +110,7 @@ type wsConn struct {
 	writeMu          sync.Mutex
 	pending          []byte
 	fragment, closed bool
+	server           bool
 }
 
 func wsFrame(op byte, b []byte) []byte {
@@ -134,6 +135,19 @@ func wsFrame(op byte, b []byte) []byte {
 func (c *wsConn) control(op byte, b []byte) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
+	if c.server {
+		header := []byte{128 | op}
+		if len(b) < 126 {
+			header = append(header, byte(len(b)))
+		} else if len(b) <= 65535 {
+			header = append(header, 126)
+			header = append(header, word(len(b))...)
+		} else {
+			header = append(header, 127)
+			header = append(header, wide(uint64(len(b)))...)
+		}
+		return writeAll(c.Conn, join(header, b))
+	}
 	return writeAll(c.Conn, wsFrame(op, b))
 }
 func (c *wsConn) Write(b []byte) (int, error) {
@@ -144,6 +158,11 @@ func (c *wsConn) Write(b []byte) (int, error) {
 }
 func (c *wsConn) CloseWrite() error { return c.control(8, []byte{3, 232}) }
 func (c *wsConn) Read(b []byte) (int, error) {
+	if len(b) == 0 {
+		return 0, nil
+	}
+	controls := 0
+	frames := 0
 	for len(c.pending) == 0 {
 		if c.closed {
 			return 0, io.EOF
@@ -153,7 +172,7 @@ func (c *wsConn) Read(b []byte) (int, error) {
 			return 0, e
 		}
 		fin, op := h[0]&128 != 0, h[0]&15
-		if h[0]&0x70 != 0 || h[1]&128 != 0 {
+		if h[0]&0x70 != 0 || (h[1]&128 != 0) != c.server {
 			return 0, errors.New("WEBSOCKET_FLAGS")
 		}
 		n := uint64(h[1] & 127)
@@ -179,9 +198,32 @@ func (c *wsConn) Read(b []byte) (int, error) {
 		if n > 524288 || op >= 8 && (!fin || n > 125) {
 			return 0, errors.New("WEBSOCKET_FRAME_LIMIT")
 		}
+		if c.server {
+			frames++
+			if frames > 64 {
+				return 0, errors.New("WEBSOCKET_EMPTY_FRAME_LIMIT")
+			}
+		}
+		var mask [4]byte
+		if c.server {
+			if _, e := io.ReadFull(c.r, mask[:]); e != nil {
+				return 0, e
+			}
+		}
 		payload := make([]byte, n)
 		if _, e := io.ReadFull(c.r, payload); e != nil {
 			return 0, e
+		}
+		if c.server {
+			for i := range payload {
+				payload[i] ^= mask[i%4]
+			}
+		}
+		if c.server && op >= 8 {
+			controls++
+			if controls > 32 {
+				return 0, errors.New("WEBSOCKET_CONTROL_LIMIT")
+			}
 		}
 		switch op {
 		case 8:
@@ -717,6 +759,9 @@ func Dial(ctx context.Context, c Config, host string, port int) (net.Conn, error
 	}
 	if c.Protocol == "anytls" {
 		return dialAnyTLS(ctx, c, host, port)
+	}
+	if c.Protocol == "hysteria" {
+		return dialHy1(ctx, c, host, port)
 	}
 	if c.Protocol == "hysteria2" {
 		return dialHysteria(ctx, c, host, port)

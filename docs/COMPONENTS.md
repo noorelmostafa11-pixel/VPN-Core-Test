@@ -20,3 +20,8 @@ TUIC v5 uses the existing quic-go transport and a project-authored wire layer;
 see [TUIC.md](TUIC.md). ShadowTLS v2/v3 follows the MIT ihciah design, with its
 notice preserved in third_party and binary license snapshots; see
 [SHADOWTLS.md](SHADOWTLS.md). Neither links or launches a separate proxy engine.
+
+Hysteria 1 has a project-authored v3 wire/xplus layer over the same pinned MIT
+QUIC fork and Brutal controller. Two checksummed additive interfaces expose the
+controller and context-aware datagram queue admission without importing another
+engine or an obsolete QUIC stack; see [HYSTERIA1.md](HYSTERIA1.md).

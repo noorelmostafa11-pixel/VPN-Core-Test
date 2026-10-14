@@ -16,6 +16,8 @@ func connectionMeta(c net.Conn) (string, string) {
 		return v, s.NegotiatedProtocol
 	case *protocolConn:
 		return connectionMeta(c.Conn)
+	case *ownedConn:
+		return connectionMeta(c.Conn)
 	case *codecConn:
 		return connectionMeta(c.Conn)
 	case *wsConn:
@@ -25,6 +27,10 @@ func connectionMeta(c net.Conn) (string, string) {
 	case *rawHTTPConn:
 		return connectionMeta(c.Conn)
 	case *directConn:
+		return connectionMeta(c.Conn)
+	case *vlessEncryptionConn:
+		return connectionMeta(c.Conn)
+	case *encryptionDirectConn:
 		return connectionMeta(c.Conn)
 	case *legacyXTLS:
 		return connectionMeta(c.tls)

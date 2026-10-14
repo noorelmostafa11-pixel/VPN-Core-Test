@@ -1,4 +1,4 @@
-# vpn-core 0.5.9-go
+# vpn-core 0.5.16-go
 
 A public, general-purpose Go networking core for VPN and proxy applications,
 available to desktop and mobile users and developers. It provides a standalone
@@ -10,8 +10,36 @@ defined in [VERSION](VERSION); published downloads are listed separately under
 [Releases](https://github.com/noorelmostafa11-pixel/VPN-Core-Test/releases).
 The executable and SDK use the same engine and protocol implementations.
 
-## What's new in the current main
+## What's new in this source revision
 
+- **Protocol server carriers:** WebSocket/early data and HTTP Upgrade for
+  VLESS, VMess, Trojan and Shadowsocks TCP, including encrypted Vision;
+  [scope and acceptance](docs/SERVER-CARRIERS.md).
+- **VLESS hybrid encryption servers:** ML-KEM-768/X25519, three wire modes,
+  bounded tickets/replay state and optional Vision. Client/server record streams
+  reuse lazy buffers and run without extra encryption workers;
+  [implementation/acceptance](docs/VLESS-ENCRYPTION-SERVER.md).
+- **VLESS REALITY servers:** authenticated TLS 1.3, bounded replay/identity
+  state and protected configured fallback, with optional Vision;
+  [scope and remaining camouflage options](docs/REALITY-SERVER.md).
+- **VLESS Vision servers:** native TLS 1.3, authenticated flow policy, padded
+  TCP and guarded direct transitions, UDP-over-TCP and UDP-only MUX/XUDP;
+  [implementation/acceptance](docs/VLESS-SERVER.md).
+- **Shadowsocks servers:** all 35 existing cipher methods now support native
+  UDP; SS2022 adds TCP, identity chains, replay protection and bounded sessions;
+  [implementation/acceptance](docs/SHADOWSOCKS-SERVER.md).
+- **SS2022 inside ShadowTLS:** embedded TCP and UOT v2 for all three modern
+  ciphers, including independent client/server payload tests.
+- **VMess servers:** AEAD and opt-in legacy authentication, TCP/UDP, verified
+  TLS, chunk masking/padding and authenticated lengths;
+  [implementation/acceptance](docs/VMESS-SERVER.md).
+- **VMess/VLESS MUX servers:** concurrent TCP sessions and XUDP destination
+  framing with bounded queues, shared flow limits and protected routing;
+  [scope](docs/MUX-SERVER.md).
+- **ShadowTLS v2 connection handling:** authenticated TLS residual records are
+  included before switching to proxy data; [timing and limits](docs/SHADOWTLS.md).
+- **Hysteria 1 clients and servers:** v3 TCP/UDP, xplus, verified TLS and
+  bounded connection reuse; [implementation/acceptance](docs/HYSTERIA1.md).
 - **HTTPS health selection:** optional `url_test` groups verify the HTTPS
   certificate, status and response body, then select the fastest verified
   outbound. Large catalogs are scanned gradually with bounded concurrency.
@@ -34,7 +62,7 @@ Implementation boundaries and validation records are maintained in the
 
 | Area | Current scope |
 | --- | --- |
-| Protocol clients | VLESS, VMess, Trojan, Shadowsocks, Hysteria 2, WireGuard, AnyTLS, TUIC v5, ShadowTLS v2/v3, SSH, HTTP/HTTPS and SOCKS4/4a/5 proxies |
+| Protocol clients | VLESS, VMess, Trojan, Shadowsocks, Hysteria 1/2, WireGuard, AnyTLS, TUIC v5, ShadowTLS v2/v3, SSH, HTTP/HTTPS and SOCKS4/4a/5 proxies |
 | Transports | TCP, WebSocket/early data, HTTP Upgrade, gRPC, HTTP/2/h2c, XHTTP, HTTP/3, QUIC, mKCP, HTTP disguise, simple-obfs and v2ray-plugin |
 | Security | TLS 1.2/1.3, supported uTLS fingerprints, ECH on supported paths, REALITY, Vision, VLESS encryption, certificate names/pins/custom roots and FinalMask fragmentation |
 | Local interfaces | SOCKS5 TCP/UDP, HTTP and mixed HTTP/SOCKS listeners, native TUN for IPv4/IPv6 TCP/UDP |
@@ -42,7 +70,7 @@ Implementation boundaries and validation records are maintained in the
 | Control | Routing/DNS updates, selectors, HTTPS health checks, statistics and redacted diagnostic events |
 
 Options and server support vary by protocol; the table is not a claim of full
-Xray/sing-box feature parity. Hysteria 1, VMess servers, general multiplexing,
+Xray/sing-box feature parity. General outbound multiplexing,
 GeoIP/geosite loaders, Redirect/TProxy and several additional protocols remain
 pending. See the [core guide](docs/GO-NATIVE-CORE.md) for the implemented scope.
 
@@ -137,7 +165,7 @@ build, and select **Set as latest release**. See the
 - [Core, TUN, SDK and build guide](docs/GO-NATIVE-CORE.md)
 - [Capability register and remaining work](docs/FULL-SUPPORT-IMPLEMENTATION.md)
 - [HTTPS health selection](docs/URL-TESTING.md)
-- Protocol guides: [Hysteria 2](docs/HYSTERIA2.md),
+- Protocol guides: [Hysteria 1](docs/HYSTERIA1.md), [Hysteria 2](docs/HYSTERIA2.md),
   [WireGuard](docs/WIREGUARD.md), [AnyTLS](docs/ANYTLS.md),
   [TUIC v5](docs/TUIC.md), [ShadowTLS](docs/SHADOWTLS.md) and [SSH](docs/SSH.md)
 - [Components and upstream provenance](docs/COMPONENTS.md)

@@ -33,6 +33,17 @@ data. The checksummed uTLS component adds a bounded AEAD-only residual-record
 primitive; unsuccessful verification does not advance the TLS sequence or emit
 a TLS alert. V2 supports TLS 1.2/1.3 as allowed by the handshake backend.
 
+Since 0.5.11, the v2 client also consumes authenticated TLS 1.3 residual records
+before sending its switch challenge. Some independent servers retain only their
+current and previous TCP-write digests; two post-Finished ticket writes can
+otherwise evict the digest the client used. A bounded 32 KiB reader preserves
+read-ahead, with at most eight authenticated residual records. The quiet window
+is twice the observed TCP/TLS setup duration, bounded to 5-250 ms and still
+subject to the overall connection deadline. No application payload is retried.
+This introduces a small v2-only setup wait; other protocol paths are unchanged.
+Certificate checks and the configured ClientHello fingerprint are retained.
+Authentication, partial records and record-limit failures abort before payload.
+
 V3 signs ClientHello's 32-byte session ID, authenticates the handshake server
 using ServerRandom, and verifies direction-specific chained tags on every data
 record. Record separation is included in the chain, rejecting tampering,
@@ -68,8 +79,10 @@ Embedded server example:
 The handshake backend provides its actual TLS certificate; the core does not
 generate a substitute. Its socket is protected and the handshake has a deadline.
 Unauthenticated traffic remains a bounded TCP relay to that fixed backend.
-The embedded payload server currently supports legacy and AEAD2017 Shadowsocks
-TCP methods. SS2022 embedded servers remain pending. Alternatively configure
+The embedded payload server supports legacy, AEAD2017 and SS2022 Shadowsocks
+TCP methods, with optional UOT v2 UDP. SS2022 uses the shared authenticated
+header/body and bounded replay implementation; see [SHADOWSOCKS-SERVER.md](SHADOWSOCKS-SERVER.md).
+Alternatively configure
 `options.data-server` as an explicit external data backend and omit `cipher`,
 `ss-password` and `uot`; that relay can carry another backend protocol without
 pretending the core implements that backend's server.
@@ -95,6 +108,30 @@ tickets enabled. This observed interoperability boundary is retained, not
 counted as an unconditional v2 all-options pass. Independent Windows UDP tests
 use payloads through 3,800 bytes, separately from the Go 60 KiB tests.
 
+The 0.5.11 combined suite exposed a further v2 client failure with enabled backend
+tickets after five successful sessions. Increasing read-ahead alone failed, as
+did disabling advertised resumption (the backend still emitted tickets). Both
+attempts were reverted. After the authenticated pre-switch drain, the expanded
+independent fixture passed 64 sequential connections for both standalone and
+SIP003 v2 clients with the backend tickets still enabled. Deterministic Go tests
+cover coalesced/delayed records, no-ticket peers, authentication rejection,
+partial records and the eight-record ceiling. Initial failures remain recorded.
+The reference v2 client's server-direction ticket limitation described above
+remains separate. Backends delaying tickets beyond the bounded quiet window
+still require wider acceptance; this is not an all-options compatibility claim.
+
+Reference digest behavior:
+[sing-shadowtls v2 hash state](https://github.com/SagerNet/sing-shadowtls/blob/a9c0127d5c99/v2_hash.go).
+
 Run `test_shadowtls_reference.ShadowTLSReferenceTests` with
 `VPN_CORE_REFERENCE_SINGBOX` pointing to the official executable. These are
 local payload results; public-node and Windows route/DNS acceptance are separate.
+
+The 0.5.12 independent fixture also transfers TCP/UOT UDP in all three SS2022
+ciphers, v2/v3 and both directions, plus standalone/SIP003 client configuration.
+The initial modern server-direction UDP cases failed because the shared header
+parser rejected UOT's virtual port-zero destination before the ShadowTLS handler
+could process it. The parser now permits that exact virtual destination; actual
+forwarding still requires `uot=2`. Generic port-zero targets remain invalid.
+The corrected reference run and deterministic header regression passed; the
+initial six failures remain in local evidence.
