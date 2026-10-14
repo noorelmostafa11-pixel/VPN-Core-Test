@@ -476,6 +476,9 @@ func DialPacket(ctx context.Context, c Config, host string, port int) (PacketStr
 	if c.Protocol == "anytls" {
 		return dialAnyTLSPacket(ctx, c, host, port)
 	}
+	if c.Protocol == "hysteria" {
+		return dialHy1Packet(ctx, c, host, port)
+	}
 	if c.Protocol == "hysteria2" {
 		return dialHysteriaPacket(ctx, c, host, port)
 	}

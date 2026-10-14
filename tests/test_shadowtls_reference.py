@@ -61,7 +61,12 @@ class ShadowTLSReferenceTests(unittest.TestCase):
                     while True:
                         if any(p.poll() is not None for p in processes):self.fail('ShadowTLS process stopped before readiness')
                         try:
-                            with socket.create_connection(('127.0.0.1',socks),.2):break
+                            # The project SOCKS listener starts before its remote
+                            # reference server. Check both endpoints before the
+                            # first payload; do not retry delivered application data.
+                            for ready_port in (socks,server):
+                                with socket.create_connection(('127.0.0.1',ready_port),.2):pass
+                            break
                         except OSError:
                             if time.monotonic()>deadline:self.fail('ShadowTLS readiness timeout')
                             time.sleep(.03)

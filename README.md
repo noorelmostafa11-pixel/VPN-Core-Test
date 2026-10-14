@@ -1,25 +1,63 @@
-# vpn-core 0.5.6 — Go
+# vpn-core 0.5.10-go
 
-فرع Go مستقل مبني من `main` عند
-`90a1853114de3e4bcb3deed6747801c10bc5b370`. الكور ينفذ VLESS وVMess وTrojan
-وShadowsocks داخل Go، مع وسائل النقل والتشفير والبصمات التي يدعمها main.
-أضيف عميل وخادم Hysteria 2 بمكوّن البروتوكول الرسمي المرخص داخل نفس العملية،
-واتصالات SSH خارجية مع تثبيت هوية الخادم. تفاصيل التغطية والاختبارات وحدود
-الإضافات في [سجل التنفيذ](docs/FULL-SUPPORT-IMPLEMENTATION.md).
-يدعم أيضًا عميل وخادم WireGuard، مع ربط الخادم مباشرة بمسار الحزم داخل الكور.
-وأضيف عميل وخادم AnyTLS وتنفيذ UDP-over-TCP، مع إعادة استخدام الجلسات وحدود للذاكرة.
-يعمل كملف واحد، ويحتوي مسار TUN أصلي لـTCP/UDP وIPv4/IPv6. تنفيذ البروتوكولات
-خاص بالمشروع للبروتوكولات الأصلية، مع مكونات Hysteria وSSH وTLS/QUIC والتشفير
-وgVisor والتعريفات المرخصة محفوظة.
+A public, general-purpose Go networking core for VPN and proxy applications,
+available to desktop and mobile users and developers. It provides a standalone
+executable, native TUN packet forwarding, protocol clients and selected servers,
+and APIs for application integration.
 
-البناء والتشغيل:
+The current `main` branch contains the Go implementation. The source version is
+defined in [VERSION](VERSION); published downloads are listed separately under
+[Releases](https://github.com/noorelmostafa11-pixel/VPN-Core-Test/releases).
+The executable and SDK use the same engine and protocol implementations.
+
+## What's new in this source revision
+
+- **Hysteria 1 clients and servers:** v3 TCP/UDP, xplus, verified TLS and
+  bounded connection reuse; [implementation/acceptance](docs/HYSTERIA1.md).
+- **HTTPS health selection:** optional `url_test` groups verify the HTTPS
+  certificate, status and response body, then select the fastest verified
+  outbound. Large catalogs are scanned gradually with bounded concurrency.
+- **SSH forwarding servers:** password or authorized public-key authentication,
+  explicit server host keys, shared channel limits and protected routing.
+- **TUIC v5 clients and servers:** authenticated TCP, native/QUIC UDP relay,
+  fragmentation and bounded connection reuse.
+- **ShadowTLS v2/v3 clients and servers:** Shadowsocks payloads, strict v3
+  integrity checks and optional UOT v2 UDP inside the authenticated TCP stream.
+- **AnyTLS, WireGuard and Hysteria 2:** client/server implementations with
+  protocol-specific TCP/UDP support and lifecycle limits.
+- **Optional routing and DNS policies:** multiple outbounds, selection,
+  connection-establishment failover, domain/IP/port rules, DNS policies,
+  bounded FakeIP mappings and authenticated local management.
+
+Implementation boundaries and validation records are maintained in the
+[capability register](docs/FULL-SUPPORT-IMPLEMENTATION.md).
+
+## Capabilities
+
+| Area | Current scope |
+| --- | --- |
+| Protocol clients | VLESS, VMess, Trojan, Shadowsocks, Hysteria 1/2, WireGuard, AnyTLS, TUIC v5, ShadowTLS v2/v3, SSH, HTTP/HTTPS and SOCKS4/4a/5 proxies |
+| Transports | TCP, WebSocket/early data, HTTP Upgrade, gRPC, HTTP/2/h2c, XHTTP, HTTP/3, QUIC, mKCP, HTTP disguise, simple-obfs and v2ray-plugin |
+| Security | TLS 1.2/1.3, supported uTLS fingerprints, ECH on supported paths, REALITY, Vision, VLESS encryption, certificate names/pins/custom roots and FinalMask fragmentation |
+| Local interfaces | SOCKS5 TCP/UDP, HTTP and mixed HTTP/SOCKS listeners, native TUN for IPv4/IPv6 TCP/UDP |
+| Integration | Go SDK, optional C ABI 2 shared library, Android AAR and Android/iOS packet interfaces |
+| Control | Routing/DNS updates, selectors, HTTPS health checks, statistics and redacted diagnostic events |
+
+Options and server support vary by protocol; the table is not a claim of full
+Xray/sing-box feature parity. VMess servers, general multiplexing,
+GeoIP/geosite loaders, Redirect/TProxy and several additional protocols remain
+pending. See the [core guide](docs/GO-NATIVE-CORE.md) for the implemented scope.
+
+## Build and run
+
+Go 1.27 or newer is required; GitHub CI pins Go 1.27.1 and Python 3.12.
 
 ```text
 python scripts/Build-Go.py --target windows --arch amd64 --wintun
 build/windows-amd64/vpn-core.exe --config node.ini
 ```
 
-صيغة `node.ini` السابقة محفوظة:
+The existing single-node configuration format is supported:
 
 ```ini
 node_uri=vless://12345678-1234-4567-9234-567812345678@example.test:443?security=tls&type=tcp
@@ -29,39 +67,87 @@ idle_timeout_ms=60000
 max_connections=128
 ```
 
-الناتج الافتراضي برنامج Go واحد. `--shared` يبني مكتبة Go اختيارية تحافظ على
-C ABI 2 لدمج التطبيقات. لا يحتاج التشغيل إلى `vpn-tls.dll` أو محرك C++.
+Replace the example URI with your own server configuration. The listener starts
+on loopback. Routing JSON profiles use the same `--config` option; examples are
+in the [core guide](docs/GO-NATIVE-CORE.md#routing-dns-and-https-health-selection).
 
-السقف الافتراضي 128 اتصالًا، ويمكن ضبط `max_connections` بين 1 و512.
-عند امتلائه يظهر `CONNECTION_LIMIT` في السجل، ويعود قبول الاتصالات بمجرد
-إغلاق اتصال. انتهاء الخمول يظهر `IDLE_TIMEOUT` مع حجم البيانات ومدة الاتصال.
+Certificate verification remains enforced, including when imported profiles
+contain legacy insecure flags. The default shared connection budget is 128;
+`max_connections` accepts 1–512. Admission failures and idle closure report
+`CONNECTION_LIMIT` and `IDLE_TIMEOUT` respectively.
 
-TUN داخل الكور يمرر الحزم مباشرة إلى البروتوكولات. لإنشاء جهاز:
-`vpn-core --config node.ini --tun vpn0 --tun-only`. التطبيق المضيف يضبط عناوين
-الجهاز والمسارات وDNS وحماية الاتصال بالشبكة الأصلية. Windows يحتاج صلاحيات
-Administrator وتعريف Wintun الرسمي. لا يغيّر الكور المسار الافتراضي للجهاز.
+## Native TUN and application integration
 
-حزمة Windows تتضمن إعداد IPv4 اختياريًا للمسارات وDNS وقواعد المنع والاستعادة:
-[دليل إعداد نفق Windows](docs/WINDOWS-TUNNEL.md). تشغيل `--tun` وحده لا يضمن
-منع تسريب DNS. إعداد المنع الجديد يحتاج تأكيدًا بالتقاط الحزم على الجهاز الحقيقي.
+```text
+vpn-core --config node.ini --tun vpn0 --tun-only
+```
 
-يدعم SDK Go، وAndroid AAR عبر `mobile.StartFD` مع VpnService، وواجهة حزم
-`StartPackets` لدمج Android/iOS. بناء Apple يحتاج macOS/Xcode وصلاحية Network
-Extension في التطبيق. الحزم الافتراضية تستهدف معمارية واحدة لتقليل الحجم.
+The engine handles IPv4/IPv6 TCP/UDP packets through its embedded gVisor stack.
+The host application or launcher configures OS addresses, routes, DNS and
+upstream socket protection. Windows requires administrator rights and the
+official Wintun DLL. The Windows package includes a launcher and restoration
+watcher; see [Windows tunnel setup](docs/WINDOWS-TUNNEL.md).
+
+Android applications use VpnService with `mobile.StartFD` or the packet API.
+iOS applications connect the packet API to an entitled Network Extension.
+Application permissions, OS VPN services and host network policy are supplied
+by the integrating application.
+
+## Platforms and packages
 
 ```text
 python scripts/Build-Go.py --target linux --arch arm64
 python scripts/Build-Go.py --target darwin --arch arm64
+python scripts/Build-Go.py --target windows --arch amd64 --shared --wintun
 python scripts/Build-Mobile.py --target android/arm64 --output dist/vpn-core.aar
+```
+
+The default build produces a standalone executable. `--shared` additionally
+builds the optional C ABI library and requires a target C compiler. Portable CI
+cross-builds Windows, Linux, macOS, FreeBSD and OpenBSD on amd64/arm64, plus
+Android ARM64. Runtime CI runs on Windows, Linux and macOS; a successful
+cross-build does not establish runtime or VPN integration on every target.
+Apple bindings require macOS/Xcode and the host application's VPN entitlement.
+
+## Validation and GitHub Actions
+
+```text
 python -m pip install -r tests/requirements-go.txt
 go test -race ./core ./mobile
 python scripts/Validate-Go.py
 ```
 
-على GitHub توجد عملية واحدة: **Actions → Build & Test → Run workflow**.
-اختر `main` أو `feature/go-native-core` فقط؛ البناء والاختبارات تتحدد حسب الفرع
-دون اختيارات إضافية. يبدأ الفحص أيضًا عند رفع تغيير إلى أي منهما.
+[Build & Test](https://github.com/noorelmostafa11-pixel/VPN-Core-Test/actions/workflows/core-validation.yml)
+runs on pushes to `main` and `feature/go-native-core`, and supports manual
+dispatch. It builds desktop packages, portable executables and the Android AAR.
+Independent reference tests need the reference binaries documented for each
+protocol; skipped optional tests do not count as interoperability passes.
 
-تفاصيل البروتوكولات والمنصات ودورة الحياة والبناء في
-[دليل Go وTUN](docs/GO-NATIVE-CORE.md). تقارير النسخ السابقة متاحة في تاريخ Git.
-يحتفظ هذا الفرع بالملكية والتراخيص السابقة؛ لم نضف ترخيصًا عامًا للكود الأصلي.
+[Node Acceptance - 15 Shards](https://github.com/noorelmostafa11-pixel/VPN-Core-Test/actions/workflows/node-acceptance.yml)
+is a separate, manually dispatched workflow on `main`. It tests the pinned
+72,767 original node URIs through a source-built Go core and produces reports.
+Public-node results are separate from local protocol tests.
+
+Build & Test uploads packages as workflow artifacts, retained for three days.
+It does not automatically publish a GitHub Release. To publish a version, create
+a release with a new tag on `main`, attach the packaged binaries from a matching
+build, and select **Set as latest release**. See the
+[release packaging instructions](docs/GO-NATIVE-CORE.md#packages-and-github-releases).
+
+## Documentation
+
+- [Core, TUN, SDK and build guide](docs/GO-NATIVE-CORE.md)
+- [Capability register and remaining work](docs/FULL-SUPPORT-IMPLEMENTATION.md)
+- [HTTPS health selection](docs/URL-TESTING.md)
+- Protocol guides: [Hysteria 1](docs/HYSTERIA1.md), [Hysteria 2](docs/HYSTERIA2.md),
+  [WireGuard](docs/WIREGUARD.md), [AnyTLS](docs/ANYTLS.md),
+  [TUIC v5](docs/TUIC.md), [ShadowTLS](docs/SHADOWTLS.md) and [SSH](docs/SSH.md)
+- [Components and upstream provenance](docs/COMPONENTS.md)
+
+## Authorship and ownership
+
+Copyright (c) 2026 **noorelmostafa11-pixel**, the original project owner.
+Original project ownership and distribution terms are preserved in
+[NOTICE.md](NOTICE.md) and [OWNERSHIP.md](OWNERSHIP.md).
+Third-party components retain their respective authorship and licenses;
+binary packages include their notices and license snapshots.

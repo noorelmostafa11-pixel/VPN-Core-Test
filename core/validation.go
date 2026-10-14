@@ -260,6 +260,9 @@ func (c Config) Validate() error {
 		}
 		return converted.Validate()
 	}
+	if c.Protocol == "hysteria" {
+		return validateHysteria1(c)
+	}
 	if c.Protocol == "hysteria2" {
 		return validateHysteria(c)
 	}

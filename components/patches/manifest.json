@@ -148,5 +148,17 @@
     "replacement": "wireguard_queue_ios.go.replacement",
     "original_sha256": "e4bb8c1b97ebb674f623b8eee84768b4f03395daac628cf514b95527326f3441",
     "patched_sha256": "28bad5fc7e40900636ca58def7e79a171dec18e843da4026e6cfce0c0c9edf53"
+  },
+  {
+    "path": "vendor/github.com/apernet/hysteria/core/v2/client/project_congestion.go",
+    "replacement": "hysteria_project_congestion.go.replacement",
+    "original_sha256": null,
+    "patched_sha256": "bf71547e765b62bcdcd657e338b9f1f6d75a382c2e4e9cb6cbe18c9d519ff75b"
+  },
+  {
+    "path": "vendor/github.com/apernet/quic-go/project_datagram.go",
+    "replacement": "hysteria_project_datagram.go.replacement",
+    "original_sha256": null,
+    "patched_sha256": "e4bf4f2cb778d82f6d2d631474babf633e1c4cb957d86747fdcee8dbff029aa0"
   }
 ]

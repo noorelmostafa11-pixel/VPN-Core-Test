@@ -50,7 +50,7 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 	if c.WireGuard != nil {
 		return s, errors.New("SERVER_OPTION_UNSUPPORTED")
 	}
-	if !contains([]string{"vless", "trojan", "ss", "hysteria2", "anytls", "tuic"}, c.Protocol) {
+	if !contains([]string{"vless", "trojan", "ss", "hysteria", "hysteria2", "anytls", "tuic"}, c.Protocol) {
 		return s, errors.New("SERVER_PROTOCOL_UNSUPPORTED")
 	}
 	host, p, err := net.SplitHostPort(c.Listen)
@@ -86,6 +86,14 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 			return s, err
 		}
 	}
+	if c.Protocol == "hysteria" {
+		if s.tls == nil {
+			return s, errors.New("HYSTERIA1_SERVER_TLS_REQUIRED")
+		}
+		if err := validateHysteria1Server(c); err != nil {
+			return s, err
+		}
+	}
 	if c.Protocol == "hysteria2" {
 		if s.tls == nil {
 			return s, errors.New("HYSTERIA_SERVER_TLS_REQUIRED")
@@ -93,7 +101,7 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 		if err := validateHysteriaServer(c); err != nil {
 			return s, err
 		}
-	} else if c.Protocol != "anytls" && c.Protocol != "tuic" && len(c.Options) > 0 {
+	} else if c.Protocol != "hysteria" && c.Protocol != "anytls" && c.Protocol != "tuic" && len(c.Options) > 0 {
 		return s, errors.New("SERVER_OPTION_UNSUPPORTED")
 	}
 	if c.Protocol == "vless" {
@@ -136,6 +144,9 @@ func (e *Engine) StartServer(c ServerConfig) (net.Addr, error) {
 	}
 	if c.Protocol == "ssh" {
 		return e.startSSHServer(c)
+	}
+	if c.Protocol == "hysteria" {
+		return e.startHy1Server(s)
 	}
 	if c.Protocol == "hysteria2" {
 		return e.startHysteriaServer(s)

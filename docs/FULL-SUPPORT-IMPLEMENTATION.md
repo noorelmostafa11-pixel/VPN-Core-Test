@@ -26,7 +26,7 @@ states its boundary. "Pending" must not be advertised as supported.
 | VLESS, VMess, Trojan, Shadowsocks clients | Baseline; retain independent wire tests |
 | SS2022, VLESS REALITY/Vision/encryption, VMess legacy/alter-ID | Baseline client scope; retain authentication and cipher tests |
 | ShadowTLS v2 and v3; Shadowsocks with ShadowTLS | Client/server added: verified TLS, v2 challenge, strict v3 handshake/data integrity, standalone/SIP003 Shadowsocks and optional UOT v2 UDP. Independent sing-box 1.14.3 payloads passed both directions with the documented v2 ticket boundary. Embedded SS2022, non-strict v3 and broader multi-user/SNI options remain pending; see SHADOWTLS.md |
-| Hysteria 1 and 2 | Hysteria 2 client/server added: TCP/UDP, BBR/reno/negotiated Brutal, Salamander/Gecko, native/Chrome, trust/pins/ECH configuration, bounded reuse/reconnect/close; standalone official 2.13.0 TCP/UDP in both directions passed. Hysteria 1 and extra options (port hopping, realms, fake TCP) remain pending; see HYSTERIA2.md |
+| Hysteria 1 and 2 | Both client/server protocols added: Hysteria 1 v3 TCP/UDP/xplus, negotiated Brutal, verified native TLS and bounded reuse/lifetime; official 1.3.5 payloads passed both directions. Hysteria 2 adds BBR/reno/negotiated Brutal, Salamander/Gecko, native/Chrome and trust/pins/ECH configuration; official 2.13.0 payloads passed both directions. Port hopping, realms, fake TCP and wider authentication/fingerprint options remain pending; see HYSTERIA1.md and HYSTERIA2.md |
 | TUIC | v5 client/server added: TLS-exporter authentication, TCP, native/QUIC UDP, fragmentation, direct Full Cone relay, bounded reuse/close and independent sing-box 1.14.3 payloads both modes/directions. Additional congestion selection, uTLS, 0-RTT and per-user passwords remain pending; see TUIC.md |
 | AnyTLS | Client/server added: session reuse, bounded padding updates, v1/v2 server framing, verified TLS, TCP and UOT v2 connect/non-connect UDP. Official 0.0.13 client/server payload tests in both directions passed; see ANYTLS.md |
 | WireGuard VPN | Client/server added: official encrypted device, protected sockets, bounded reuse/queues/workers, TCP/UDP IPv4/IPv6, PSK, encrypted DNS and native server forwarding. Independent Python Noise_IK/encrypted TCP/UDP/auth/source tests passed. Kernel/public-node and Windows route/DNS acceptance remain separate; see WIREGUARD.md |
@@ -293,3 +293,47 @@ packaging/license hashes passed. The stripped Windows executable is 18,403,840
 bytes. The local pre-publication package records a dirty tree; publication and
 exact remote CI are confirmed separately. Remaining report entries are still
 pending.
+
+## 0.5.10 extension
+
+Hysteria 1 binary v3 clients/servers now support TCP/UDP, xplus, negotiated
+Brutal rates, verified native TLS, protected routing and bounded reuse/close;
+see [HYSTERIA1.md](HYSTERIA1.md). The official 1.3.5 executable passed TCP/UDP
+both directions with and without obfuscation after correcting the advertised
+DATAGRAM limit for old peers. Its initial UDP failure is retained locally.
+Full core/mobile/CLI race tests and vet passed; a later Hysteria-only race run
+also covers the final reusable xplus receive buffer.
+
+Regression verification exposed two fixture issues. The ShadowTLS fixture
+waited for the project's SOCKS listener but not the independent server; it now
+waits for both before the first payload without retrying application data. A
+176-case run failed two ShadowTLS cases before that correction; its standalone
+rerun passed. A following 176-case run passed ShadowTLS but failed mKCP's
+eight-flow loss/reordering case. The earlier mKCP oldest-flight fix did not
+address the receiver loop sending a new aggregate flight after reading only
+one incoming packet, which could build a stale ACK/retransmission backlog.
+
+The mKCP fixture now drains at most 256 incoming packets before transmitting,
+and gives its single eight-flow socket a bounded 1 MiB receive buffer. All
+intentional drop/duplicate/reordering rules, MTU, eight flows and 190,001-byte
+payloads are retained. Merely increasing buffers failed. A temporary production
+socket-buffer change was reverted: with the corrected fixture, the original
+production mKCP code passed three eight-flow repetitions and all five mKCP
+cases (seven test invocations total). No production mKCP code is changed by
+this extension. The unsuccessful diagnostic runs are retained; these findings
+are not a diagnosis of every public-node failure.
+
+Remote main advanced independently to `84cb1865cc9de26d913d3f542d5fd43362036eed`
+after the owner merged the prior Go work and refreshed the public guides. Its
+documentation and manual node workflow are preserved in the feature branch;
+this implementation does not modify main. Remaining report entries still
+require implementation and their own acceptance. Final combined tests,
+packaging, publication and exact-head CI are recorded separately.
+
+The final combined wire run passed 176 tests: 174 passed and the two existing
+optional cases skipped. The initial run omitted AnyTLS because the reference
+path pointed to an executable instead of its directory; those two cases passed
+separately and were included in the final combined result above. Portable
+builds, Windows ABI/package output and exact published-head CI still require
+their own recorded results; local payload tests do not establish public-node
+Internet or host-route/DNS acceptance.

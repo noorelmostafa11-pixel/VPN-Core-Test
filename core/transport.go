@@ -718,6 +718,9 @@ func Dial(ctx context.Context, c Config, host string, port int) (net.Conn, error
 	if c.Protocol == "anytls" {
 		return dialAnyTLS(ctx, c, host, port)
 	}
+	if c.Protocol == "hysteria" {
+		return dialHy1(ctx, c, host, port)
+	}
 	if c.Protocol == "hysteria2" {
 		return dialHysteria(ctx, c, host, port)
 	}

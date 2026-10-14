@@ -18,6 +18,7 @@ names=['test_core.CoreTests','test_expanded.ExpandedTests','test_pre_expansion.P
 suite=unittest.defaultTestLoader.loadTestsFromNames(names)
 suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_server_reference.ServerReferenceTests'))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_hysteria_reference.HysteriaReferenceTests'))
+suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_hysteria1_reference.Hysteria1ReferenceTests'))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_ssh_reference.SSHReferenceTests'))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_wireguard_reference.WireGuardReferenceTests'))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_anytls_reference.AnyTLSReferenceTests'))
