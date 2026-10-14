@@ -558,7 +558,13 @@ func NewProtocolCUBIC(s *stack.Stack) stack.TransportProtocol {
 	return newProtocol(s, ccCubic, nil)
 }
 
-func newProtocol(s *stack.Stack, cc string, probe TCPProbeFunc) stack.TransportProtocol {
+// NewProtocolWithWorkers bounds embedded TCP processing without changing the
+// host runtime or the default factory used by other stacks.
+func NewProtocolWithWorkers(s *stack.Stack, workers int) stack.TransportProtocol {
+	return newProtocol(s, ccReno, nil, max(1, min(workers, 32)))
+}
+
+func newProtocol(s *stack.Stack, cc string, probe TCPProbeFunc, workers ...int) stack.TransportProtocol {
 	rng := s.SecureRNG()
 	var seqnumSecret [16]byte
 	var tsOffsetSecret [16]byte
@@ -596,7 +602,11 @@ func newProtocol(s *stack.Stack, cc string, probe TCPProbeFunc) stack.TransportP
 		tsOffsetSecret:             tsOffsetSecret,
 		probe:                      probe,
 	}
-	p.dispatcher.init(s.InsecureRNG(), runtime.GOMAXPROCS(0))
+	count := runtime.GOMAXPROCS(0)
+	if len(workers) > 0 {
+		count = workers[0]
+	}
+	p.dispatcher.init(s.InsecureRNG(), count)
 	return &p
 }
 

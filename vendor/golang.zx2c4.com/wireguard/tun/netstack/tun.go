@@ -59,7 +59,7 @@ type Net netTun
 func CreateNetTUN(localAddresses, dnsServers []netip.Addr, mtu int) (tun.Device, *Net, error) {
 	opts := stack.Options{
 		NetworkProtocols:   []stack.NetworkProtocolFactory{ipv4.NewProtocolWithOptions(ipv4.Options{AllowExternalLoopbackTraffic:true}), ipv6.NewProtocolWithOptions(ipv6.Options{AllowExternalLoopbackTraffic:true})},
-		TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol, udp.NewProtocol, icmp.NewProtocol6, icmp.NewProtocol4},
+		TransportProtocols: []stack.TransportProtocolFactory{func(s *stack.Stack)stack.TransportProtocol{return tcp.NewProtocolWithWorkers(s,2)}, udp.NewProtocol, icmp.NewProtocol6, icmp.NewProtocol4},
 		HandleLocal:        true,
 	}
 	dev := &netTun{

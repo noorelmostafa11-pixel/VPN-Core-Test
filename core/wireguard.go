@@ -173,6 +173,9 @@ func newWireClient(ctx context.Context, c Config) (io.Closer, error) {
 		return nil, err
 	}
 	return sequentialProtocolClients(ctx, ips, func(attempt context.Context, ip net.IPAddr) (io.Closer, error) {
+		if err := attempt.Err(); err != nil {
+			return nil, err
+		}
 		local, _ := wireAddresses(c.Options["local-address"])
 		var dns []netip.Addr
 		if c.Options["dns"] != "" {
@@ -184,6 +187,10 @@ func newWireClient(ctx context.Context, c Config) (io.Closer, error) {
 		}
 		tun, network, err := wn.CreateNetTUN(local, dns, mtu)
 		if err != nil {
+			return nil, err
+		}
+		if err := attempt.Err(); err != nil {
+			tun.Close()
 			return nil, err
 		}
 		// The owner closes the bind/device explicitly; retain hook values for later

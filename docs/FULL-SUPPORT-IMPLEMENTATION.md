@@ -627,3 +627,24 @@ Linux acceptance after that correction remains with the workflow.
 XHTTP and remaining report items stay open. Final full platform/package builds
 remain delegated to the workflow without waiting or polling. Loopback checks
 do not establish varied public-node Internet or host route/DNS recovery.
+
+## WireGuard worker correction after 0.5.18
+
+The owner supplied macOS job 115803104716 from run 38549120436, at ce65650.
+Its unchanged bad-key test returned the expected context deadline error but
+took 1.51 seconds, exceeding its one-second bound. This is a separate failure
+from the preceding Ubuntu fixed-port fixture. Sixteen local auth race runs at
+GOMAXPROCS=128 passed before correction, so the exact macOS delay is not locally
+reproduced. A separate real-stack control exposed 128 per-stack TCP processors
+at that setting; the crypto stages were already limited to two workers each.
+
+A hash-pinned gVisor factory extension now lets embedded WireGuard request two
+TCP dispatchers while other factories keep their prior behavior. Core setup
+checks cancellation before/after stack construction and joins canceled stacks;
+peer test fixtures join crypto workers as well. The new 16-cycle real-stack
+resource test fails against the original factory and passes with the bound.
+All WireGuard race tests passed four repetitions at GOMAXPROCS=128 (41.025s),
+and independent Noise/encrypted TCP/UDP/auth/source payloads passed. Authentication
+and one-second failure/owner-close thresholds remain unchanged. Patch hashes and
+vet passed. Post-fix macOS verification is still with the workflow; a full remote
+pass or sole proven cause of its scheduling delay is not claimed.

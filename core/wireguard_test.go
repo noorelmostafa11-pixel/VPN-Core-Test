@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/netip"
 	"net/url"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -66,7 +67,7 @@ func wireFixture(t *testing.T) (Config, *wn.Net, *wd.Device) {
 	if port == "" {
 		t.Fatal("no server port")
 	}
-	t.Cleanup(func() { dev.Close(); <-dev.EventReaderDone() })
+	t.Cleanup(func() { dev.Close(); dev.JoinWorkers() })
 	cfg, err := ParseURI("wireguard://" + url.User(clientPrivate).String() + "@127.0.0.1:" + port + "?public-key=" + url.QueryEscape(public) + "&local-address=10.71.0.2/32,fd71::2/128")
 	if err != nil {
 		t.Fatal(err)
@@ -195,6 +196,30 @@ func TestWireGuardAuthAndProtectionFailure(t *testing.T) {
 	}
 	if err == nil || !strings.Contains(err.Error(), "SOCKET_PROTECTION_FAILED") {
 		t.Fatal(err)
+	}
+}
+
+func TestWireGuardNetstackWorkerBoundAndJoin(t *testing.T) {
+	previous := runtime.GOMAXPROCS(128)
+	defer runtime.GOMAXPROCS(previous)
+	for cycle := 0; cycle < 16; cycle++ {
+		baseline := runtime.NumGoroutine()
+		tun, _, err := wn.CreateNetTUN([]netip.Addr{netip.MustParseAddr("10.72.0.2"), netip.MustParseAddr("fd72::2")}, nil, 1420)
+		if err != nil {
+			t.Fatal(err)
+		}
+		workers := runtime.NumGoroutine() - baseline
+		tun.Close()
+		if workers > 16 {
+			t.Fatal("embedded WireGuard TCP workers scale with host CPUs", workers)
+		}
+		deadline := time.Now().Add(time.Second)
+		for runtime.NumGoroutine() > baseline+2 && time.Now().Before(deadline) {
+			runtime.Gosched()
+		}
+		if runtime.NumGoroutine() > baseline+2 {
+			t.Fatal("WireGuard netstack close did not join its workers")
+		}
 	}
 }
 func TestWireGuardConfigBoundaries(t *testing.T) {
