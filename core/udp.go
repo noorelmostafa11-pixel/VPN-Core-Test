@@ -111,6 +111,9 @@ func (s *streamPackets) WritePacket(b []byte) error {
 		if len(b) == 0 {
 			return errors.New("VMESS_UDP_EMPTY")
 		}
+		if server, ok := s.Conn.(*vmServerConn); ok {
+			return server.writePacket(b)
+		}
 		p := s.Conn.(*protocolConn)
 		wire, e := p.p.vmFrame(b)
 		if e != nil {

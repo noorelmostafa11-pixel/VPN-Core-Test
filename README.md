@@ -1,4 +1,4 @@
-# vpn-core 0.5.10-go
+# vpn-core 0.5.11-go
 
 A public, general-purpose Go networking core for VPN and proxy applications,
 available to desktop and mobile users and developers. It provides a standalone
@@ -12,6 +12,14 @@ The executable and SDK use the same engine and protocol implementations.
 
 ## What's new in this source revision
 
+- **VMess servers:** AEAD and opt-in legacy authentication, TCP/UDP, verified
+  TLS, chunk masking/padding and authenticated lengths;
+  [implementation/acceptance](docs/VMESS-SERVER.md).
+- **VMess/VLESS MUX servers:** concurrent TCP sessions and XUDP destination
+  framing with bounded queues, shared flow limits and protected routing;
+  [scope](docs/MUX-SERVER.md).
+- **ShadowTLS v2 connection handling:** authenticated TLS residual records are
+  included before switching to proxy data; [timing and limits](docs/SHADOWTLS.md).
 - **Hysteria 1 clients and servers:** v3 TCP/UDP, xplus, verified TLS and
   bounded connection reuse; [implementation/acceptance](docs/HYSTERIA1.md).
 - **HTTPS health selection:** optional `url_test` groups verify the HTTPS
@@ -44,7 +52,7 @@ Implementation boundaries and validation records are maintained in the
 | Control | Routing/DNS updates, selectors, HTTPS health checks, statistics and redacted diagnostic events |
 
 Options and server support vary by protocol; the table is not a claim of full
-Xray/sing-box feature parity. VMess servers, general multiplexing,
+Xray/sing-box feature parity. General outbound multiplexing,
 GeoIP/geosite loaders, Redirect/TProxy and several additional protocols remain
 pending. See the [core guide](docs/GO-NATIVE-CORE.md) for the implemented scope.
 

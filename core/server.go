@@ -33,6 +33,7 @@ type serverSpec struct {
 	passwordHash string
 	tls          *tls.Config
 	client       Config
+	vm           *vmServerAuth
 }
 
 func compileServer(c ServerConfig) (serverSpec, error) {
@@ -50,7 +51,7 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 	if c.WireGuard != nil {
 		return s, errors.New("SERVER_OPTION_UNSUPPORTED")
 	}
-	if !contains([]string{"vless", "trojan", "ss", "hysteria", "hysteria2", "anytls", "tuic"}, c.Protocol) {
+	if !contains([]string{"vless", "vmess", "trojan", "ss", "hysteria", "hysteria2", "anytls", "tuic"}, c.Protocol) {
 		return s, errors.New("SERVER_PROTOCOL_UNSUPPORTED")
 	}
 	host, p, err := net.SplitHostPort(c.Listen)
@@ -69,6 +70,10 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 	}
 	if c.Protocol == "trojan" && s.tls == nil {
 		return s, errors.New("TROJAN_SERVER_TLS_REQUIRED")
+	}
+	if c.Protocol == "vmess" {
+		s.vm, err = newVMServerAuth(c)
+		return s, err
 	}
 	if c.Protocol == "anytls" {
 		if s.tls == nil {
@@ -290,7 +295,10 @@ func (e *Engine) serveServer(raw net.Conn, s serverSpec) {
 	var address []byte
 	var err error
 	udp := false
+	mux := false
 	switch s.config.Protocol {
+	case "vmess":
+		client, address, udp, err = vmServerHeader(raw, s.vm)
 	case "vless":
 		var header [18]byte
 		if _, err = io.ReadFull(raw, header[:]); err != nil {
@@ -305,11 +313,14 @@ func (e *Engine) serveServer(raw net.Conn, s serverSpec) {
 		if _, err = io.ReadFull(raw, command[:]); err != nil {
 			return
 		}
-		if command[0] != 1 && command[0] != 2 {
+		if command[0] != 1 && command[0] != 2 && command[0] != 3 {
 			return
 		}
 		udp = command[0] == 2
-		address, err = mappedServerAddress(raw)
+		mux = command[0] == 3
+		if !mux {
+			address, err = mappedServerAddress(raw)
+		}
 	case "trojan":
 		var header [59]byte
 		if _, err = io.ReadFull(raw, header[:]); err != nil {
@@ -333,6 +344,16 @@ func (e *Engine) serveServer(raw net.Conn, s serverSpec) {
 	if err != nil {
 		return
 	}
+	if vm, ok := client.(*vmServerConn); ok {
+		mux = vm.mux
+	}
+	if mux {
+		if s.config.Protocol == "vless" && writeAll(raw, []byte{0, 0}) != nil {
+			return
+		}
+		e.serveMux(client)
+		return
+	}
 	host, port, err := decodeAddress(address)
 	if err != nil {
 		return
@@ -342,7 +363,7 @@ func (e *Engine) serveServer(raw net.Conn, s serverSpec) {
 		if s.config.Protocol == "vless" && writeAll(raw, []byte{0, 0}) != nil {
 			return
 		}
-		packets := &streamPackets{Conn: client, address: address, trojan: s.config.Protocol == "trojan"}
+		packets := &streamPackets{Conn: client, address: address, trojan: s.config.Protocol == "trojan", vmess: s.config.Protocol == "vmess"}
 		e.serveServerPackets(ctx, packets)
 		return
 	}

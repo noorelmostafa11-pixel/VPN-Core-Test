@@ -1,5 +1,6 @@
 """Independent Xray client against project Go server inbounds, on loopback only."""
 import contextlib
+import concurrent.futures
 import hashlib
 import json
 import os
@@ -12,6 +13,7 @@ import tempfile
 import threading
 import time
 import unittest
+import test_hysteria_reference as hyref
 from test_core import BIN, exact, free_port
 
 UUID = '12345678-1234-4567-9234-567812345678'
@@ -19,6 +21,8 @@ PASSWORD = 'synthetic-reference-server-password'
 
 
 class ServerReferenceTests(unittest.TestCase):
+    def socks(self, *args):
+        return hyref.HysteriaReferenceTests.socks(self, *args)
     @classmethod
     def setUpClass(cls):
         candidate = os.environ.get('VPN_CORE_REFERENCE_XRAY', '')
@@ -59,10 +63,19 @@ class ServerReferenceTests(unittest.TestCase):
         self.fail('listener did not become ready')
 
     @contextlib.contextmanager
-    def reference_pair(self, protocol, cipher='aes-256-gcm', wrong_password=False):
+    def reference_pair(self, protocol, cipher='aes-256-gcm', wrong_password=False, secure=False,
+                       alter_id=0, authenticated_length=False, mux=False, legacy=None):
         server_port, socks_port = free_port(), free_port()
         spec = {'protocol': protocol, 'listen': f'127.0.0.1:{server_port}'}
-        if protocol == 'vless':
+        if protocol == 'vmess':
+            spec['uuids'] = [UUID]
+            if alter_id:
+                spec['options'] = {'alter-id': str(alter_id)}
+            identity = 'abcdefab-1234-4567-9234-567812345678' if wrong_password else UUID
+            settings = {'vnext': [{'address': '127.0.0.1', 'port': server_port,
+                                  'users': [{'id': identity, 'security': cipher, 'alterId': alter_id,
+                                             'experiments': 'AuthenticatedLength' if authenticated_length else ''}]}]}
+        elif protocol == 'vless':
             spec['uuids'] = [UUID]
             settings = {'vnext': [{'address': '127.0.0.1', 'port': server_port,
                                   'users': [{'id': UUID, 'encryption': 'none'}]}]}
@@ -74,12 +87,19 @@ class ServerReferenceTests(unittest.TestCase):
                 spec['cipher'], remote['method'] = cipher, cipher
             settings = {'servers': [remote]}
         outbound = {'protocol': 'shadowsocks' if protocol == 'ss' else protocol, 'settings': settings}
-        if protocol == 'trojan':
+        if mux:
+            outbound['mux'] = {'enabled': True, 'concurrency': 8}
+        if protocol == 'trojan' or secure:
             spec.update(cert_file=str(self.cert), key_file=str(self.key))
             der = ssl.PEM_cert_to_DER_cert(self.cert.read_text(encoding='utf-8'))
             pin = hashlib.sha256(der).hexdigest()
             outbound['streamSettings'] = {'security': 'tls', 'tlsSettings': {
                 'serverName': 'localhost', 'pinnedPeerCertSha256': pin, 'verifyPeerCertByName': 'localhost'}}
+            if legacy:
+                # V2Ray 4 predates Xray's pin fields. Trust only the generated
+                # fixture CA while preserving normal certificate/name checks.
+                outbound['streamSettings']['tlsSettings'] = {'serverName': 'localhost',
+                    'disableSystemRoot': True, 'certificates': [{'certificateFile': str(self.cert), 'usage': 'verify'}]}
         profile = {'outbounds': [{'tag': 'direct', 'uri': 'direct://'}], 'final': 'direct', 'inbounds': [spec]}
         reference = {'log': {'loglevel': 'warning'},
                      'inbounds': [{'listen': '127.0.0.1', 'port': socks_port, 'protocol': 'socks', 'settings': {'udp': True}}],
@@ -95,13 +115,15 @@ class ServerReferenceTests(unittest.TestCase):
                     project = subprocess.Popen([str(BIN), '--config', str(project_file), '--no-socks'], stdout=project_log, stderr=project_log)
                     processes.append(project)
                     self.wait_port(project, server_port)
-                    other = subprocess.Popen([str(self.xray), 'run', '-config', str(reference_file)], stdout=reference_log, stderr=reference_log)
+                    args = [str(legacy), '-config', str(reference_file)] if legacy else [str(self.xray), 'run', '-config', str(reference_file)]
+                    other = subprocess.Popen(args, stdout=reference_log, stderr=reference_log)
                     processes.append(other)
                     self.wait_port(other, socks_port)
                     yield socks_port
                 except BaseException as error:
                     project_log.flush()
                     reference_log.flush()
+                    error.add_note((root / 'project.log').read_text(encoding='utf-8', errors='replace')[-4000:])
                     error.add_note((root / 'reference.log').read_text(encoding='utf-8', errors='replace')[-4000:])
                     raise
                 finally:
@@ -155,3 +177,119 @@ class ServerReferenceTests(unittest.TestCase):
                     listener.close()
                     worker.join(timeout=10)
                     self.assertFalse(worker.is_alive(), 'independent echo worker did not stop')
+
+    def test_xray_vmess_tcp_udp_raw_and_tls(self):
+        self.vmess_payload_cases()
+
+    def test_xray_vmess_authenticated_length(self):
+        self.vmess_payload_cases(authenticated_length=True)
+
+    def test_v2ray_legacy_vmess_methods(self):
+        legacy = os.environ.get('VPN_CORE_REFERENCE_V2RAY4', '')
+        if not legacy or not pathlib.Path(legacy).is_file():
+            self.skipTest('set VPN_CORE_REFERENCE_V2RAY4 to the official V2Ray 4.45.2 executable')
+        self.assertIn('4.45.2', subprocess.check_output([legacy, '-version'], text=True))
+        self.vmess_payload_cases(legacy=legacy, alter_id=2,
+                                 methods=['aes-128-gcm', 'chacha20-poly1305', 'aes-128-cfb', 'none', 'zero'])
+
+    def vmess_payload_cases(self, authenticated_length=False, legacy=None, alter_id=0, methods=None):
+        for secure in [False, True]:
+            for cipher in methods or ['aes-128-gcm', 'chacha20-poly1305']:
+                with self.subTest(tls=secure, cipher=cipher):
+                    tcp, udp = socket.socket(), socket.socket(type=socket.SOCK_DGRAM)
+                    tcp.bind(('127.0.0.1', 0)); tcp.listen(); tcp.settimeout(.2)
+                    udp.bind(('127.0.0.1', 0)); udp.settimeout(.2)
+                    stop = threading.Event(); connections = []
+                    def handle(c):
+                        try:
+                            with c:
+                                c.settimeout(5)
+                                while data := c.recv(65535):
+                                    c.sendall(data)
+                        except OSError:
+                            pass
+                    def accept():
+                        while not stop.is_set():
+                            try:
+                                c, _ = tcp.accept()
+                            except OSError:
+                                continue
+                            w = threading.Thread(target=handle, args=(c,)); connections.append(w); w.start()
+                    def echo_udp():
+                        while not stop.is_set():
+                            try:
+                                data, addr = udp.recvfrom(65535); udp.sendto(data, addr)
+                            except OSError:
+                                continue
+                    workers = [threading.Thread(target=accept), threading.Thread(target=echo_udp)]
+                    for w in workers: w.start()
+                    try:
+                        with self.reference_pair('vmess', cipher, secure=secure, authenticated_length=authenticated_length,
+                                                 legacy=legacy, alter_id=alter_id) as socks:
+                            for cycle in range(16):
+                                c, _ = self.socks(socks, 1, tcp.getsockname())
+                                with c:
+                                    body = b'VMess independent Xray response\x00\xff' * 256
+                                    c.sendall(body); self.assertEqual(exact(c, len(body)), body)
+                            # Zero denotes unframed TCP; legacy V2Ray itself does
+                            # not support packet framing for that security mode.
+                            for cycle in range(0 if cipher == 'zero' else 32):
+                                control, relay = self.socks(socks, 3, ('0.0.0.0', 0))
+                                with control, socket.socket(type=socket.SOCK_DGRAM) as client:
+                                    client.bind(('127.0.0.1', 0)); client.settimeout(5)
+                                    header = b'\0\0\0\1' + socket.inet_aton('127.0.0.1') + udp.getsockname()[1].to_bytes(2, 'big')
+                                    # V2Ray 4.45.2 uses a 2 KiB packet buffer;
+                                    # larger project packets are tested in Go.
+                                    for size in ([32, 1400, 1800] if legacy else [32, 1400, 3800]):
+                                        body = b'z' * size; client.sendto(header + body, relay)
+                                        try:
+                                            response, _ = client.recvfrom(65535)
+                                            self.assertEqual(response[10:], body)
+                                        except BaseException as error:
+                                            error.add_note(f'UDP association {cycle}, payload {size}, tls={secure}, cipher={cipher}')
+                                            raise
+                    finally:
+                        stop.set(); tcp.close(); udp.close()
+                        for w in workers + connections:
+                            w.join(timeout=6); self.assertFalse(w.is_alive())
+
+    def test_xray_vmess_mux_concurrent_tcp(self):
+        self.mux_tcp_payload('vmess', ['aes-128-gcm', 'chacha20-poly1305'])
+
+    def test_xray_vless_mux_concurrent_tcp(self):
+        self.mux_tcp_payload('vless', [''])
+
+    def mux_tcp_payload(self, protocol, methods):
+        listener = socket.socket()
+        listener.bind(('127.0.0.1', 0)); listener.listen(); listener.settimeout(.2)
+        stop, connections = threading.Event(), []
+        def echo(c):
+            try:
+                with c:
+                    c.settimeout(8)
+                    while data := c.recv(65535): c.sendall(data)
+            except OSError:
+                pass
+        def accept():
+            while not stop.is_set():
+                try: c, _ = listener.accept()
+                except OSError: continue
+                w = threading.Thread(target=echo, args=(c,)); connections.append(w); w.start()
+        worker = threading.Thread(target=accept); worker.start()
+        try:
+            for cipher in methods:
+                with self.subTest(protocol=protocol, cipher=cipher), self.reference_pair(protocol, cipher, secure=True, mux=True) as socks:
+                    def transfer(i):
+                        c, _ = self.socks(socks, 1, listener.getsockname())
+                        with c:
+                            c.settimeout(8)
+                            body = bytes([i]) * 200001
+                            c.sendall(body)
+                            self.assertEqual(exact(c, len(body)), body)
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+                        for batch in range(4):
+                            list(pool.map(transfer, range(8)))
+        finally:
+            stop.set(); listener.close()
+            for w in [worker, *connections]:
+                w.join(timeout=10); self.assertFalse(w.is_alive())

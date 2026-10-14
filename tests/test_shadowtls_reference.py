@@ -105,7 +105,7 @@ class ShadowTLSReferenceTests(unittest.TestCase):
                     for w in listeners:w.start()
                     try:
                         with self.pair(project_server,version,plugin) as socks:
-                            for cycle in range(8):
+                            for cycle in range(64 if version==2 and not project_server else 8):
                                 c,_=self.socks(socks,1,tcp.getsockname())
                                 with c:
                                     body=b'ShadowTLS independent payload\x00\xff'*256;c.sendall(body);self.assertEqual(exact(c,len(body)),body)

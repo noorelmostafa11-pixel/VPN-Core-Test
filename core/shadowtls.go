@@ -2,6 +2,7 @@
 package core
 
 import (
+	"bufio"
 	"context"
 	"crypto/hmac"
 	"crypto/sha1"
@@ -385,6 +386,7 @@ func (c *shadowConn) CloseWrite() error {
 }
 
 func openShadowTLS(ctx context.Context, c Config) (net.Conn, error) {
+	started := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, c.ConnectTimeout)
 	defer cancel()
 	raw, err := outboundDial(ctx, "tcp", net.JoinHostPort(c.Server, itoa(c.Port)), c.ConnectTimeout)
@@ -406,6 +408,11 @@ func openShadowTLS(ctx context.Context, c Config) (net.Conn, error) {
 	}()
 	raw.SetDeadline(time.Now().Add(c.ConnectTimeout))
 	h := &shadowHandshakeConn{Conn: raw, version: shadowVersion(c), password: c.Password, challenge: shadowMAC(c.Password)}
+	var reader *bufio.Reader
+	if h.version == 2 {
+		reader = bufio.NewReaderSize(raw, 32768)
+		h.Conn = &bufferedConn{Conn: raw, r: reader}
+	}
 	secure := c
 	secure.Security = "tls"
 	settings, err := secure.tlsSettings()
@@ -419,7 +426,7 @@ func openShadowTLS(ctx context.Context, c Config) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	result := &shadowConn{Conn: raw, version: h.version}
+	result := &shadowConn{Conn: h.Conn, version: h.version}
 	if len(h.pending) != 0 {
 		return nil, errors.New("SHADOWTLS_HANDSHAKE_REMAINDER")
 	}
@@ -433,12 +440,55 @@ func openShadowTLS(ctx context.Context, c Config) (net.Conn, error) {
 		result.readMAC = shadowMAC(c.Password, h.serverRandom, []byte("S"))
 		result.ignoreMAC = h.serverMAC
 	} else {
+		if u.ConnectionState().Version == utls.VersionTLS13 {
+			// Some v2 peers remember only two TCP-write digests. Tickets sent
+			// after Finished can evict the client's earlier challenge. Consume
+			// only authenticated residual records before sending the switch.
+			quiet := min(max(2*time.Since(started), 5*time.Millisecond), 250*time.Millisecond)
+			if err := drainShadowTickets(raw, reader, u, h.challenge, quiet); err != nil {
+				return nil, err
+			}
+		}
 		result.challenge = append([]byte(nil), h.challenge.Sum(nil)[:8]...)
 		result.tls = u
 	}
 	raw.SetDeadline(time.Time{})
 	success = true
 	return result, nil
+}
+
+func drainShadowTickets(conn net.Conn, reader *bufio.Reader, tls *utls.UConn, challenge hash.Hash, quiet time.Duration) error {
+	return drainShadowRecords(conn, reader, challenge, quiet, tls.ProjectShadowTLSResidual)
+}
+func drainShadowRecords(conn net.Conn, reader *bufio.Reader, challenge hash.Hash, quiet time.Duration, verify func([]byte) bool) error {
+	defer conn.SetReadDeadline(time.Time{})
+	for count := 0; count <= 8; count++ {
+		conn.SetReadDeadline(time.Now().Add(quiet))
+		header, err := reader.Peek(5)
+		if err != nil {
+			if timeout, ok := err.(net.Error); ok && timeout.Timeout() && reader.Buffered() == 0 {
+				return nil
+			}
+			return err
+		}
+		if count == 8 {
+			return errors.New("SHADOWTLS_RESIDUAL_LIMIT")
+		}
+		n := 5 + getWord(header, 3)
+		if header[0] != 23 || header[1] != 3 || header[2] != 3 || n > 18437 {
+			return errors.New("SHADOWTLS_RESIDUAL_INVALID")
+		}
+		record, err := reader.Peek(n)
+		if err != nil {
+			return err
+		}
+		if !verify(record) {
+			return errors.New("SHADOWTLS_RESIDUAL_AUTHENTICATION")
+		}
+		challenge.Write(record)
+		reader.Discard(n)
+	}
+	return errors.New("SHADOWTLS_RESIDUAL_LIMIT")
 }
 func dialShadowTLS(ctx context.Context, c Config, host string, port int) (net.Conn, error) {
 	if err := c.Validate(); err != nil {

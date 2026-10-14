@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -14,6 +15,71 @@ import (
 	"testing"
 	"time"
 )
+
+func TestShadowTLSV2ResidualChallengeDrainBoundsAndAuthentication(t *testing.T) {
+	for _, mode := range []string{"none", "coalesced", "delayed", "corrupt", "partial", "eight", "limit"} {
+		t.Run(mode, func(t *testing.T) {
+			server, client := net.Pipe()
+			release, done := make(chan struct{}), make(chan struct{})
+			defer func() { client.Close(); close(release); <-done }()
+			var records [][]byte
+			n := 2
+			if mode == "none" {
+				n = 0
+			}
+			if mode == "eight" {
+				n = 8
+			}
+			if mode == "limit" {
+				n = 9
+			}
+			for i := 0; i < n; i++ {
+				records = append(records, shadowRecord(23, []byte("authenticated ticket")))
+			}
+			go func() {
+				defer close(done)
+				defer server.Close()
+				switch mode {
+				case "coalesced":
+					writeAll(server, bytes.Join(records, nil))
+				case "partial":
+					writeAll(server, []byte{23, 3})
+				default:
+					for _, record := range records {
+						if mode == "delayed" {
+							time.Sleep(2 * time.Millisecond)
+						}
+						if err := writeAll(server, record); err != nil {
+							return
+						}
+					}
+				}
+				<-release
+			}()
+			challenge := shadowMAC("synthetic password")
+			verify := func(record []byte) bool {
+				return mode != "corrupt" && bytes.Equal(record[5:], []byte("authenticated ticket"))
+			}
+			err := drainShadowRecords(client, bufio.NewReaderSize(client, 32768), challenge, 20*time.Millisecond, verify)
+			if mode == "corrupt" || mode == "partial" || mode == "limit" {
+				if err == nil {
+					t.Fatal("unsafe residual accepted")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := shadowMAC("synthetic password")
+			for _, record := range records {
+				want.Write(record)
+			}
+			if !bytes.Equal(challenge.Sum(nil), want.Sum(nil)) {
+				t.Fatal("ticket challenge omitted server bytes")
+			}
+		})
+	}
+}
 
 func shadowFixture(t *testing.T, version string) (Config, *Engine) {
 	t.Helper()
@@ -34,6 +100,7 @@ func shadowFixture(t *testing.T, version string) (Config, *Engine) {
 	c.CAFile = cert
 	return c, server
 }
+
 func TestShadowTLSBothVersionsTCPUDPAndOwnerClose(t *testing.T) {
 	for _, version := range []string{"2", "3"} {
 		t.Run(version, func(t *testing.T) {

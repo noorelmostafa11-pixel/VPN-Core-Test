@@ -33,6 +33,17 @@ data. The checksummed uTLS component adds a bounded AEAD-only residual-record
 primitive; unsuccessful verification does not advance the TLS sequence or emit
 a TLS alert. V2 supports TLS 1.2/1.3 as allowed by the handshake backend.
 
+Since 0.5.11, the v2 client also consumes authenticated TLS 1.3 residual records
+before sending its switch challenge. Some independent servers retain only their
+current and previous TCP-write digests; two post-Finished ticket writes can
+otherwise evict the digest the client used. A bounded 32 KiB reader preserves
+read-ahead, with at most eight authenticated residual records. The quiet window
+is twice the observed TCP/TLS setup duration, bounded to 5-250 ms and still
+subject to the overall connection deadline. No application payload is retried.
+This introduces a small v2-only setup wait; other protocol paths are unchanged.
+Certificate checks and the configured ClientHello fingerprint are retained.
+Authentication, partial records and record-limit failures abort before payload.
+
 V3 signs ClientHello's 32-byte session ID, authenticates the handshake server
 using ServerRandom, and verifies direction-specific chained tags on every data
 record. Record separation is included in the chain, rejecting tampering,
@@ -94,6 +105,21 @@ fixture therefore disables backend tickets. Our v2 client reference tests keep
 tickets enabled. This observed interoperability boundary is retained, not
 counted as an unconditional v2 all-options pass. Independent Windows UDP tests
 use payloads through 3,800 bytes, separately from the Go 60 KiB tests.
+
+The 0.5.11 combined suite exposed a further v2 client failure with enabled backend
+tickets after five successful sessions. Increasing read-ahead alone failed, as
+did disabling advertised resumption (the backend still emitted tickets). Both
+attempts were reverted. After the authenticated pre-switch drain, the expanded
+independent fixture passed 64 sequential connections for both standalone and
+SIP003 v2 clients with the backend tickets still enabled. Deterministic Go tests
+cover coalesced/delayed records, no-ticket peers, authentication rejection,
+partial records and the eight-record ceiling. Initial failures remain recorded.
+The reference v2 client's server-direction ticket limitation described above
+remains separate. Backends delaying tickets beyond the bounded quiet window
+still require wider acceptance; this is not an all-options compatibility claim.
+
+Reference digest behavior:
+[sing-shadowtls v2 hash state](https://github.com/SagerNet/sing-shadowtls/blob/a9c0127d5c99/v2_hash.go).
 
 Run `test_shadowtls_reference.ShadowTLSReferenceTests` with
 `VPN_CORE_REFERENCE_SINGBOX` pointing to the official executable. These are

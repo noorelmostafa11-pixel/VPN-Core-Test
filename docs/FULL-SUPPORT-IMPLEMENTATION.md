@@ -38,7 +38,7 @@ states its boundary. "Pending" must not be advertised as supported.
 | XHTTP modes, metadata, padding and download settings | Baseline implemented scope; preserve original URI semantics |
 | HTTP3, QUIC, mKCP, HTTP disguise, simple-obfs, v2ray-plugin | Baseline carriers, distinct from Hysteria/TUIC protocols |
 | TLS1.2/1.3, uTLS, ECH, REALITY, legacy XTLS, FinalMask | Baseline implemented scope; certificate verification remains enforced |
-| General multiplexing and XUDP/UoT | Pending; current plugin mux does not satisfy general mux |
+| General multiplexing and XUDP/UoT | Partial: VMess/VLESS MUX server framing, concurrent TCP and XUDP destination/Full Cone UDP added with bounded lifetime and independent Xray payload tests. General outbound MUX, cross-parent XUDP migration, smux and additional UOT paths remain pending; see MUX-SERVER.md |
 | Multiple configured outbounds | Added optional routing engine, shared flow budget |
 | Domain/suffix/regex and destination IP/CIDR rules | Added; original destination IP retained after sniffing |
 | GeoIP/geosite and named rule sets | Pending loaders, indexing, limits and update integrity |
@@ -60,8 +60,8 @@ states its boundary. "Pending" must not be advertised as supported.
 | SOCKS5 TCP/UDP inbound and native TUN | Baseline; retain packet/flow/lifecycle regression tests |
 | HTTP and mixed HTTP/SOCKS inbound | Added loopback listeners, CONNECT and HTTP body forwarding |
 | Redirect and TProxy | Pending platform-specific listeners and original-destination handling |
-| VLESS, Trojan, Shadowsocks server inbounds | Partial: raw TCP with optional TLS (required for Trojan); VLESS/Trojan UDP-over-TCP, Shadowsocks legacy/AEAD2017 TCP. Payload tests with an independent Xray 26.7.28 client passed for VLESS, Trojan, SS AES-256-GCM and ChaCha20-Poly1305. Vision/REALITY/encryption, server carriers, SS2022/native UDP and remaining options are pending |
-| VMess server inbound | Pending, including AEAD/legacy authentication and packet framing |
+| VLESS, Trojan, Shadowsocks server inbounds | Partial: raw TCP with optional TLS (required for Trojan); VLESS/Trojan UDP-over-TCP, VLESS MUX/XUDP and Shadowsocks legacy/AEAD2017 TCP. Payload tests with an independent Xray 26.7.28 client passed for VLESS, Trojan, SS AES-256-GCM and ChaCha20-Poly1305. Vision/REALITY/encryption, server carriers, SS2022/native UDP and remaining options are pending |
+| VMess server inbound | Added raw TCP/optional TLS, TCP/UDP/MUX, AEAD and opt-in legacy alter-ID, AES-GCM/ChaCha/CFB/none/zero, length masking/padding and authenticated lengths. Independent Xray 26.7.28 and V2Ray 4.45.2 payload tests passed; server carriers and remaining upstream options are pending; see VMESS-SERVER.md |
 | Other protocol server inbounds | Pending with their corresponding client protocols |
 | Reverse proxy / server fallback | Pending authenticated reverse channels and fallback semantics |
 | General management API | Added opt-in authenticated loopback stats, selection, route and DNS updates; wider API/events scope pending |
@@ -334,6 +334,53 @@ The final combined wire run passed 176 tests: 174 passed and the two existing
 optional cases skipped. The initial run omitted AnyTLS because the reference
 path pointed to an executable instead of its directory; those two cases passed
 separately and were included in the final combined result above. Portable
-builds, Windows ABI/package output and exact published-head CI still require
-their own recorded results; local payload tests do not establish public-node
+builds (eleven targets), Windows ABI lifecycle/restart and a clean Windows
+shared/Wintun package subsequently passed at published revision
+`ff4f4adb889c2d26a26b045f2fda3f1b85c5c46f`. Executable SHA256:
+`dc8dc483ca8ab6b696bd140bb83551c0d945ef0a34d6bcce0aeed8a301f67887`.
+At the last inspection, CI run `38491127393` had successful source and Android
+jobs with other jobs still running. The owner now checks workflows; no final
+remote conclusion is inferred. Local payload tests do not establish public-node
 Internet or host-route/DNS acceptance.
+
+## 0.5.11 extension
+
+VMess server authentication/body framing and VMess/VLESS MUX servers are added;
+see [VMESS-SERVER.md](VMESS-SERVER.md) and [MUX-SERVER.md](MUX-SERVER.md).
+Independent Xray clients passed modern TCP, default XUDP, authenticated lengths
+and concurrent MUX payloads over verified TLS. Official V2Ray 4.45.2 passed
+legacy alter-ID TCP/UDP for every framed security method and unframed TCP zero.
+The initial XUDP failure exposed rejection of 42-44-byte legal MUX headers;
+the corrected parser has deterministic coverage for all 16 padding lengths.
+
+Initial legacy fixture failures used modern pin fields unavailable in V2Ray 4
+and 3,800-byte packets exceeding its 2 KiB buffers. Fixture trust now uses the
+generated CA with name verification, and legacy reference payloads fit that
+documented buffer. The core still transfers atomic 60,000-byte UDP payloads in
+Go tests. The initial direct-MUX owner test launched its worker outside the
+engine and observed admission before the helper joined; it now uses engine
+ownership. Failure logs are retained rather than counted as successes.
+
+Core/mobile/CLI race tests and vet passed, including concurrent relay,
+protection failure, replay limits, corruption, nonce exhaustion and shutdown.
+Final combined regression, portable builds and clean package checks are recorded
+separately below. Remote workflow inspection is left to the owner as requested.
+Full report scope and varied-node Internet/OS host acceptance remain incomplete.
+
+The first full 181-case regression run failed one existing ShadowTLS v2 client
+case with enabled TLS backend tickets. Its current/previous-write challenge
+could advance past Finished before the client switched. Read-ahead alone and
+disabling unused resumption both failed and were reverted. The final correction
+authenticates and includes bounded residual records before the initial switch;
+see SHADOWTLS.md for the setup timing and remaining reference boundary. The
+expanded independent standalone/SIP003 v2 fixture passed 64 sessions each after
+this change. This is a production ShadowTLS correction; the original failure
+is retained separately from subsequent validation.
+
+Final combined wire validation passed: 181 tests run, 179 passed and the two
+existing optional cases skipped. Full core/mobile/CLI race tests and vet passed
+after the production correction; final timestamp/idle-expiry assertions also
+passed separately under the race detector. Eleven final executable cross-builds
+passed: Windows/Linux/macOS/FreeBSD/OpenBSD amd64 and arm64 plus Android arm64.
+The clean Windows shared/Wintun package and ABI result are recorded with the
+published source checkpoint. No remote workflow conclusion is inferred.
