@@ -53,14 +53,14 @@ func grpcServerPaths(service string) (string, string, error) {
 	return path + url.PathEscape(methods[0]), path + url.PathEscape(multi), nil
 }
 
-type grpcServerConn struct {
+type serverHTTP2Conn struct {
 	request         *http.Request
 	writer          http.ResponseWriter
 	controller      *http.ResponseController
 	local, remote   net.Addr
 	readMu, writeMu sync.Mutex
-	codec           grpcCodec
-	buffer          [32768]byte
+	codec           *grpcCodec
+	buffer          []byte
 	pending         []byte
 	readErr         error
 	closed          atomic.Bool
@@ -68,23 +68,25 @@ type grpcServerConn struct {
 	once            sync.Once
 }
 
-func (c *grpcServerConn) LocalAddr() net.Addr  { return c.local }
-func (c *grpcServerConn) RemoteAddr() net.Addr { return c.remote }
-func (c *grpcServerConn) SetDeadline(t time.Time) error {
+func (c *serverHTTP2Conn) LocalAddr() net.Addr  { return c.local }
+func (c *serverHTTP2Conn) RemoteAddr() net.Addr { return c.remote }
+func (c *serverHTTP2Conn) SetDeadline(t time.Time) error {
 	if err := c.SetReadDeadline(t); err != nil {
 		return err
 	}
 	return c.SetWriteDeadline(t)
 }
-func (c *grpcServerConn) SetReadDeadline(t time.Time) error  { return c.controller.SetReadDeadline(t) }
-func (c *grpcServerConn) SetWriteDeadline(t time.Time) error { return c.controller.SetWriteDeadline(t) }
-func (c *grpcServerConn) CloseWrite() error {
+func (c *serverHTTP2Conn) SetReadDeadline(t time.Time) error { return c.controller.SetReadDeadline(t) }
+func (c *serverHTTP2Conn) SetWriteDeadline(t time.Time) error {
+	return c.controller.SetWriteDeadline(t)
+}
+func (c *serverHTTP2Conn) CloseWrite() error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 	c.writeClosed.Store(true)
 	return nil
 }
-func (c *grpcServerConn) Close() error {
+func (c *serverHTTP2Conn) Close() error {
 	c.once.Do(func() {
 		c.closed.Store(true)
 		if !c.writeClosed.Load() {
@@ -94,12 +96,21 @@ func (c *grpcServerConn) Close() error {
 	})
 	return nil
 }
-func (c *grpcServerConn) Read(b []byte) (int, error) {
+func (c *serverHTTP2Conn) Read(b []byte) (int, error) {
 	if len(b) == 0 {
 		return 0, nil
 	}
 	c.readMu.Lock()
 	defer c.readMu.Unlock()
+	if c.closed.Load() {
+		return 0, net.ErrClosed
+	}
+	if c.codec == nil {
+		return c.request.Body.Read(b)
+	}
+	if c.buffer == nil {
+		c.buffer = make([]byte, 32768)
+	}
 	for len(c.pending) == 0 {
 		if c.closed.Load() {
 			return 0, net.ErrClosed
@@ -121,11 +132,18 @@ func (c *grpcServerConn) Read(b []byte) (int, error) {
 	c.pending = c.pending[n:]
 	return n, nil
 }
-func (c *grpcServerConn) Write(b []byte) (int, error) {
+func (c *serverHTTP2Conn) Write(b []byte) (int, error) {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 	if c.closed.Load() || c.writeClosed.Load() {
 		return 0, io.ErrClosedPipe
+	}
+	if c.codec == nil {
+		n, err := c.writer.Write(b)
+		if err == nil {
+			err = c.controller.Flush()
+		}
+		return n, err
 	}
 	total := 0
 	for len(b) > 0 {
@@ -170,7 +188,8 @@ func (c *serverH2PrefaceConn) Read(b []byte) (int, error) {
 	return n, err
 }
 
-func (e *Engine) serveGRPCServer(raw net.Conn, s serverSpec) {
+func (e *Engine) serveHTTP2Server(raw net.Conn, s serverSpec) {
+	grpc := s.transport.Type == "grpc"
 	single, multi, _ := grpcServerPaths(s.transport.Service)
 	// The connection and each protocol stream have separate shared admission.
 	// Native HTTP/2 handles transport framing; protocol workers stay engine-owned.
@@ -183,34 +202,50 @@ func (e *Engine) serveGRPCServer(raw net.Conn, s serverSpec) {
 		e.workers.Add(1)
 		e.mu.Unlock()
 		defer e.workers.Done()
-		path := r.URL.EscapedPath()
-		isMulti := path == multi
-		if s.transport.Service == "" && path == "//TunMulti" {
-			isMulti = true
+		valid, isMulti := false, false
+		if grpc {
+			path := r.URL.EscapedPath()
+			isMulti = path == multi || s.transport.Service == "" && path == "//TunMulti"
+			validPath := path == single || isMulti || s.transport.Service == "" && path == "//Tun"
+			media, _, mediaErr := mime.ParseMediaType(r.Header.Get("Content-Type"))
+			validMedia := mediaErr == nil && (media == "application/grpc" || strings.HasPrefix(media, "application/grpc+") && len(media) > len("application/grpc+"))
+			valid = r.Method == "POST" && validPath && validMedia && len(r.Header.Values("Content-Type")) == 1 && len(r.Header.Values("Grpc-Encoding")) <= 1 && (r.Header.Get("Grpc-Encoding") == "" || r.Header.Get("Grpc-Encoding") == "identity")
+		} else {
+			valid = r.Method == s.transport.Method && r.URL.Path == s.transport.Path && len(r.Header.Values("Content-Encoding")) <= 1 && (r.Header.Get("Content-Encoding") == "" || r.Header.Get("Content-Encoding") == "identity")
 		}
-		validPath := path == single || isMulti || s.transport.Service == "" && path == "//Tun"
-		media, _, mediaErr := mime.ParseMediaType(r.Header.Get("Content-Type"))
-		validMedia := mediaErr == nil && (media == "application/grpc" || strings.HasPrefix(media, "application/grpc+") && len(media) > len("application/grpc+"))
-		if r.Method != "POST" || r.ProtoMajor != 2 || !validPath || !serverHostMatches(r.Host, s.transport.Host) || !validMedia || len(r.Header.Values("Content-Type")) != 1 || len(r.Header.Values("Grpc-Encoding")) > 1 || r.Header.Get("Grpc-Encoding") != "" && r.Header.Get("Grpc-Encoding") != "identity" {
+		if r.ProtoMajor != 2 || !serverHostMatches(r.Host, s.transport.Host) || !valid {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 		if !e.acquire() {
-			w.Header().Set("Content-Type", "application/grpc")
-			w.Header().Set("Grpc-Status", "8")
-			w.WriteHeader(http.StatusOK)
+			if grpc {
+				w.Header().Set("Content-Type", "application/grpc")
+				w.Header().Set("Grpc-Status", "8")
+				w.WriteHeader(http.StatusOK)
+			} else {
+				w.WriteHeader(http.StatusServiceUnavailable)
+			}
 			return
 		}
 		defer e.release()
-		c := &grpcServerConn{request: r, writer: w, controller: http.NewResponseController(w), local: raw.LocalAddr(), remote: raw.RemoteAddr(), codec: grpcCodec{multi: isMulti}}
+		c := &serverHTTP2Conn{request: r, writer: w, controller: http.NewResponseController(w), local: raw.LocalAddr(), remote: raw.RemoteAddr()}
+		if grpc {
+			c.codec = &grpcCodec{multi: isMulti}
+		}
 		if !e.track(c) {
 			return
 		}
 		defer e.untrack(c)
 		defer c.Close()
-		w.Header().Set("Content-Type", "application/grpc")
-		w.Header().Set("Grpc-Encoding", "identity")
-		w.Header().Set("Trailer", "Grpc-Status")
+		w.Header().Set("Cache-Control", "no-store")
+		if grpc {
+			w.Header().Set("Content-Type", "application/grpc")
+			w.Header().Set("Grpc-Encoding", "identity")
+			w.Header().Set("Trailer", "Grpc-Status")
+		} else {
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.Header().Set("Content-Encoding", "identity")
+		}
 		w.WriteHeader(http.StatusOK)
 		if err := c.controller.Flush(); err != nil {
 			return
@@ -234,10 +269,12 @@ func (e *Engine) serveGRPCServer(raw net.Conn, s serverSpec) {
 			conn = encrypted
 		}
 		e.serveServerContext(ctx, conn, s)
-		if c.writeClosed.Load() {
-			w.Header().Set("Grpc-Status", "0")
-		} else {
-			w.Header().Set("Grpc-Status", "7")
+		if grpc {
+			if c.writeClosed.Load() {
+				w.Header().Set("Grpc-Status", "0")
+			} else {
+				w.Header().Set("Grpc-Status", "7")
+			}
 		}
 	})
 	h2 := &http2.Server{MaxConcurrentStreams: uint32(e.config.MaxConnections), MaxReadFrameSize: 16384, MaxDecoderHeaderTableSize: 4096, MaxEncoderHeaderTableSize: 4096,

@@ -95,7 +95,7 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 	}
 	if transport != nil && s.tls != nil {
 		s.tls.NextProtos = []string{"http/1.1"}
-		if transport.Type == "grpc" {
+		if contains([]string{"grpc", "http2"}, transport.Type) {
 			s.tls.NextProtos = []string{"h2"}
 		}
 	}
@@ -261,8 +261,8 @@ func (e *Engine) StartServer(c ServerConfig) (net.Addr, error) {
 					}
 				}
 				if s.transport != nil {
-					if s.transport.Type == "grpc" {
-						e.serveGRPCServer(conn, s)
+					if contains([]string{"grpc", "http2"}, s.transport.Type) {
+						e.serveHTTP2Server(conn, s)
 						return
 					}
 					upgraded, handshakeErr := acceptServerUpgrade(conn, s.transport)

@@ -34,7 +34,7 @@ states its boundary. "Pending" must not be advertised as supported.
 | Remote SOCKS4/4a/5 | Added, including SOCKS5 credentials and UDP association; SOCKS4 is IPv4 TCP by specification |
 | SSH, Naive, Tor | SSH TCP client and forwarding server added: password/public keys/host identity, protected sockets, shared channel budget, bounded setup/close and independent Paramiko 5.0.0 payload/auth tests. Server supports one username/listener; reverse forwarding remains pending. Naive and Tor remain pending; see SSH.md |
 | Snell, Tailcat | Pending: establish exact reference version and protocol scope before implementation |
-| Raw TCP, UDP, WS/early data, HTTP Upgrade, gRPC/multi, HTTP2/h2c | Baseline client carriers retained. WS/early-data, HTTP Upgrade and gRPC Tun/TunMulti server carriers added for VLESS/VMess/Trojan/Shadowsocks TCP; encrypted Vision retains parent carrier layers. HTTP2/h2c and other server carriers remain pending; see SERVER-CARRIERS.md and GRPC-SERVER.md |
+| Raw TCP, UDP, WS/early data, HTTP Upgrade, gRPC/multi, HTTP2/h2c | Baseline client carriers retained. WS/early-data, HTTP Upgrade, gRPC Tun/TunMulti and HTTP2/h2c server carriers added for VLESS/VMess/Trojan/Shadowsocks TCP; encrypted Vision retains parent carrier layers. XHTTP and further server carriers remain pending; see SERVER-CARRIERS.md, GRPC-SERVER.md and HTTP2-SERVER.md |
 | XHTTP modes, metadata, padding and download settings | Baseline implemented scope; preserve original URI semantics |
 | HTTP3, QUIC, mKCP, HTTP disguise, simple-obfs, v2ray-plugin | Baseline carriers, distinct from Hysteria/TUIC protocols |
 | TLS1.2/1.3, uTLS, ECH, REALITY, legacy XTLS, FinalMask | Baseline implemented scope; certificate verification remains enforced |
@@ -60,8 +60,8 @@ states its boundary. "Pending" must not be advertised as supported.
 | SOCKS5 TCP/UDP inbound and native TUN | Baseline; retain packet/flow/lifecycle regression tests |
 | HTTP and mixed HTTP/SOCKS inbound | Added loopback listeners, CONNECT and HTTP body forwarding |
 | Redirect and TProxy | Pending platform-specific listeners and original-destination handling |
-| VLESS, Trojan, Shadowsocks server inbounds | Partial: raw TCP with optional TLS (required for Trojan); VLESS/Trojan UDP-over-TCP and VLESS MUX/XUDP. VLESS Vision adds native TLS 1.3, flow authentication, bounded padding/direct transitions and UDP-only MUX/XUDP. REALITY adds interoperable native TLS authentication/data transfer and protected HTTPS fallback; exact target mirroring/ML-DSA remain pending. Hybrid VLESS decryption adds three wire modes, fixed X25519/ML-KEM chains, bounded tickets/replay and optional Vision, using synchronous reusable record buffers. Shadowsocks implements all 35 methods over TCP/native UDP and SS2022 identity chains. Server carriers and wider options remain pending; see VLESS-SERVER.md, REALITY-SERVER.md, VLESS-ENCRYPTION-SERVER.md and SHADOWSOCKS-SERVER.md |
-| VMess server inbound | Added raw TCP/optional TLS, TCP/UDP/MUX, AEAD and opt-in legacy alter-ID, AES-GCM/ChaCha/CFB/none/zero, length masking/padding and authenticated lengths. Independent Xray 26.7.28 and V2Ray 4.45.2 payload tests passed; server carriers and remaining upstream options are pending; see VMESS-SERVER.md |
+| VLESS, Trojan, Shadowsocks server inbounds | Partial: raw TCP with optional TLS (required for Trojan); VLESS/Trojan UDP-over-TCP and VLESS MUX/XUDP. VLESS Vision adds native TLS 1.3, flow authentication, bounded padding/direct transitions and UDP-only MUX/XUDP. REALITY adds interoperable native TLS authentication/data transfer and protected HTTPS fallback; exact target mirroring/ML-DSA remain pending. Hybrid VLESS decryption adds three wire modes, fixed X25519/ML-KEM chains, bounded tickets/replay and optional Vision, using synchronous reusable record buffers. Shadowsocks implements all 35 methods over TCP/native UDP and SS2022 identity chains. WS/Upgrade/gRPC/HTTP2 carriers are added; further carriers and wider options remain pending; see VLESS-SERVER.md, REALITY-SERVER.md, VLESS-ENCRYPTION-SERVER.md and SHADOWSOCKS-SERVER.md |
+| VMess server inbound | Added raw TCP/optional TLS, TCP/UDP/MUX, AEAD and opt-in legacy alter-ID, AES-GCM/ChaCha/CFB/none/zero, length masking/padding and authenticated lengths. Independent Xray 26.7.28 and V2Ray 4.45.2 payload tests passed; WS/Upgrade/gRPC/HTTP2 carriers are added; further carriers and remaining upstream options are pending; see VMESS-SERVER.md |
 | Other protocol server inbounds | Pending with their corresponding client protocols |
 | Reverse proxy / server fallback | Pending authenticated reverse channels and fallback semantics |
 | General management API | Added opt-in authenticated loopback stats, selection, route and DNS updates; wider API/events scope pending |
@@ -591,3 +591,39 @@ Final core/mobile/CLI race tests passed in 65.755 seconds and vet passed after
 the parent-deadline/worker correction. Both independent Xray gRPC matrices
 passed again against the corrected executable in 15.736 seconds. No final
 local platform/package build or remote workflow conclusion is claimed.
+
+## 0.5.18 extension
+
+Legacy HTTP/2/h2c servers add VLESS/VMess/Trojan/Shadowsocks TCP, optional
+hybrid encrypted Vision, explicit bounded method/host/path policy and raw
+request/response streaming. The shared HTTP/2 handler retains independent
+stream deadlines, protected routing/cancellation, shared parent/stream budget,
+upload half-close and joined owner loss. Raw streams allocate no protobuf
+buffer; gRPC decode buffers now allocate lazily. See [HTTP2-SERVER.md](HTTP2-SERVER.md).
+
+Targeted Go race tests passed four protocols over cleartext/native TLS, large
+atomic UDP, 16 concurrent streams, half-close, custom method, malformed isolation,
+protected dial cancellation, capacity rejection and incomplete owner cleanup.
+The native hybrid inner-TLS/metadata/UDP matrix now includes HTTP2 and gRPC.
+Its first gRPC fixture used mismatched service names; matching the two names
+corrected the fixture without a production protocol change. Official V2Ray
+4.45.2 passed four protocols, PUT/POST and repeated 200,001-byte verified TLS
+payloads in 6.855 seconds. Independent hybrid encryption over legacy HTTP/2 is
+not claimed; that matrix uses the native client.
+
+Combined independent wire validation passed: 193 tests run, 191 passed and
+two existing optional cases skipped, in 236.221 seconds. Core/mobile/CLI race
+checks passed in 68.581 seconds and vet passed. The owner reported Ubuntu CI
+failure at source 49301e3: the SS fixed-port rollback fixture selected UDP's
+port without establishing TCP availability, then interpreted a failed TCP
+rebind as a retained listener. The corrected test reserves both transports,
+injects its owned TCP listener into the existing dual-bind function, requires
+an actual UDP listen error/exactly one fixed-port attempt, and checks closed
+and untracked TCP ownership. No runtime bind policy, cleanup threshold or test
+is disabled. Both dual-bind checks passed 32 race repetitions in 4.145 seconds;
+vet also passed after the fixture correction, published separately as 9bacac4.
+Linux acceptance after that correction remains with the workflow.
+
+XHTTP and remaining report items stay open. Final full platform/package builds
+remain delegated to the workflow without waiting or polling. Loopback checks
+do not establish varied public-node Internet or host route/DNS recovery.

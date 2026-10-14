@@ -123,6 +123,11 @@ class ServerReferenceTests(unittest.TestCase):
                 stream['wsSettings'] = {'path': transport['path'], 'headers': {'Host': transport.get('host', 'localhost')}}
             elif transport['type'] == 'grpc':
                 stream['grpcSettings'] = {'serviceName': transport.get('service', 'GunService'), 'multiMode': grpc_multi}
+            elif transport['type'] == 'http2':
+                stream['network'] = 'http'
+                stream['httpSettings'] = {'path': transport.get('path', '/'), 'host': [transport.get('host', 'localhost')]}
+                if transport.get('method'):
+                    stream['httpSettings']['method'] = transport['method']
             else:
                 stream['httpupgradeSettings'] = {'path': transport['path'], 'host': transport.get('host', 'localhost')}
         profile = {'outbounds': [{'tag': 'direct', 'uri': 'direct://'}], 'final': 'direct', 'inbounds': [spec]}

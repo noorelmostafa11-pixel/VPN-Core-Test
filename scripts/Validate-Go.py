@@ -21,6 +21,7 @@ suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_vless_server_r
 suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_vless_encryption_server_reference.VLESSEncryptionServerReferenceTests'))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_server_carriers_reference.ServerCarrierReferenceTests'))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_grpc_server_reference.GRPCServerReferenceTests'))
+suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_http2_server_reference.HTTP2ServerReferenceTests'))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_ss_server_reference.SSServerReferenceTests'))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_hysteria_reference.HysteriaReferenceTests'))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_hysteria1_reference.Hysteria1ReferenceTests'))

@@ -83,7 +83,8 @@ fixture credential and metadata failures are retained separately from passes.
 Combined race/wire results are recorded in the capability register.
 
 Version 0.5.17 adds gRPC Tun/TunMulti; see [GRPC-SERVER.md](GRPC-SERVER.md).
-HTTP2/XHTTP/QUIC/HTTP3/mKCP server carriers, PROXY/trusted forwarding,
+Version 0.5.18 adds HTTP2/h2c; see [HTTP2-SERVER.md](HTTP2-SERVER.md).
+XHTTP/QUIC/HTTP3/mKCP server carriers, PROXY/trusted forwarding,
 compression and wider HTTP listener options remain pending. Mobile/C ABI server
 startup remains pending. Final full builds belong to the workflow; local
 payload/race checks do not establish varied public-node Internet or host OS
