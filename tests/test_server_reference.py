@@ -66,7 +66,7 @@ class ServerReferenceTests(unittest.TestCase):
 
     @contextlib.contextmanager
     def reference_pair(self, protocol, cipher='aes-256-gcm', wrong_password=False, secure=False,
-                       alter_id=0, authenticated_length=False, mux=False, legacy=None, flow='', server_flow=None, reality=None, fingerprint='chrome', decryption=None, encryption=None, transport=None):
+                       alter_id=0, authenticated_length=False, mux=False, legacy=None, flow='', server_flow=None, reality=None, fingerprint='chrome', decryption=None, encryption=None, transport=None, grpc_multi=False):
         server_port, socks_port = free_port(), free_port()
         spec = {'protocol': protocol, 'listen': f'127.0.0.1:{server_port}'}
         if protocol == 'vmess':
@@ -118,9 +118,11 @@ class ServerReferenceTests(unittest.TestCase):
             if protocol == 'ss':
                 spec.setdefault('options', {})['udp'] = 'false'
             stream = outbound.setdefault('streamSettings', {})
-            stream['network'] = 'ws' if transport['type'] == 'websocket' else 'httpupgrade'
+            stream['network'] = 'ws' if transport['type'] == 'websocket' else transport['type']
             if transport['type'] == 'websocket':
                 stream['wsSettings'] = {'path': transport['path'], 'headers': {'Host': transport.get('host', 'localhost')}}
+            elif transport['type'] == 'grpc':
+                stream['grpcSettings'] = {'serviceName': transport.get('service', 'GunService'), 'multiMode': grpc_multi}
             else:
                 stream['httpupgradeSettings'] = {'path': transport['path'], 'host': transport.get('host', 'localhost')}
         profile = {'outbounds': [{'tag': 'direct', 'uri': 'direct://'}], 'final': 'direct', 'inbounds': [spec]}

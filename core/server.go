@@ -95,6 +95,9 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 	}
 	if transport != nil && s.tls != nil {
 		s.tls.NextProtos = []string{"http/1.1"}
+		if transport.Type == "grpc" {
+			s.tls.NextProtos = []string{"h2"}
+		}
 	}
 	if c.Protocol == "vmess" {
 		s.vm, err = newVMServerAuth(c)
@@ -258,6 +261,10 @@ func (e *Engine) StartServer(c ServerConfig) (net.Addr, error) {
 					}
 				}
 				if s.transport != nil {
+					if s.transport.Type == "grpc" {
+						e.serveGRPCServer(conn, s)
+						return
+					}
 					upgraded, handshakeErr := acceptServerUpgrade(conn, s.transport)
 					if handshakeErr != nil {
 						return
@@ -365,6 +372,9 @@ func serverSSConn(raw net.Conn, c Config) (net.Conn, []byte, error) {
 }
 
 func (e *Engine) serveServer(raw net.Conn, s serverSpec) {
+	e.serveServerContext(e.ctx, raw, s)
+}
+func (e *Engine) serveServerContext(parent context.Context, raw net.Conn, s serverSpec) {
 	client := raw
 	var address []byte
 	var err error
@@ -416,7 +426,7 @@ func (e *Engine) serveServer(raw net.Conn, s serverSpec) {
 	if err != nil {
 		return
 	}
-	ctx := e.flowContext(e.ctx, raw.RemoteAddr(), host)
+	ctx := e.flowContext(parent, raw.RemoteAddr(), host)
 	if udp {
 		if s.config.Protocol == "vless" && writeAll(raw, []byte{0, 0}) != nil {
 			return

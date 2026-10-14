@@ -19,6 +19,7 @@ type ServerTransportConfig struct {
 	Host        string `json:"host,omitempty"`
 	EarlyData   int    `json:"early_data,omitempty"`
 	EarlyHeader string `json:"early_header,omitempty"`
+	Service     string `json:"service,omitempty"`
 }
 
 func compileServerTransport(c ServerConfig) (*ServerTransportConfig, error) {
@@ -31,12 +32,24 @@ func compileServerTransport(c ServerConfig) (*ServerTransportConfig, error) {
 	}
 	t := *c.Transport
 	if t.Type == "raw" {
-		if t.Path != "" || t.Host != "" || t.EarlyData != 0 || t.EarlyHeader != "" {
+		if t.Path != "" || t.Host != "" || t.EarlyData != 0 || t.EarlyHeader != "" || t.Service != "" {
 			return nil, bad
 		}
 		return nil, nil
 	}
-	if !contains([]string{"websocket", "httpupgrade"}, t.Type) || c.Reality != nil {
+	if !contains([]string{"websocket", "httpupgrade", "grpc"}, t.Type) || c.Reality != nil {
+		return nil, bad
+	}
+	if t.Type == "grpc" {
+		if t.Path != "" || t.EarlyData != 0 || t.EarlyHeader != "" || len(t.Service) > 256 || strings.ContainsAny(t.Service, "\x00 \t\r\n?#") || len(t.Host) > 253 || strings.ContainsAny(t.Host, "\x00 \t\r\n/@?#") {
+			return nil, bad
+		}
+		if _, _, err := grpcServerPaths(t.Service); err != nil {
+			return nil, bad
+		}
+		return &t, nil
+	}
+	if t.Service != "" {
 		return nil, bad
 	}
 	if t.Path == "" {

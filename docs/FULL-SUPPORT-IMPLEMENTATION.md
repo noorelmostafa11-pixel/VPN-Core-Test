@@ -34,7 +34,7 @@ states its boundary. "Pending" must not be advertised as supported.
 | Remote SOCKS4/4a/5 | Added, including SOCKS5 credentials and UDP association; SOCKS4 is IPv4 TCP by specification |
 | SSH, Naive, Tor | SSH TCP client and forwarding server added: password/public keys/host identity, protected sockets, shared channel budget, bounded setup/close and independent Paramiko 5.0.0 payload/auth tests. Server supports one username/listener; reverse forwarding remains pending. Naive and Tor remain pending; see SSH.md |
 | Snell, Tailcat | Pending: establish exact reference version and protocol scope before implementation |
-| Raw TCP, UDP, WS/early data, HTTP Upgrade, gRPC/multi, HTTP2/h2c | Baseline client carriers retained. WS/early-data and HTTP Upgrade server carriers added for VLESS/VMess/Trojan/Shadowsocks TCP; encrypted Vision retains parent carrier layers. Other server carriers remain pending; see SERVER-CARRIERS.md |
+| Raw TCP, UDP, WS/early data, HTTP Upgrade, gRPC/multi, HTTP2/h2c | Baseline client carriers retained. WS/early-data, HTTP Upgrade and gRPC Tun/TunMulti server carriers added for VLESS/VMess/Trojan/Shadowsocks TCP; encrypted Vision retains parent carrier layers. HTTP2/h2c and other server carriers remain pending; see SERVER-CARRIERS.md and GRPC-SERVER.md |
 | XHTTP modes, metadata, padding and download settings | Baseline implemented scope; preserve original URI semantics |
 | HTTP3, QUIC, mKCP, HTTP disguise, simple-obfs, v2ray-plugin | Baseline carriers, distinct from Hysteria/TUIC protocols |
 | TLS1.2/1.3, uTLS, ECH, REALITY, legacy XTLS, FinalMask | Baseline implemented scope; certificate verification remains enforced |
@@ -558,3 +558,36 @@ and two existing optional cases skipped, in 223.859 seconds. Full core/mobile/
 CLI race checks passed in 65.527 seconds; vet passed. Native encrypted carrier
 inner-TLS/metadata cases and independent Xray matrices passed before that full
 run. No final local platform/package build or remote workflow result is claimed.
+
+## 0.5.17 extension
+
+gRPC Tun/TunMulti servers add cleartext/native TLS HTTP/2 to VLESS, VMess,
+Trojan and Shadowsocks TCP, with optional hybrid encrypted Vision. Existing
+vendored HTTP/2 and project protobuf framing retain bounded frames/messages,
+stream flow control, protected routing and shared parent/stream admission.
+Protocol execution reuses the owned native handler instead of adding another
+worker/channel. A validated preface clears the parent setup deadline, while
+incomplete prefaces retain it. Owner shutdown joins handlers and protocol
+forwarding. See [GRPC-SERVER.md](GRPC-SERVER.md).
+
+Targeted Go race checks passed both methods/four protocols, repeated TCP,
+large atomic UDP, 16 concurrent payloads over one parent, upload half-close and
+successful trailers, malformed request/message isolation, protection rejection,
+capacity accounting, incomplete owner loss and parent reuse after setup timeout.
+Official Xray 26.7.28 passed both four-protocol matrices and native/random
+hybrid Vision with verified inner TLS/XUDP. The initial compile failure was a
+fixture still asserting gRPC was unsupported. Review then found a stale parent
+deadline; an explicit timed reuse regression and preface adapter correct it.
+Failed evidence is retained separately from successful runs.
+
+The first combined independent wire validation passed 192 tests: 190 passed
+and two existing optional cases skipped, in 252.956 seconds. That executable
+preceded the parent-deadline correction; final checks follow separately.
+HTTP2/XHTTP and remaining report scope stay open. Only final full builds are
+delegated to the workflow, without polling/waiting. Public-node Internet and
+host route/DNS acceptance are not inferred from loopback results.
+
+Final core/mobile/CLI race tests passed in 65.755 seconds and vet passed after
+the parent-deadline/worker correction. Both independent Xray gRPC matrices
+passed again against the corrected executable in 15.736 seconds. No final
+local platform/package build or remote workflow conclusion is claimed.

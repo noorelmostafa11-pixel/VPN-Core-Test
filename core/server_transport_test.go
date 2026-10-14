@@ -189,7 +189,7 @@ func TestServerUpgradeRejectsUnmatchedMalformedAndOversizedHeaders(t *testing.T)
 		b.Close()
 		<-written
 	}
-	for _, config := range []ServerTransportConfig{{Type: "grpc"}, {Type: "raw", Path: "/ignored"}, {Type: "websocket", Path: "relative"}, {Type: "websocket", Host: "injected\r\n"}, {Type: "websocket", EarlyData: 4097}, {Type: "httpupgrade", EarlyData: 10}, {Type: "websocket", EarlyData: 10, EarlyHeader: "Connection"}} {
+	for _, config := range []ServerTransportConfig{{Type: "http2"}, {Type: "raw", Path: "/ignored"}, {Type: "websocket", Path: "relative"}, {Type: "websocket", Host: "injected\r\n"}, {Type: "websocket", EarlyData: 4097}, {Type: "httpupgrade", EarlyData: 10}, {Type: "websocket", EarlyData: 10, EarlyHeader: "Connection"}} {
 		if _, err := compileServerTransport(ServerConfig{Protocol: "vless", Transport: &config}); err == nil {
 			t.Fatal("bad carrier settings accepted")
 		}
