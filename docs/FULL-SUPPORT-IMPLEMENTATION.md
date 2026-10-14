@@ -34,8 +34,8 @@ states its boundary. "Pending" must not be advertised as supported.
 | Remote SOCKS4/4a/5 | Added, including SOCKS5 credentials and UDP association; SOCKS4 is IPv4 TCP by specification |
 | SSH, Naive, Tor | SSH TCP client and forwarding server added: password/public keys/host identity, protected sockets, shared channel budget, bounded setup/close and independent Paramiko 5.0.0 payload/auth tests. Server supports one username/listener; reverse forwarding remains pending. Naive and Tor remain pending; see SSH.md |
 | Snell, Tailcat | Pending: establish exact reference version and protocol scope before implementation |
-| Raw TCP, UDP, WS/early data, HTTP Upgrade, gRPC/multi, HTTP2/h2c | Baseline client carriers retained. WS/early-data, HTTP Upgrade, gRPC Tun/TunMulti and HTTP2/h2c server carriers added for VLESS/VMess/Trojan/Shadowsocks TCP; encrypted Vision retains parent carrier layers. XHTTP and further server carriers remain pending; see SERVER-CARRIERS.md, GRPC-SERVER.md and HTTP2-SERVER.md |
-| XHTTP modes, metadata, padding and download settings | Baseline implemented scope; preserve original URI semantics |
+| Raw TCP, UDP, WS/early data, HTTP Upgrade, gRPC/multi, HTTP2/h2c | Baseline client carriers retained. WS/early-data, HTTP Upgrade, gRPC Tun/TunMulti and HTTP2/h2c server carriers added for VLESS/VMess/Trojan/Shadowsocks TCP; encrypted Vision retains parent carrier layers. XHTTP stream-one is added; split XHTTP and further server carriers remain pending; see SERVER-CARRIERS.md, GRPC-SERVER.md and HTTP2-SERVER.md |
+| XHTTP modes, metadata, padding and download settings | Baseline clients retained. Server stream-one adds native HTTP1/HTTP2/h2c, explicit protocol selection, protected streaming and encrypted Vision. Stream-up/packet-up, server metadata/padding options and HTTP3 remain next; see XHTTP-SERVER.md |
 | HTTP3, QUIC, mKCP, HTTP disguise, simple-obfs, v2ray-plugin | Baseline carriers, distinct from Hysteria/TUIC protocols |
 | TLS1.2/1.3, uTLS, ECH, REALITY, legacy XTLS, FinalMask | Baseline implemented scope; certificate verification remains enforced |
 | General multiplexing and XUDP/UoT | Partial: VMess/VLESS MUX server framing, concurrent TCP and XUDP destination/Full Cone UDP added with bounded lifetime and independent Xray payload tests. General outbound MUX, cross-parent XUDP migration, smux and additional UOT paths remain pending; see MUX-SERVER.md |
@@ -648,3 +648,49 @@ and independent Noise/encrypted TCP/UDP/auth/source payloads passed. Authenticat
 and one-second failure/owner-close thresholds remain unchanged. Patch hashes and
 vet passed. Post-fix macOS verification is still with the workflow; a full remote
 pass or sole proven cause of its scheduling delay is not claimed.
+
+## 0.5.19 extension
+
+XHTTP stream-one servers add native HTTP1/HTTP2/h2c for the four TCP protocols,
+explicit protocol/method/host/path policy, protected raw streaming and optional
+hybrid encrypted Vision. Accepted sockets and logical streams share admission;
+protocol execution reuses owned native handlers, without session pools/timers
+or another carrier worker. HTTP1 enables full duplex, and EOF-aware closure
+preserves response drain/reuse instead of forcing a completed body into a read
+timeout. Shadowsocks retains its separately configured native UDP through the
+same bounded dual-bind path. See [XHTTP-SERVER.md](XHTTP-SERVER.md).
+
+Go race checks passed repeated TCP/atomic UDP, verified TLS, encrypted inner
+TLS/Vision/metadata, finite-body HTTP1 half-close/reuse, malformed configuration/
+requests, protection cancellation and incomplete owner shutdown. A direct
+HTTP2 cleartext payload and native SS UDP also passed (4.022s). The initial SS
+fixture omitted its client raw transport; correcting that field fixed its
+validation failure. The first finite-body test exposed an EOF read-deadline
+reset canceling final HTTP1 output; explicit EOF tracking corrected production
+closure. Reference fixtures initially passed a reference-only ALPN field to
+strict project configuration, then sent HTTP1 bytes after h2 negotiation;
+explicit matching listener/framing settings corrected the fixtures. Original
+failed evidence remains preserved, without weakening body/time limits.
+
+Official Xray 26.7.28 passed four protocols over cleartext and verified TLS,
+HTTP1/HTTP2, native/random hybrid Vision, inner TLS and XUDP. Independent
+WireGuard Noise/TCP/UDP/auth/source cases passed alongside that reference matrix
+(five combined cases, 14.907s). Full independent wire validation then passed:
+195 tests run, 193 passed and two existing optional cases skipped, in 248.246s.
+Core/mobile/CLI race passed in 66.997s and vet passed. The additional h2c/SS
+native-UDP case was added afterwards and passed its targeted race run.
+
+The owner supplied Android job 115812155285 from run 38552055818 at 870087d.
+The preceding WireGuard extension was copied into module-mode mobile staging,
+but its new gVisor dependency patch was omitted. Build-Mobile now stages the
+same reviewed gVisor source and verifies every patch hash before invoking
+bindings. All 28 patches were verified in the actual seven-module stage, and
+native host module-mode core/mobile compilation plus the real-stack worker
+bound/join test passed (3.510s). This directly checks the formerly missing API;
+final Android AAR/Apple framework builds remain with the workflow. No final
+mobile artifact or post-fix remote result is claimed.
+
+XHTTP stream-up/packet-up, server metadata/padding options and the remaining
+report scope stay open. Final full builds remain delegated without waiting or
+polling; local checks continue. Public-node Internet and host route/DNS
+acceptance are separate from these loopback/source results.

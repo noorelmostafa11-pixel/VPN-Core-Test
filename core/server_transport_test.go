@@ -44,6 +44,9 @@ func carrierServerFixture(t *testing.T, protocol, transport string, secure bool,
 	if transport == "http2" {
 		cfg.Transport = "http"
 	}
+	if transport == "xhttp" {
+		cfg.Mode = "stream-one"
+	}
 	cfg.Server, cfg.Port, _ = splitProtocolTarget(addr.String())
 	cfg.UUID, _ = uuidBytes(visionServerTestUUID)
 	cfg.Password, cfg.Cipher = spec.Password, spec.Cipher
@@ -70,7 +73,7 @@ func carrierServerFixture(t *testing.T, protocol, transport string, secure bool,
 }
 
 func TestServerCarriersProtocolsTCPUDPAndOwnerClose(t *testing.T) {
-	for _, transport := range []string{"websocket", "httpupgrade", "http2"} {
+	for _, transport := range []string{"websocket", "httpupgrade", "http2", "xhttp"} {
 		for _, protocol := range []string{"vless", "vmess", "trojan", "ss"} {
 			for _, secure := range []bool{false, true} {
 				t.Run(transport+"/"+protocol+"/TLS="+boolText(secure), func(t *testing.T) {
@@ -192,7 +195,7 @@ func TestServerUpgradeRejectsUnmatchedMalformedAndOversizedHeaders(t *testing.T)
 		b.Close()
 		<-written
 	}
-	for _, config := range []ServerTransportConfig{{Type: "xhttp"}, {Type: "raw", Path: "/ignored"}, {Type: "websocket", Path: "relative"}, {Type: "websocket", Host: "injected\r\n"}, {Type: "websocket", EarlyData: 4097}, {Type: "httpupgrade", EarlyData: 10}, {Type: "websocket", EarlyData: 10, EarlyHeader: "Connection"}} {
+	for _, config := range []ServerTransportConfig{{Type: "http3"}, {Type: "raw", Path: "/ignored"}, {Type: "websocket", Path: "relative"}, {Type: "websocket", Host: "injected\r\n"}, {Type: "websocket", EarlyData: 4097}, {Type: "httpupgrade", EarlyData: 10}, {Type: "websocket", EarlyData: 10, EarlyHeader: "Connection"}} {
 		if _, err := compileServerTransport(ServerConfig{Protocol: "vless", Transport: &config}); err == nil {
 			t.Fatal("bad carrier settings accepted")
 		}
@@ -250,7 +253,7 @@ func TestServerCarrierEncryptedVisionNativeClientInnerTLSAndMetadata(t *testing.
 	root := x509.NewCertPool()
 	pem, _ := os.ReadFile(cert)
 	root.AppendCertsFromPEM(pem)
-	for _, carrier := range []string{"websocket", "httpupgrade", "http2", "grpc"} {
+	for _, carrier := range []string{"websocket", "httpupgrade", "http2", "grpc", "xhttp"} {
 		for _, mode := range []string{"native", "random"} {
 			t.Run(carrier+"/"+mode, func(t *testing.T) {
 				private, public := encryptionTestKeys(t, false, 1)
@@ -272,6 +275,9 @@ func TestServerCarrierEncryptedVisionNativeClientInnerTLSAndMetadata(t *testing.
 					t.Fatal(err)
 				}
 				cfg.CAFile = cert
+				if carrier == "xhttp" {
+					cfg.Mode = "stream-one"
+				}
 				if carrier == "grpc" {
 					cfg.Authority = "localhost"
 				}

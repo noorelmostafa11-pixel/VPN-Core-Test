@@ -98,6 +98,14 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 		if contains([]string{"grpc", "http2"}, transport.Type) {
 			s.tls.NextProtos = []string{"h2"}
 		}
+		if transport.Type == "xhttp" {
+			s.tls.NextProtos = []string{"h2", "http/1.1"}
+			if transport.HTTPVersion == "h1" {
+				s.tls.NextProtos = []string{"http/1.1"}
+			} else if transport.HTTPVersion == "h2" {
+				s.tls.NextProtos = []string{"h2"}
+			}
+		}
 	}
 	if c.Protocol == "vmess" {
 		s.vm, err = newVMServerAuth(c)
@@ -199,6 +207,9 @@ func (e *Engine) StartServer(c ServerConfig) (net.Addr, error) {
 	}
 	if c.Protocol == "tuic" {
 		return e.startTUICServer(s)
+	}
+	if s.transport != nil && s.transport.Type == "xhttp" {
+		return e.startXHTTPServer(s)
 	}
 	var l net.Listener
 	var datagrams *ssUDPServer

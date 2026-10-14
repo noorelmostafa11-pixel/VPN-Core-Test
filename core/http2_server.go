@@ -63,6 +63,7 @@ type serverHTTP2Conn struct {
 	buffer          []byte
 	pending         []byte
 	readErr         error
+	readEnded       atomic.Bool
 	closed          atomic.Bool
 	writeClosed     atomic.Bool
 	once            sync.Once
@@ -89,12 +90,25 @@ func (c *serverHTTP2Conn) CloseWrite() error {
 func (c *serverHTTP2Conn) Close() error {
 	c.once.Do(func() {
 		c.closed.Store(true)
+		if !c.readEnded.Load() {
+			c.controller.SetReadDeadline(time.Now())
+		}
 		if !c.writeClosed.Load() {
 			c.controller.SetWriteDeadline(time.Now())
 		}
 		c.request.Body.Close()
 	})
 	return nil
+}
+
+func (e *Engine) ownHTTPHandler() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.closed || e.ctx.Err() != nil {
+		return false
+	}
+	e.workers.Add(1)
+	return true
 }
 func (c *serverHTTP2Conn) Read(b []byte) (int, error) {
 	if len(b) == 0 {
@@ -106,7 +120,11 @@ func (c *serverHTTP2Conn) Read(b []byte) (int, error) {
 		return 0, net.ErrClosed
 	}
 	if c.codec == nil {
-		return c.request.Body.Read(b)
+		n, err := c.request.Body.Read(b)
+		if err == io.EOF {
+			c.readEnded.Store(true)
+		}
+		return n, err
 	}
 	if c.buffer == nil {
 		c.buffer = make([]byte, 32768)
@@ -116,6 +134,9 @@ func (c *serverHTTP2Conn) Read(b []byte) (int, error) {
 			return 0, net.ErrClosed
 		}
 		if c.readErr != nil {
+			if c.readErr == io.EOF {
+				c.readEnded.Store(true)
+			}
 			return 0, c.readErr
 		}
 		n, err := c.request.Body.Read(c.buffer[:])
@@ -194,13 +215,9 @@ func (e *Engine) serveHTTP2Server(raw net.Conn, s serverSpec) {
 	// The connection and each protocol stream have separate shared admission.
 	// Native HTTP/2 handles transport framing; protocol workers stay engine-owned.
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		e.mu.Lock()
-		if e.closed || e.ctx.Err() != nil {
-			e.mu.Unlock()
+		if !e.ownHTTPHandler() {
 			return
 		}
-		e.workers.Add(1)
-		e.mu.Unlock()
 		defer e.workers.Done()
 		valid, isMulti := false, false
 		if grpc {

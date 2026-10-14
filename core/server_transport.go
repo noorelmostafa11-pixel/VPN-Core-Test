@@ -21,6 +21,8 @@ type ServerTransportConfig struct {
 	EarlyHeader string `json:"early_header,omitempty"`
 	Service     string `json:"service,omitempty"`
 	Method      string `json:"method,omitempty"`
+	Mode        string `json:"mode,omitempty"`
+	HTTPVersion string `json:"http_version,omitempty"`
 }
 
 func compileServerTransport(c ServerConfig) (*ServerTransportConfig, error) {
@@ -32,17 +34,20 @@ func compileServerTransport(c ServerConfig) (*ServerTransportConfig, error) {
 		return nil, bad
 	}
 	t := *c.Transport
+	if t.HTTPVersion != "" && t.Type != "xhttp" {
+		return nil, bad
+	}
 	if t.Type == "raw" {
-		if t.Path != "" || t.Host != "" || t.EarlyData != 0 || t.EarlyHeader != "" || t.Service != "" || t.Method != "" {
+		if t.Path != "" || t.Host != "" || t.EarlyData != 0 || t.EarlyHeader != "" || t.Service != "" || t.Method != "" || t.Mode != "" {
 			return nil, bad
 		}
 		return nil, nil
 	}
-	if !contains([]string{"websocket", "httpupgrade", "grpc", "http2"}, t.Type) || c.Reality != nil {
+	if !contains([]string{"websocket", "httpupgrade", "grpc", "http2", "xhttp"}, t.Type) || c.Reality != nil {
 		return nil, bad
 	}
 	if t.Type == "grpc" {
-		if t.Path != "" || t.Method != "" || t.EarlyData != 0 || t.EarlyHeader != "" || len(t.Service) > 256 || strings.ContainsAny(t.Service, "\x00 \t\r\n?#") || len(t.Host) > 253 || strings.ContainsAny(t.Host, "\x00 \t\r\n/@?#") {
+		if t.Path != "" || t.Method != "" || t.Mode != "" || t.EarlyData != 0 || t.EarlyHeader != "" || len(t.Service) > 256 || strings.ContainsAny(t.Service, "\x00 \t\r\n?#") || len(t.Host) > 253 || strings.ContainsAny(t.Host, "\x00 \t\r\n/@?#") {
 			return nil, bad
 		}
 		if _, _, err := grpcServerPaths(t.Service); err != nil {
@@ -68,6 +73,34 @@ func compileServerTransport(c ServerConfig) (*ServerTransportConfig, error) {
 		return nil, bad
 	}
 	if t.EarlyData < 0 || t.EarlyData > 4096 {
+		return nil, bad
+	}
+	if t.Type == "xhttp" {
+		if t.EarlyData != 0 || t.EarlyHeader != "" {
+			return nil, bad
+		}
+		if t.Mode == "" {
+			t.Mode = "stream-one"
+		}
+		if t.Mode != "stream-one" {
+			return nil, bad
+		}
+		if t.HTTPVersion == "" {
+			t.HTTPVersion = "auto"
+		}
+		if !contains([]string{"auto", "h1", "h2"}, t.HTTPVersion) {
+			return nil, bad
+		}
+		t.Path = strings.TrimSuffix(t.Path, "/") + "/"
+		if t.Method == "" {
+			t.Method = "POST"
+		}
+		if len(t.Method) > 32 || !httpToken(t.Method) || contains([]string{"CONNECT", "GET", "HEAD", "TRACE", "OPTIONS"}, t.Method) {
+			return nil, bad
+		}
+		return &t, nil
+	}
+	if t.Mode != "" {
 		return nil, bad
 	}
 	if t.Type == "http2" {

@@ -114,7 +114,9 @@ class ServerReferenceTests(unittest.TestCase):
                 outbound['streamSettings']['tlsSettings'] = {'serverName': 'localhost',
                     'disableSystemRoot': True, 'certificates': [{'certificateFile': str(self.cert), 'usage': 'verify'}]}
         if transport:
-            spec['transport'] = transport
+            spec['transport'] = {key: value for key, value in transport.items() if key != 'alpn'}
+            if transport['type'] == 'xhttp' and transport.get('alpn') in [['h2'], ['http/1.1']]:
+                spec['transport']['http_version'] = 'h2' if transport['alpn'] == ['h2'] else 'h1'
             if protocol == 'ss':
                 spec.setdefault('options', {})['udp'] = 'false'
             stream = outbound.setdefault('streamSettings', {})
@@ -128,6 +130,12 @@ class ServerReferenceTests(unittest.TestCase):
                 stream['httpSettings'] = {'path': transport.get('path', '/'), 'host': [transport.get('host', 'localhost')]}
                 if transport.get('method'):
                     stream['httpSettings']['method'] = transport['method']
+            elif transport['type'] == 'xhttp':
+                stream['xhttpSettings'] = {'path': transport.get('path', '/'), 'host': transport.get('host', 'localhost'), 'mode': transport.get('mode', 'stream-one')}
+                if transport.get('method'):
+                    stream['xhttpSettings']['extra'] = {'uplinkHTTPMethod': transport['method']}
+                if 'tlsSettings' in stream:
+                    stream['tlsSettings']['alpn'] = transport.get('alpn', ['h2', 'http/1.1'])
             else:
                 stream['httpupgradeSettings'] = {'path': transport['path'], 'host': transport.get('host', 'localhost')}
         profile = {'outbounds': [{'tag': 'direct', 'uri': 'direct://'}], 'final': 'direct', 'inbounds': [spec]}
