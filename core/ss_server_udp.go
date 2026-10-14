@@ -141,38 +141,17 @@ type ssServerDelivery struct {
 }
 
 func (e *Engine) listenSSServer(state *ssServerState, address string, listenTCP func(string, string) (net.Listener, error)) (net.Listener, *ssUDPServer, error) {
-	_, port, _ := net.SplitHostPort(address)
-	n, _ := number(port, 0, 65535)
-	attempts := 1
-	if n == 0 {
-		// TCP and UDP have separate ephemeral-port allocators. Retry only an
-		// automatically chosen port, with no workers on failed UDP binds.
-		attempts = 8
+	listener, conn, err := e.listenTCPUDP(address, listenTCP, net.ListenPacket)
+	if err != nil {
+		return nil, nil, err
 	}
-	var err error
-	for i := 0; i < attempts; i++ {
-		if e.ctx.Err() != nil {
-			return nil, nil, net.ErrClosed
-		}
-		listener, bindErr := listenTCP("tcp", address)
-		if bindErr != nil {
-			return nil, nil, bindErr
-		}
-		if !e.track(listener) {
-			return nil, nil, net.ErrClosed
-		}
-		var packets *ssUDPServer
-		packets, err = e.startSSUDP(state, listener.Addr())
-		if err == nil {
-			return listener, packets, nil
-		}
+	packets, err := e.serveSSUDP(state, conn)
+	if err != nil {
 		listener.Close()
 		e.untrack(listener)
-		if errors.Is(err, net.ErrClosed) {
-			break
-		}
+		return nil, nil, err
 	}
-	return nil, nil, err
+	return listener, packets, nil
 }
 
 func (e *Engine) startSSUDP(state *ssServerState, addr net.Addr) (*ssUDPServer, error) {
@@ -180,10 +159,14 @@ func (e *Engine) startSSUDP(state *ssServerState, addr net.Addr) (*ssUDPServer, 
 	if err != nil {
 		return nil, err
 	}
-	configureDatagramBuffers(conn)
 	if !e.track(conn) {
 		return nil, net.ErrClosed
 	}
+	return e.serveSSUDP(state, conn)
+}
+
+func (e *Engine) serveSSUDP(state *ssServerState, conn net.PacketConn) (*ssUDPServer, error) {
+	configureDatagramBuffers(conn)
 	ctx, cancel := context.WithCancel(e.ctx)
 	p := &ssUDPServer{e: e, state: state, conn: conn, ctx: ctx, cancel: cancel, peers: map[string]*ssUDPServerPeer{}, done: make(chan struct{})}
 	if !e.spawn(func() { defer close(p.done); defer e.untrack(conn); p.run() }) {

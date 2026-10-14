@@ -694,3 +694,37 @@ XHTTP stream-up/packet-up, server metadata/padding options and the remaining
 report scope stay open. Final full builds remain delegated without waiting or
 polling; local checks continue. Public-node Internet and host route/DNS
 acceptance are separate from these loopback/source results.
+
+## Windows DNS dual-listener correction and owner-requested stop
+
+The owner supplied Windows job 115819385127 from run 38554251054 at df769de.
+TestDNSLocalAndNativeTCPUDP failed while binding UDP to TCP's automatically
+selected 127.0.0.1:50151 port: Windows returned a socket access-permission error.
+DNS had assumed a TCP-selected port was available for UDP and did not retry.
+The log establishes UDP bind denial, not the identity or reason for the OS
+reservation. It is unrelated to whether an upstream node supports IPv6.
+
+DNS and Shadowsocks now share one engine-owned TCP/UDP bind path. Automatic
+ports have at most eight attempts; explicit ports have exactly one. Every
+failed UDP bind closes and untracks its TCP listener before another attempt;
+workers start only after both sockets are bound and owned. Owner cancellation
+or StopAccepting revokes newly created sockets. DNS workers now untrack their
+listeners on exit, and failed startup removes both resources. No DNS query,
+DoH transport, address-family policy or background worker budget is changed.
+
+A controlled UDP permission-denial regression failed before correction after
+one attempt, then passed with recovery and joined TCP/UDP cleanup. Real UDP
+collisions, fixed-port single attempts, eight-attempt exhaustion, unchanged
+error propagation, TCP failure and owner-stop phases passed along with the
+existing DNS native/local payload and SS atomic-bind cases for 16 race
+repetitions (4.386s). Full core/mobile/CLI race checks passed (68.499s), and vet
+passed. Source-built CLI payload tests against sing-box 1.14.3 (native TCP/UDP
+in both directions and SS2022 identity chains) and Xray 26.7.28 (XHTTP four
+protocols over cleartext/HTTP1/HTTP2/TLS) passed: three cases, 17.472s.
+
+The version remains 0.5.19-go; this is a stability correction, not an additional
+report capability. Final platform/package builds and Windows post-fix CI remain
+with the workflow and owner. No post-fix remote result or public Internet
+acceptance is claimed. The owner requested stopping after this correction;
+the checkpoint and remaining scope were saved. Next implementation remains
+XHTTP stream-up/packet-up, followed by the still-open complete gap register.
