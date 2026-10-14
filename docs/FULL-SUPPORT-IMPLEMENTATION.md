@@ -60,7 +60,7 @@ states its boundary. "Pending" must not be advertised as supported.
 | SOCKS5 TCP/UDP inbound and native TUN | Baseline; retain packet/flow/lifecycle regression tests |
 | HTTP and mixed HTTP/SOCKS inbound | Added loopback listeners, CONNECT and HTTP body forwarding |
 | Redirect and TProxy | Pending platform-specific listeners and original-destination handling |
-| VLESS, Trojan, Shadowsocks server inbounds | Partial: raw TCP with optional TLS (required for Trojan); VLESS/Trojan UDP-over-TCP and VLESS MUX/XUDP. Shadowsocks now implements all 35 methods over TCP/native UDP, SS2022 fixed identity chains and bounded replay/session state; independent sing-box 1.14.3 transfers passed both directions. Xray 26.7.28 payload tests for legacy VLESS/Trojan/SS remain retained. Vision/REALITY/encryption, server carriers and wider multi-user/options are pending; see SHADOWSOCKS-SERVER.md |
+| VLESS, Trojan, Shadowsocks server inbounds | Partial: raw TCP with optional TLS (required for Trojan); VLESS/Trojan UDP-over-TCP and VLESS MUX/XUDP. VLESS Vision adds native TLS 1.3, flow authentication, bounded padding/direct transitions and UDP-only MUX/XUDP; targeted Go race and official Xray 26.7.28 plain/inner-TLS/XUDP/flow-rejection tests passed. Shadowsocks implements all 35 methods over TCP/native UDP, SS2022 identity chains and bounded replay/session state. Server REALITY/encryption, carriers and wider options remain pending; see VLESS-SERVER.md and SHADOWSOCKS-SERVER.md |
 | VMess server inbound | Added raw TCP/optional TLS, TCP/UDP/MUX, AEAD and opt-in legacy alter-ID, AES-GCM/ChaCha/CFB/none/zero, length masking/padding and authenticated lengths. Independent Xray 26.7.28 and V2Ray 4.45.2 payload tests passed; server carriers and remaining upstream options are pending; see VMESS-SERVER.md |
 | Other protocol server inbounds | Pending with their corresponding client protocols |
 | Reverse proxy / server fallback | Pending authenticated reverse channels and fallback semantics |
@@ -418,7 +418,37 @@ older protocol/cipher/carrier/client tests and Hysteria/SSH/WireGuard/AnyTLS/
 TUIC/ShadowTLS reference payloads. Targeted `table` pressure/concurrency and
 real-socket dual-bind recovery/ceiling/rollback checks passed separately.
 The owner requested immediate source publication and delegated remaining builds
-and package/ABI checks to the workflow. The local portable matrix was stopped;
+and package/ABI checks to the workflow. The owner subsequently clarified this
+means only final full builds: normal local race/wire checks continue. The local portable matrix was stopped;
 no completed 0.5.12 matrix or clean Windows package/ABI result is claimed.
 Previous 0.5.11 packages remain preserved. Workflow review remains with the
 owner, without waiting for or polling its result.
+
+## 0.5.13 extension
+
+VLESS Vision servers are implemented over native TLS 1.3. Flow/UUID/addon
+validation precedes forwarding; direct transitions preserve record boundaries
+and require observed inner TLS 1.3. Empty-flow UDP retains packet framing,
+and Vision listeners allow only UDP MUX subflows so TCP cannot bypass their
+flow requirement. No optional feature workers are added; see
+[VLESS-SERVER.md](VLESS-SERVER.md).
+
+Six targeted Go race tests passed real TCP/UDP and inner TLS payloads, owner
+loss, malformed addons, policy rejection, split direct transitions and
+half-close. Two independent official Xray 26.7.28 cases passed plain/inner-TLS/
+XUDP transfers and missing-flow rejection. The initial launcher omitted the
+tests module path and failed to import; it was corrected before the payload
+run. Full core/mobile/CLI race tests and vet subsequently passed.
+
+The workflow now installs hash-pinned Xray 26.7.28 reference executables into
+RUNNER_TEMP for actual wire tests, excluded from runtime packages. The Windows
+download/hash/executable-version path was checked locally. Final full matrix/
+package builds remain delegated to the workflow; local checks continue, with
+no waiting or polling of remote runs. Server REALITY, VLESS encryption and
+server carriers remain next work; broader report scope is still incomplete.
+
+Final combined independent wire validation passed: 186 tests run, 184 passed
+and two existing optional cases skipped. Core/mobile/CLI race tests passed in
+55.621 seconds and vet passed. The test-only pinned Windows Xray installer also
+passed archive hash and executable version verification. No local final full
+platform/package build or remote workflow conclusion is claimed.

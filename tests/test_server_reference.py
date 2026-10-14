@@ -64,7 +64,7 @@ class ServerReferenceTests(unittest.TestCase):
 
     @contextlib.contextmanager
     def reference_pair(self, protocol, cipher='aes-256-gcm', wrong_password=False, secure=False,
-                       alter_id=0, authenticated_length=False, mux=False, legacy=None):
+                       alter_id=0, authenticated_length=False, mux=False, legacy=None, flow='', server_flow=None):
         server_port, socks_port = free_port(), free_port()
         spec = {'protocol': protocol, 'listen': f'127.0.0.1:{server_port}'}
         if protocol == 'vmess':
@@ -77,8 +77,11 @@ class ServerReferenceTests(unittest.TestCase):
                                              'experiments': 'AuthenticatedLength' if authenticated_length else ''}]}]}
         elif protocol == 'vless':
             spec['uuids'] = [UUID]
+            configured_flow = flow if server_flow is None else server_flow
+            if configured_flow:
+                spec['options'] = {'flow': configured_flow}
             settings = {'vnext': [{'address': '127.0.0.1', 'port': server_port,
-                                  'users': [{'id': UUID, 'encryption': 'none'}]}]}
+                                  'users': [{'id': UUID, 'encryption': 'none', 'flow': flow}]}]}
         else:
             spec['password'] = PASSWORD
             remote = {'address': '127.0.0.1', 'port': server_port,

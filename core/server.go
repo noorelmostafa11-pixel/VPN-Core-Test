@@ -34,6 +34,7 @@ type serverSpec struct {
 	client       Config
 	vm           *vmServerAuth
 	ss           *ssServerState
+	vlessFlow    string
 }
 
 func compileServer(c ServerConfig) (serverSpec, error) {
@@ -106,10 +107,13 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 		if err := validateHysteriaServer(c); err != nil {
 			return s, err
 		}
-	} else if c.Protocol != "hysteria" && c.Protocol != "anytls" && c.Protocol != "tuic" && c.Protocol != "ss" && len(c.Options) > 0 {
+	} else if c.Protocol != "hysteria" && c.Protocol != "anytls" && c.Protocol != "tuic" && c.Protocol != "ss" && c.Protocol != "vless" && len(c.Options) > 0 {
 		return s, errors.New("SERVER_OPTION_UNSUPPORTED")
 	}
 	if c.Protocol == "vless" {
+		if err = compileVLESSServer(&s); err != nil {
+			return s, err
+		}
 		if len(c.UUIDs) == 0 || len(c.UUIDs) > 128 {
 			return s, errors.New("SERVER_USERS_INVALID")
 		}
@@ -209,11 +213,18 @@ func (e *Engine) StartServer(c ServerConfig) (net.Addr, error) {
 				raw.SetDeadline(time.Now().Add(e.config.ConnectTimeout))
 				conn := raw
 				if s.tls != nil {
-					secure := tls.Server(raw, s.tls)
+					bounded := net.Conn(raw)
+					if s.vlessFlow != "" {
+						bounded = &recordBoundedConn{Conn: raw}
+					}
+					secure := tls.Server(bounded, s.tls)
 					if secure.HandshakeContext(e.ctx) != nil {
 						return
 					}
 					conn = secure
+					if s.vlessFlow != "" {
+						conn = &directConn{Conn: secure, raw: raw}
+					}
 				}
 				e.serveServer(conn, s)
 			}) {
@@ -318,27 +329,7 @@ func (e *Engine) serveServer(raw net.Conn, s serverSpec) {
 	case "vmess":
 		client, address, udp, err = vmServerHeader(raw, s.vm)
 	case "vless":
-		var header [18]byte
-		if _, err = io.ReadFull(raw, header[:]); err != nil {
-			return
-		}
-		var id [16]byte
-		copy(id[:], header[1:17])
-		if header[0] != 0 || !s.users[id] || header[17] != 0 {
-			return
-		}
-		var command [1]byte
-		if _, err = io.ReadFull(raw, command[:]); err != nil {
-			return
-		}
-		if command[0] != 1 && command[0] != 2 && command[0] != 3 {
-			return
-		}
-		udp = command[0] == 2
-		mux = command[0] == 3
-		if !mux {
-			address, err = mappedServerAddress(raw)
-		}
+		client, address, udp, mux, err = vlessServerHeader(raw, s)
 	case "trojan":
 		var header [59]byte
 		if _, err = io.ReadFull(raw, header[:]); err != nil {
@@ -373,7 +364,7 @@ func (e *Engine) serveServer(raw net.Conn, s serverSpec) {
 		if s.config.Protocol == "vless" && writeAll(raw, []byte{0, 0}) != nil {
 			return
 		}
-		e.serveMux(client)
+		e.serveMuxPolicy(client, s.vlessFlow != "")
 		return
 	}
 	host, port, err := decodeAddress(address)

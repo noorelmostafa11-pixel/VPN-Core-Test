@@ -101,6 +101,7 @@ type muxServer struct {
 	cancel  context.CancelFunc
 	mu      sync.Mutex
 	closed  bool
+	udpOnly bool
 	flows   map[uint16]*muxServerFlow
 	workers sync.WaitGroup
 	writeMu sync.Mutex
@@ -122,8 +123,11 @@ type muxServerFlow struct {
 }
 
 func (e *Engine) serveMux(conn net.Conn) {
+	e.serveMuxPolicy(conn, false)
+}
+func (e *Engine) serveMuxPolicy(conn net.Conn, udpOnly bool) {
 	ctx, cancel := context.WithCancel(e.ctx)
-	p := &muxServer{e: e, conn: conn, ctx: ctx, cancel: cancel, flows: map[uint16]*muxServerFlow{}}
+	p := &muxServer{e: e, conn: conn, ctx: ctx, cancel: cancel, flows: map[uint16]*muxServerFlow{}, udpOnly: udpOnly}
 	p.last.Store(time.Now().UnixNano())
 	conn.SetDeadline(time.Time{})
 	ownerDone := make(chan struct{})
@@ -257,6 +261,10 @@ func (p *muxServer) send(f muxFrame) error {
 	return err
 }
 func (p *muxServer) start(frame muxFrame) (*muxServerFlow, error) {
+	if p.udpOnly && frame.network != 2 {
+		p.e.rejected.Add(1)
+		return nil, errors.New("VLESS_VISION_MUX_TCP_REJECTED")
+	}
 	if _, _, err := decodeAddress(frame.address); err != nil {
 		return nil, err
 	}

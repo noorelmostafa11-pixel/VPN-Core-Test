@@ -54,6 +54,10 @@ jobs:
         shell: bash
         run: |
           if [ -f go.mod ]; then python -m pip install -r tests/requirements-go.txt; else python -m pip install -r tests/requirements.txt; fi
+      - name: Install pinned independent Xray test reference
+        if: needs.source.outputs.engine == 'go'
+        # Reference binaries stay in RUNNER_TEMP and never enter dist/.
+        run: python scripts/Get-Xray-Test-Reference.py --github-env
       - name: Build, validate and package the selected branch
         run: python scripts/CI.py runtime
       - uses: actions/upload-artifact@v4
