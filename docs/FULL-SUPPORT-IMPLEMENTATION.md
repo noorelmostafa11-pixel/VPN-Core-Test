@@ -34,7 +34,7 @@ states its boundary. "Pending" must not be advertised as supported.
 | Remote SOCKS4/4a/5 | Added, including SOCKS5 credentials and UDP association; SOCKS4 is IPv4 TCP by specification |
 | SSH, Naive, Tor | SSH TCP client and forwarding server added: password/public keys/host identity, protected sockets, shared channel budget, bounded setup/close and independent Paramiko 5.0.0 payload/auth tests. Server supports one username/listener; reverse forwarding remains pending. Naive and Tor remain pending; see SSH.md |
 | Snell, Tailcat | Pending: establish exact reference version and protocol scope before implementation |
-| Raw TCP, UDP, WS/early data, HTTP Upgrade, gRPC/multi, HTTP2/h2c | Baseline carriers; retain regression tests |
+| Raw TCP, UDP, WS/early data, HTTP Upgrade, gRPC/multi, HTTP2/h2c | Baseline client carriers retained. WS/early-data and HTTP Upgrade server carriers added for VLESS/VMess/Trojan/Shadowsocks TCP; encrypted Vision retains parent carrier layers. Other server carriers remain pending; see SERVER-CARRIERS.md |
 | XHTTP modes, metadata, padding and download settings | Baseline implemented scope; preserve original URI semantics |
 | HTTP3, QUIC, mKCP, HTTP disguise, simple-obfs, v2ray-plugin | Baseline carriers, distinct from Hysteria/TUIC protocols |
 | TLS1.2/1.3, uTLS, ECH, REALITY, legacy XTLS, FinalMask | Baseline implemented scope; certificate verification remains enforced |
@@ -524,3 +524,37 @@ now also passes encryption with REALITY/Vision and verified inner TLS. Final
 core/mobile/CLI race checks passed in 66.893 seconds and vet passed after the
 layer-boundary correction. Only source is published; no final local platform/
 package build or remote workflow result is claimed.
+
+## 0.5.16 extension
+
+VLESS/VMess/Trojan/Shadowsocks TCP servers add optional WebSocket and HTTP
+Upgrade, with verified TLS, explicit bounded WS early data, path/host policy,
+preserved prefetched bytes and masked/unmasked frame roles. Existing workers,
+flow admission, routing and shutdown are reused; no HTTP pool/library or
+heartbeat worker is added. HTTP headers/frame/control/no-progress limits reject
+unbounded input before proxy forwarding. Encrypted Vision peels only its AEAD
+while retaining carrier/outer security; pure Vision and REALITY combinations
+with these carriers remain explicit limits. See [SERVER-CARRIERS.md](SERVER-CARRIERS.md).
+
+Targeted Go race checks passed four protocols/two carriers, repeated TCP,
+large atomic UDP-over-stream, TLS, early data/escaping/coalescing, fragmented
+mask/control frames, malformed settings/requests/limits, incomplete owner loss
+and native encrypted Vision with real inner TLS. SDK/encryption wrapper metadata
+now preserves negotiated TLS information. Initial test fixture credential fields
+and a missing metadata unwrap were corrected; failed runs remain recorded.
+Official Xray 26.7.28 passed both carrier matrices, plain/inner-TLS encrypted
+Vision and XUDP. Its Trojan first payload exceeded its fixed buffer before any
+header reached the project server. The fixture now authenticates a small first
+exchange before its unchanged large body/deadline checks; no core restriction
+or payload limit was weakened. Combined local results follow below.
+
+Further server carriers, wider listener options and report items remain open.
+Only final full builds are delegated to the workflow; local checks continue,
+without waiting or polling remote runs. No all-platform/public Internet or
+Windows host recovery acceptance is inferred.
+
+Final combined independent wire validation passed: 190 tests run, 188 passed
+and two existing optional cases skipped, in 223.859 seconds. Full core/mobile/
+CLI race checks passed in 65.527 seconds; vet passed. Native encrypted carrier
+inner-TLS/metadata cases and independent Xray matrices passed before that full
+run. No final local platform/package build or remote workflow result is claimed.

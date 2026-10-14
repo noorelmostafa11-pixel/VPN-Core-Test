@@ -66,7 +66,7 @@ class ServerReferenceTests(unittest.TestCase):
 
     @contextlib.contextmanager
     def reference_pair(self, protocol, cipher='aes-256-gcm', wrong_password=False, secure=False,
-                       alter_id=0, authenticated_length=False, mux=False, legacy=None, flow='', server_flow=None, reality=None, fingerprint='chrome', decryption=None, encryption=None):
+                       alter_id=0, authenticated_length=False, mux=False, legacy=None, flow='', server_flow=None, reality=None, fingerprint='chrome', decryption=None, encryption=None, transport=None):
         server_port, socks_port = free_port(), free_port()
         spec = {'protocol': protocol, 'listen': f'127.0.0.1:{server_port}'}
         if protocol == 'vmess':
@@ -113,6 +113,16 @@ class ServerReferenceTests(unittest.TestCase):
                 # fixture CA while preserving normal certificate/name checks.
                 outbound['streamSettings']['tlsSettings'] = {'serverName': 'localhost',
                     'disableSystemRoot': True, 'certificates': [{'certificateFile': str(self.cert), 'usage': 'verify'}]}
+        if transport:
+            spec['transport'] = transport
+            if protocol == 'ss':
+                spec.setdefault('options', {})['udp'] = 'false'
+            stream = outbound.setdefault('streamSettings', {})
+            stream['network'] = 'ws' if transport['type'] == 'websocket' else 'httpupgrade'
+            if transport['type'] == 'websocket':
+                stream['wsSettings'] = {'path': transport['path'], 'headers': {'Host': transport.get('host', 'localhost')}}
+            else:
+                stream['httpupgradeSettings'] = {'path': transport['path'], 'host': transport.get('host', 'localhost')}
         profile = {'outbounds': [{'tag': 'direct', 'uri': 'direct://'}], 'final': 'direct', 'inbounds': [spec]}
         reference = {'log': {'loglevel': 'warning'},
                      'inbounds': [{'listen': '127.0.0.1', 'port': socks_port, 'protocol': 'socks', 'settings': {'udp': True}}],

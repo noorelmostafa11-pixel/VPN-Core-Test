@@ -34,6 +34,9 @@ func compileVLESSServer(s *serverSpec) error {
 		}
 	}
 	if s.vlessFlow != "" {
+		if s.transport != nil && s.encryption == nil {
+			return errors.New("VLESS_VISION_SERVER_TRANSPORT_UNSUPPORTED")
+		}
 		if s.tls == nil && s.encryption == nil {
 			return errors.New("VLESS_VISION_SERVER_TLS_REQUIRED")
 		}

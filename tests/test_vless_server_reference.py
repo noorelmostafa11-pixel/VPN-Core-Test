@@ -25,7 +25,7 @@ class VLESSVisionReferenceTests(unittest.TestCase):
             with self.subTest(flow=flow):
                 self.payload_cases(flow=flow, use_reality=True)
 
-    def payload_cases(self, flow='xtls-rprx-vision', use_reality=False, secure=True, decryption=None, encryption=None):
+    def payload_cases(self, flow='xtls-rprx-vision', use_reality=False, secure=True, decryption=None, encryption=None, transport=None):
         for inner_tls in [False, True]:
             with self.subTest(inner_tls=inner_tls):
                 tcp, udp = socket.socket(), socket.socket(type=socket.SOCK_DGRAM)
@@ -69,7 +69,7 @@ class VLESSVisionReferenceTests(unittest.TestCase):
                         reality = {'private_key': base64.urlsafe_b64encode(private).decode().rstrip('='),
                                    'server_names': ['localhost'], 'short_ids': ['a1b2c3d4'],
                                    'target': f'127.0.0.1:{decoy.server_port}'}
-                    with self.reference_pair('vless', secure=secure, flow=flow, reality=reality, decryption=decryption, encryption=encryption) as socks:
+                    with self.reference_pair('vless', secure=secure, flow=flow, reality=reality, decryption=decryption, encryption=encryption, transport=transport) as socks:
                         context = ssl.create_default_context(cafile=self.cert)
                         context.minimum_version = context.maximum_version = ssl.TLSVersion.TLSv1_3
                         for cycle in range(16):

@@ -155,7 +155,8 @@ func (v *vision) decode(data []byte) ([]byte, error) {
 			continue
 		}
 		if v.command == 2 {
-			if !v.tls13 || v.c.Transport != "raw" {
+			layered := v.c.Protocol == "vless" && v.c.Encryption != "" && v.c.Encryption != "none"
+			if !v.tls13 || v.c.Transport != "raw" && !layered {
 				return nil, errors.New("VISION_DIRECT_SECURITY")
 			}
 			v.direct = true

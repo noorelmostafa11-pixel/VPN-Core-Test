@@ -298,7 +298,8 @@ func (c Config) Validate() error {
 		return errors.New("FLOW_NAME_INVALID")
 	}
 	vision := strings.HasPrefix(c.Flow, "xtls-rprx-vision")
-	if vision && (c.Protocol != "vless" || c.Security == "none" && c.Encryption == "none" || c.Transport != "raw" && c.Transport != "xhttp") {
+	encryptedVisionCarrier := c.Protocol == "vless" && c.Encryption != "none" && contains([]string{"websocket", "httpupgrade"}, c.Transport)
+	if vision && (c.Protocol != "vless" || c.Security == "none" && c.Encryption == "none" || c.Transport != "raw" && c.Transport != "xhttp" && !encryptedVisionCarrier) {
 		return errors.New("VISION_CONFIGURATION")
 	}
 	if c.Security == "xtls" {

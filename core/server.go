@@ -26,6 +26,7 @@ type ServerConfig struct {
 	Options   map[string]string      `json:"options,omitempty"`
 	WireGuard *WireGuardServerConfig `json:"wireguard,omitempty"`
 	Reality   *RealityServerConfig   `json:"reality,omitempty"`
+	Transport *ServerTransportConfig `json:"transport,omitempty"`
 }
 type serverSpec struct {
 	config       ServerConfig
@@ -38,9 +39,14 @@ type serverSpec struct {
 	vlessFlow    string
 	reality      *realityServerState
 	encryption   *vlessEncryptionServer
+	transport    *ServerTransportConfig
 }
 
 func compileServer(c ServerConfig) (serverSpec, error) {
+	transport, err := compileServerTransport(c)
+	if err != nil {
+		return serverSpec{}, err
+	}
 	if c.Reality != nil && c.Protocol != "vless" {
 		return serverSpec{}, errors.New("SERVER_OPTION_UNSUPPORTED")
 	}
@@ -51,7 +57,7 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 	if c.Protocol == "shadowtls" {
 		return compileShadowServer(c)
 	}
-	s := serverSpec{config: c, users: map[[16]byte]bool{}}
+	s := serverSpec{config: c, users: map[[16]byte]bool{}, transport: transport}
 	if c.Protocol == "wireguard" {
 		return s, validateWireServer(c)
 	}
@@ -86,6 +92,9 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 	}
 	if c.Protocol == "trojan" && s.tls == nil {
 		return s, errors.New("TROJAN_SERVER_TLS_REQUIRED")
+	}
+	if transport != nil && s.tls != nil {
+		s.tls.NextProtos = []string{"http/1.1"}
 	}
 	if c.Protocol == "vmess" {
 		s.vm, err = newVMServerAuth(c)
@@ -247,6 +256,13 @@ func (e *Engine) StartServer(c ServerConfig) (net.Addr, error) {
 					if s.vlessFlow != "" {
 						conn = &directConn{Conn: secure, raw: raw}
 					}
+				}
+				if s.transport != nil {
+					upgraded, handshakeErr := acceptServerUpgrade(conn, s.transport)
+					if handshakeErr != nil {
+						return
+					}
+					conn = upgraded
 				}
 				if s.encryption != nil {
 					encrypted, handshakeErr := s.encryption.handshake(e.ctx, conn, deadline)
