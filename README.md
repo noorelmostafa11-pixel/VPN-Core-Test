@@ -1,4 +1,4 @@
-# vpn-core 0.5.13-go
+# vpn-core 0.5.14-go
 
 A public, general-purpose Go networking core for VPN and proxy applications,
 available to desktop and mobile users and developers. It provides a standalone
@@ -12,6 +12,9 @@ The executable and SDK use the same engine and protocol implementations.
 
 ## What's new in this source revision
 
+- **VLESS REALITY servers:** authenticated TLS 1.3, bounded replay/identity
+  state and protected configured fallback, with optional Vision;
+  [scope and remaining camouflage options](docs/REALITY-SERVER.md).
 - **VLESS Vision servers:** native TLS 1.3, authenticated flow policy, padded
   TCP and guarded direct transitions, UDP-over-TCP and UDP-only MUX/XUDP;
   [implementation/acceptance](docs/VLESS-SERVER.md).

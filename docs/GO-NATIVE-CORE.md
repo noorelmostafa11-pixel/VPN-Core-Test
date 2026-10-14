@@ -1,4 +1,4 @@
-# vpn-core 0.5.13-go — Core guide
+# vpn-core 0.5.14-go — Core guide
 
 vpn-core is a publicly available, general-purpose Go networking core for
 desktop and mobile VPN/proxy applications. This guide describes the current
@@ -7,7 +7,7 @@ servers, native TUN, routing, DNS, application integration and packaging.
 The source version is defined in [VERSION](../VERSION); GitHub Releases are
 published separately from source updates and workflow artifacts.
 
-The latest additions include VLESS Vision servers, SS2022/native UDP Shadowsocks servers, SS2022
+The latest additions include VLESS REALITY/Vision servers, SS2022/native UDP Shadowsocks servers, SS2022
 inside ShadowTLS, VMess servers and VMess/VLESS MUX/XUDP server
 framing, HTTPS/body-verified outbound health selection, SSH
 forwarding servers, TUIC v5, ShadowTLS v2/v3 and Hysteria 1. Hysteria 2, AnyTLS and WireGuard
@@ -52,7 +52,7 @@ protection, flow admission and shutdown use the same engine as client traffic.
 
 | Server | Implemented scope and boundary |
 | --- | --- |
-| VLESS | Raw TCP with optional TLS, UDP-over-TCP and MUX/XUDP; opt-in Vision uses native TLS 1.3, padding/direct transitions and UDP-only MUX policy. Server REALITY/encryption and additional carriers remain pending; [guide](VLESS-SERVER.md) |
+| VLESS | Raw TCP with optional TLS or authenticated REALITY, UDP-over-TCP and MUX/XUDP; opt-in Vision uses TLS 1.3, padding/direct transitions and UDP-only MUX policy. REALITY target-handshake mirroring/PQ options, server encryption and additional carriers remain pending; [Vision guide](VLESS-SERVER.md), [REALITY scope](REALITY-SERVER.md) |
 | VMess | Raw TCP/optional TLS, AEAD/opt-in legacy alter-ID, TCP/UDP/MUX, encrypted and masked/padded bodies; [guide](VMESS-SERVER.md) |
 | Trojan | TLS TCP and UDP-over-TCP |
 | Shadowsocks | All 35 methods over TCP/native UDP, SS2022 fixed identity chains, bounded replay/session handling and optional TCP TLS; [guide](SHADOWSOCKS-SERVER.md) |

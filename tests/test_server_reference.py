@@ -1,6 +1,7 @@
 """Independent Xray client against project Go server inbounds, on loopback only."""
 import contextlib
 import concurrent.futures
+import base64
 import hashlib
 import json
 import os
@@ -13,6 +14,7 @@ import tempfile
 import threading
 import time
 import unittest
+from cryptography.hazmat.primitives.asymmetric import x25519
 import test_hysteria_reference as hyref
 from test_core import BIN, exact, free_port
 
@@ -64,7 +66,7 @@ class ServerReferenceTests(unittest.TestCase):
 
     @contextlib.contextmanager
     def reference_pair(self, protocol, cipher='aes-256-gcm', wrong_password=False, secure=False,
-                       alter_id=0, authenticated_length=False, mux=False, legacy=None, flow='', server_flow=None):
+                       alter_id=0, authenticated_length=False, mux=False, legacy=None, flow='', server_flow=None, reality=None, fingerprint='chrome'):
         server_port, socks_port = free_port(), free_port()
         spec = {'protocol': protocol, 'listen': f'127.0.0.1:{server_port}'}
         if protocol == 'vmess':
@@ -90,9 +92,15 @@ class ServerReferenceTests(unittest.TestCase):
                 spec['cipher'], remote['method'] = cipher, cipher
             settings = {'servers': [remote]}
         outbound = {'protocol': 'shadowsocks' if protocol == 'ss' else protocol, 'settings': settings}
+        if reality:
+            spec['reality'] = reality
+            private = x25519.X25519PrivateKey.from_private_bytes(base64.urlsafe_b64decode(reality['private_key'] + '=' * (-len(reality['private_key']) % 4)))
+            public = base64.urlsafe_b64encode(private.public_key().public_bytes_raw()).decode().rstrip('=')
+            outbound['streamSettings'] = {'security': 'reality', 'realitySettings': {
+                'serverName': 'localhost', 'fingerprint': fingerprint, 'publicKey': public, 'shortId': 'a1b2c3d4'}}
         if mux:
             outbound['mux'] = {'enabled': True, 'concurrency': 8}
-        if protocol == 'trojan' or secure:
+        if (protocol == 'trojan' or secure) and not reality:
             spec.update(cert_file=str(self.cert), key_file=str(self.key))
             der = ssl.PEM_cert_to_DER_cert(self.cert.read_text(encoding='utf-8'))
             pin = hashlib.sha256(der).hexdigest()

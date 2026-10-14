@@ -187,6 +187,14 @@ func prepareReality(u *utls.UConn, cfg *utls.Config, c settings) error {
 	}
 	hello := u.HandshakeState.Hello
 	shares := u.HandshakeState.State13.KeyShareKeys
+	if hello != nil && len(hello.Raw) == 0 && u.ClientHelloID == utls.HelloGolang {
+		// The native profile exposes parsed fields before serializing its
+		// hello. REALITY authenticates those exact bytes before the handshake.
+		hello.Raw, err = hello.Marshal()
+		if err != nil {
+			return err
+		}
+	}
 	if hello == nil || len(hello.Random) != 32 || len(hello.Raw) < 71 || shares == nil {
 		return errors.New("REALITY hello state")
 	}

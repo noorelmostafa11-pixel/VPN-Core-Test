@@ -25,6 +25,7 @@ type ServerConfig struct {
 	KeyFile   string                 `json:"key_file,omitempty"`
 	Options   map[string]string      `json:"options,omitempty"`
 	WireGuard *WireGuardServerConfig `json:"wireguard,omitempty"`
+	Reality   *RealityServerConfig   `json:"reality,omitempty"`
 }
 type serverSpec struct {
 	config       ServerConfig
@@ -35,9 +36,13 @@ type serverSpec struct {
 	vm           *vmServerAuth
 	ss           *ssServerState
 	vlessFlow    string
+	reality      *realityServerState
 }
 
 func compileServer(c ServerConfig) (serverSpec, error) {
+	if c.Reality != nil && c.Protocol != "vless" {
+		return serverSpec{}, errors.New("SERVER_OPTION_UNSUPPORTED")
+	}
 	if c.Protocol == "ssh" {
 		_, err := compileSSHServer(c)
 		return serverSpec{config: c}, err
@@ -62,7 +67,16 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 	if _, err = number(p, 0, 65535); err != nil {
 		return s, errors.New("SERVER_LISTEN_INVALID")
 	}
-	if c.CertFile != "" || c.KeyFile != "" {
+	if c.Reality != nil {
+		if c.CertFile != "" || c.KeyFile != "" {
+			return s, errors.New("REALITY_SERVER_CONFIGURATION")
+		}
+		s.reality, err = compileRealityServer(*c.Reality)
+		if err != nil {
+			return s, err
+		}
+		s.tls = &tls.Config{MinVersion: tls.VersionTLS13, MaxVersion: tls.VersionTLS13, SessionTicketsDisabled: true}
+	} else if c.CertFile != "" || c.KeyFile != "" {
 		pair, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
 		if err != nil {
 			return s, errors.New("SERVER_CERTIFICATE_INVALID")
@@ -212,7 +226,13 @@ func (e *Engine) StartServer(c ServerConfig) (net.Addr, error) {
 				e.accepted.Add(1)
 				raw.SetDeadline(time.Now().Add(e.config.ConnectTimeout))
 				conn := raw
-				if s.tls != nil {
+				if s.reality != nil {
+					secured, handshakeErr := e.acceptReality(raw, s)
+					if handshakeErr != nil {
+						return
+					}
+					conn = secured
+				} else if s.tls != nil {
 					bounded := net.Conn(raw)
 					if s.vlessFlow != "" {
 						bounded = &recordBoundedConn{Conn: raw}

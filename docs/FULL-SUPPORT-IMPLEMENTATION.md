@@ -60,7 +60,7 @@ states its boundary. "Pending" must not be advertised as supported.
 | SOCKS5 TCP/UDP inbound and native TUN | Baseline; retain packet/flow/lifecycle regression tests |
 | HTTP and mixed HTTP/SOCKS inbound | Added loopback listeners, CONNECT and HTTP body forwarding |
 | Redirect and TProxy | Pending platform-specific listeners and original-destination handling |
-| VLESS, Trojan, Shadowsocks server inbounds | Partial: raw TCP with optional TLS (required for Trojan); VLESS/Trojan UDP-over-TCP and VLESS MUX/XUDP. VLESS Vision adds native TLS 1.3, flow authentication, bounded padding/direct transitions and UDP-only MUX/XUDP; targeted Go race and official Xray 26.7.28 plain/inner-TLS/XUDP/flow-rejection tests passed. Shadowsocks implements all 35 methods over TCP/native UDP, SS2022 identity chains and bounded replay/session state. Server REALITY/encryption, carriers and wider options remain pending; see VLESS-SERVER.md and SHADOWSOCKS-SERVER.md |
+| VLESS, Trojan, Shadowsocks server inbounds | Partial: raw TCP with optional TLS (required for Trojan); VLESS/Trojan UDP-over-TCP and VLESS MUX/XUDP. VLESS Vision adds native TLS 1.3, flow authentication, bounded padding/direct transitions and UDP-only MUX/XUDP. REALITY adds interoperable native TLS authentication/data transfer and protected HTTPS fallback, with or without Vision; exact target handshake mirroring and ML-DSA server extensions remain pending. Shadowsocks implements all 35 methods over TCP/native UDP, SS2022 identity chains and bounded replay/session state. VLESS server encryption, carriers and wider options remain pending; see VLESS-SERVER.md, REALITY-SERVER.md and SHADOWSOCKS-SERVER.md |
 | VMess server inbound | Added raw TCP/optional TLS, TCP/UDP/MUX, AEAD and opt-in legacy alter-ID, AES-GCM/ChaCha/CFB/none/zero, length masking/padding and authenticated lengths. Independent Xray 26.7.28 and V2Ray 4.45.2 payload tests passed; server carriers and remaining upstream options are pending; see VMESS-SERVER.md |
 | Other protocol server inbounds | Pending with their corresponding client protocols |
 | Reverse proxy / server fallback | Pending authenticated reverse channels and fallback semantics |
@@ -452,3 +452,31 @@ and two existing optional cases skipped. Core/mobile/CLI race tests passed in
 55.621 seconds and vet passed. The test-only pinned Windows Xray installer also
 passed archive hash and executable version verification. No local final full
 platform/package build or remote workflow conclusion is claimed.
+
+## 0.5.14 extension
+
+VLESS REALITY servers implement native TLS 1.3 authentication, TCP/UDP/MUX and
+optional Vision, listener-local bounded replay protection and one explicit
+protected fallback. Fragmented ClientHello records and extra bytes are retained
+unchanged. Exact target handshake/record mirroring, ML-DSA server signatures and
+wider upstream options remain pending; see [REALITY-SERVER.md](REALITY-SERVER.md).
+
+Initial browser handshakes failed because normal TLS declined the fixed
+Ed25519 signature required by REALITY. The authenticated native TLS adapter now
+sets the parsed signature-selection list, preserving original transcript bytes.
+The existing native REALITY client also lacked serialized hello bytes; it now
+serializes the same native hello before signing. Initial failures are retained
+separately. Seven client profiles passed with/without Vision, plus authentication,
+replay limits, fragmentation, fallback HTTPS bodies and owner/protection checks.
+Official Xray 26.7.28 passed plain and verified inner-TLS TCP plus XUDP, in both
+flow modes. Full core/mobile/CLI race tests passed in 59.178 seconds; vet passed.
+
+Final full platform/package builds remain delegated to the workflow. Normal
+local checks continue without waiting for or polling remote runs. Local payload
+acceptance does not establish complete camouflage, varied-node Internet or live
+Windows route/DNS recovery. VLESS encryption and server carriers are next.
+
+Final combined independent wire validation passed: 187 tests run, 185 passed
+and the two existing optional cases skipped, in 189.443 seconds. The full suite
+retains older client/carrier/cipher and newly added server payload coverage.
+No final local platform/package build or remote workflow result is claimed.

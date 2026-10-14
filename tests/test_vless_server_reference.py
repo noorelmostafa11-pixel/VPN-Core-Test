@@ -3,6 +3,8 @@ import socket
 import ssl
 import threading
 import unittest
+import base64
+from cryptography.hazmat.primitives.asymmetric import x25519
 
 from test_core import exact
 import test_server_reference as serverref
@@ -16,6 +18,14 @@ class VLESSVisionReferenceTests(unittest.TestCase):
     reference_pair = serverref.ServerReferenceTests.reference_pair
 
     def test_xray_vless_vision_plain_inner_tls_and_xudp(self):
+        self.payload_cases()
+
+    def test_xray_vless_reality_vision_and_plain_flow_payload(self):
+        for flow in ['', 'xtls-rprx-vision']:
+            with self.subTest(flow=flow):
+                self.payload_cases(flow=flow, use_reality=True)
+
+    def payload_cases(self, flow='xtls-rprx-vision', use_reality=False):
         for inner_tls in [False, True]:
             with self.subTest(inner_tls=inner_tls):
                 tcp, udp = socket.socket(), socket.socket(type=socket.SOCK_DGRAM)
@@ -46,8 +56,20 @@ class VLESSVisionReferenceTests(unittest.TestCase):
                         except OSError: continue
                 listeners = [threading.Thread(target=accept), threading.Thread(target=echo_udp)]
                 for worker in listeners: worker.start()
+                decoy = None
                 try:
-                    with self.reference_pair('vless', secure=True, flow='xtls-rprx-vision') as socks:
+                    reality = None
+                    if use_reality:
+                        import http.server
+                        decoy = http.server.ThreadingHTTPServer(('127.0.0.1', 0), http.server.BaseHTTPRequestHandler)
+                        decoy.socket = tls_context.wrap_socket(decoy.socket, server_side=True)
+                        decoy_thread = threading.Thread(target=decoy.serve_forever)
+                        decoy_thread.start()
+                        private = x25519.X25519PrivateKey.generate().private_bytes_raw()
+                        reality = {'private_key': base64.urlsafe_b64encode(private).decode().rstrip('='),
+                                   'server_names': ['localhost'], 'short_ids': ['a1b2c3d4'],
+                                   'target': f'127.0.0.1:{decoy.server_port}'}
+                    with self.reference_pair('vless', secure=True, flow=flow, reality=reality) as socks:
                         context = ssl.create_default_context(cafile=self.cert)
                         context.minimum_version = context.maximum_version = ssl.TLSVersion.TLSv1_3
                         for cycle in range(16):
@@ -70,6 +92,9 @@ class VLESSVisionReferenceTests(unittest.TestCase):
                                     reply, _ = client.recvfrom(65535)
                                     self.assertEqual(reply[10:], body)
                 finally:
+                    if decoy:
+                        decoy.shutdown(); decoy.server_close(); decoy_thread.join(timeout=5)
+                        self.assertFalse(decoy_thread.is_alive())
                     stop.set(); tcp.close(); udp.close()
                     for worker in [*listeners, *connections]:
                         worker.join(timeout=10)

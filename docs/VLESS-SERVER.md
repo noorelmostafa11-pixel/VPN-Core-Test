@@ -21,7 +21,8 @@ uses `Engine.StartServer`. Mobile/C ABI server startup bindings remain pending.
 }
 ```
 
-Vision requires the server certificate/key and native TLS 1.3; this listener
+Vision uses the server certificate/key or the explicit REALITY configuration
+described in [REALITY-SERVER.md](REALITY-SERVER.md), with TLS 1.3; this listener
 disables outer TLS session tickets. The flow policy applies to every configured
 UUID (at most 128 per listener). Separate listeners can use different policies;
 per-user mixed flows are not added. The client uses `flow=xtls-rprx-vision` or its
@@ -79,7 +80,7 @@ workflow without waiting for its result. Combined results are recorded in the
 implementation register. Loopback tests do not establish varied-node Internet
 or Windows route/DNS acceptance.
 
-Server REALITY, VLESS encryption, additional server carriers, reverse/fallback
+Additional REALITY camouflage/PQ options, VLESS encryption, server carriers, reverse/fallback
 and per-user flow options remain pending. Client implementations of those
 existing features are retained. This extension does not declare full parity.
 
