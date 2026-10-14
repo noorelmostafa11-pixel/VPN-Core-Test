@@ -448,20 +448,55 @@ func TestSSServerIPv6AndAtomicBindRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	server.Close()
-	held, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	// UDP's allocator may pick an occupied TCP port (including TIME_WAIT).
+	// Reserve both transports before injecting the actual TCP listener into
+	// the production dual-bind path, so only the intended UDP bind can fail.
+	var reserved net.Listener
+	var held net.PacketConn
+	for trial := 0; trial < 8; trial++ {
+		reserved, err = net.Listen("tcp4", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		held, err = net.ListenPacket("udp4", reserved.Addr().String())
+		if err == nil {
+			break
+		}
+		reserved.Close()
+	}
+	if err != nil {
+		t.Fatal("test dual-port reservation", err)
+	}
+	defer reserved.Close()
+	defer held.Close()
+	owner := testServerEngine(t)
+	spec, err := compileServer(ServerConfig{Protocol: "ss", Listen: reserved.Addr().String(), Cipher: "aes-256-gcm", Password: "synthetic"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer held.Close()
-	owner := testServerEngine(t)
-	if _, err = owner.StartServer(ServerConfig{Protocol: "ss", Listen: held.LocalAddr().String(), Cipher: "aes-256-gcm", Password: "synthetic"}); err == nil {
-		t.Fatal("occupied UDP socket ignored")
+	calls := 0
+	listener, packets, err := owner.listenSSServer(spec.ss, reserved.Addr().String(), func(network, address string) (net.Listener, error) {
+		calls++
+		if network != "tcp" || address != reserved.Addr().String() {
+			t.Fatal("fixed listen address changed")
+		}
+		return reserved, nil
+	})
+	var bindErr *net.OpError
+	if !errors.As(err, &bindErr) || bindErr.Op != "listen" || bindErr.Net != "udp" || calls != 1 || listener != nil || packets != nil {
+		t.Fatal("explicit UDP bind failure/attempt count", calls, err)
 	}
-	rolledBack, err := net.Listen("tcp", held.LocalAddr().String())
-	if err != nil {
-		t.Fatal("failed dual bind retained TCP", err)
+	// A deadline bounds a broken rollback; only ErrClosed proves cleanup.
+	reserved.(*net.TCPListener).SetDeadline(time.Now().Add(time.Second))
+	if _, err = reserved.Accept(); !errors.Is(err, net.ErrClosed) {
+		t.Fatal("failed dual bind retained owned TCP listener", err)
 	}
-	rolledBack.Close()
+	owner.mu.Lock()
+	_, tracked := owner.closers[reserved]
+	owner.mu.Unlock()
+	if tracked || owner.Stats().Active != 0 {
+		t.Fatal("failed fixed-port bind retained owner resources")
+	}
 }
 
 func TestSS2022StoppedPeerRetainsReplayWithoutRefresh(t *testing.T) {
