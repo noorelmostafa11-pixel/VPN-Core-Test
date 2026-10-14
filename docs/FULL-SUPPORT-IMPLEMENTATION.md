@@ -60,7 +60,7 @@ states its boundary. "Pending" must not be advertised as supported.
 | SOCKS5 TCP/UDP inbound and native TUN | Baseline; retain packet/flow/lifecycle regression tests |
 | HTTP and mixed HTTP/SOCKS inbound | Added loopback listeners, CONNECT and HTTP body forwarding |
 | Redirect and TProxy | Pending platform-specific listeners and original-destination handling |
-| VLESS, Trojan, Shadowsocks server inbounds | Partial: raw TCP with optional TLS (required for Trojan); VLESS/Trojan UDP-over-TCP and VLESS MUX/XUDP. VLESS Vision adds native TLS 1.3, flow authentication, bounded padding/direct transitions and UDP-only MUX/XUDP. REALITY adds interoperable native TLS authentication/data transfer and protected HTTPS fallback, with or without Vision; exact target handshake mirroring and ML-DSA server extensions remain pending. Shadowsocks implements all 35 methods over TCP/native UDP, SS2022 identity chains and bounded replay/session state. VLESS server encryption, carriers and wider options remain pending; see VLESS-SERVER.md, REALITY-SERVER.md and SHADOWSOCKS-SERVER.md |
+| VLESS, Trojan, Shadowsocks server inbounds | Partial: raw TCP with optional TLS (required for Trojan); VLESS/Trojan UDP-over-TCP and VLESS MUX/XUDP. VLESS Vision adds native TLS 1.3, flow authentication, bounded padding/direct transitions and UDP-only MUX/XUDP. REALITY adds interoperable native TLS authentication/data transfer and protected HTTPS fallback; exact target mirroring/ML-DSA remain pending. Hybrid VLESS decryption adds three wire modes, fixed X25519/ML-KEM chains, bounded tickets/replay and optional Vision, using synchronous reusable record buffers. Shadowsocks implements all 35 methods over TCP/native UDP and SS2022 identity chains. Server carriers and wider options remain pending; see VLESS-SERVER.md, REALITY-SERVER.md, VLESS-ENCRYPTION-SERVER.md and SHADOWSOCKS-SERVER.md |
 | VMess server inbound | Added raw TCP/optional TLS, TCP/UDP/MUX, AEAD and opt-in legacy alter-ID, AES-GCM/ChaCha/CFB/none/zero, length masking/padding and authenticated lengths. Independent Xray 26.7.28 and V2Ray 4.45.2 payload tests passed; server carriers and remaining upstream options are pending; see VMESS-SERVER.md |
 | Other protocol server inbounds | Pending with their corresponding client protocols |
 | Reverse proxy / server fallback | Pending authenticated reverse channels and fallback semantics |
@@ -480,3 +480,47 @@ Final combined independent wire validation passed: 187 tests run, 185 passed
 and the two existing optional cases skipped, in 189.443 seconds. The full suite
 retains older client/carrier/cipher and newly added server payload coverage.
 No final local platform/package build or remote workflow result is claimed.
+
+## 0.5.15 extension
+
+VLESS hybrid encryption servers add the three existing wire modes, fixed
+X25519/ML-KEM-768 private-key chains, authenticated ephemeral exchange, AES-GCM/
+ChaCha negotiation, optional Vision and bounded 0-RTT tickets/replay state.
+Expired state is reclaimed lazily; no cache maintenance worker is created.
+Client/server records now run synchronously with lazy reusable direction-local
+buffers instead of two additional encryption workers and queues. Client ticket
+identities include their endpoint/security/name/path, isolating listeners that
+share keys. Vision direct transitions peel only VLESS AEAD, preserving the
+parent TLS/REALITY/carrier and full-random header masking. See
+[VLESS-ENCRYPTION-SERVER.md](VLESS-ENCRYPTION-SERVER.md).
+
+Targeted Go race checks passed modes, fixed chains, large atomic UDP, repeated/
+parallel transfers, verified inner TLS/Vision, listener ticket isolation,
+concurrent replay rejection, capacity/expiry, corrupt offers/records, protection
+and owner loss, cancellation, ChaCha resumption, nonce-boundary rekey and
+half-close. A fixture initially used a nonexistent hook field and failed to
+compile; it now supplies construction-time hooks. Failed evidence is retained.
+Official Xray 26.7.28 passed five configurations with plain/inner-TLS TCP and
+UDP/XUDP, static ML-KEM, 1/0-RTT, native TLS and Vision. Full core/mobile/CLI race
+checks passed in 60.098 seconds; vet passed. Combined wire results follow below.
+
+The first full 188-case wire run failed one wrapped encrypted-Vision inner-TLS
+case, and six standalone repetitions exposed a second full-random case. Normal
+TLS/data tests passed, but rejecting command 2 at this boundary intermittently
+stalled reference clients. The corrected layer-aware transition ends VLESS
+record encryption while retaining parent TLS/carriers and random header CTR.
+Six unchanged reference repetitions subsequently passed, alongside deterministic
+fragmented-header and layer-boundary race checks. The original failures are
+retained and are not counted as an all-pass regression result.
+
+Final full builds remain delegated to the workflow, without waiting or polling.
+Server carriers, stale-ticket connection retry and wider report options remain
+open; loopback acceptance does not establish varied public-node Internet or
+live Windows route/DNS recovery.
+
+Final combined independent wire validation passed: 188 tests run, 186 passed
+and two existing optional cases skipped, in 202.344 seconds. The hybrid fixture
+now also passes encryption with REALITY/Vision and verified inner TLS. Final
+core/mobile/CLI race checks passed in 66.893 seconds and vet passed after the
+layer-boundary correction. Only source is published; no final local platform/
+package build or remote workflow result is claimed.

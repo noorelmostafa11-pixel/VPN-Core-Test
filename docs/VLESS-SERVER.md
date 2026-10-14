@@ -29,6 +29,13 @@ per-user mixed flows are not added. The client uses `flow=xtls-rprx-vision` or i
 `-udp443` client variant, with normal certificate/name verification. An empty
 server flow retains the existing raw/optional-TLS VLESS behavior.
 
+Version 0.5.15-go also supports Vision with explicit hybrid decryption,
+including without outer TLS; see
+[VLESS-ENCRYPTION-SERVER.md](VLESS-ENCRYPTION-SERVER.md). Its direct transition
+peels only the VLESS record AEAD, retaining parent TLS/REALITY/carriers and
+full-random header masking. The direct-transition description below applies
+at that current security-layer boundary.
+
 ## Framing and lifetime
 
 Version/UUID authentication precedes addons and destination handling. Addons
@@ -80,7 +87,7 @@ workflow without waiting for its result. Combined results are recorded in the
 implementation register. Loopback tests do not establish varied-node Internet
 or Windows route/DNS acceptance.
 
-Additional REALITY camouflage/PQ options, VLESS encryption, server carriers, reverse/fallback
+Additional REALITY camouflage/PQ options, server carriers, reverse/fallback
 and per-user flow options remain pending. Client implementations of those
 existing features are retained. This extension does not declare full parity.
 

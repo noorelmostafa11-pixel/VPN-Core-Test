@@ -37,6 +37,7 @@ type serverSpec struct {
 	ss           *ssServerState
 	vlessFlow    string
 	reality      *realityServerState
+	encryption   *vlessEncryptionServer
 }
 
 func compileServer(c ServerConfig) (serverSpec, error) {
@@ -224,7 +225,8 @@ func (e *Engine) StartServer(c ServerConfig) (net.Addr, error) {
 				defer e.untrack(raw)
 				defer raw.Close()
 				e.accepted.Add(1)
-				raw.SetDeadline(time.Now().Add(e.config.ConnectTimeout))
+				deadline := time.Now().Add(e.config.ConnectTimeout)
+				raw.SetDeadline(deadline)
 				conn := raw
 				if s.reality != nil {
 					secured, handshakeErr := e.acceptReality(raw, s)
@@ -245,6 +247,13 @@ func (e *Engine) StartServer(c ServerConfig) (net.Addr, error) {
 					if s.vlessFlow != "" {
 						conn = &directConn{Conn: secure, raw: raw}
 					}
+				}
+				if s.encryption != nil {
+					encrypted, handshakeErr := s.encryption.handshake(e.ctx, conn, deadline)
+					if handshakeErr != nil {
+						return
+					}
+					conn = encrypted
 				}
 				e.serveServer(conn, s)
 			}) {

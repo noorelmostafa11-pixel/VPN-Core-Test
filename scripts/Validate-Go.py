@@ -18,6 +18,7 @@ names=['test_core.CoreTests','test_expanded.ExpandedTests','test_pre_expansion.P
 suite=unittest.defaultTestLoader.loadTestsFromNames(names)
 suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_server_reference.ServerReferenceTests'))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_vless_server_reference.VLESSVisionReferenceTests'))
+suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_vless_encryption_server_reference.VLESSEncryptionServerReferenceTests'))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_ss_server_reference.SSServerReferenceTests'))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_hysteria_reference.HysteriaReferenceTests'))
 suite.addTests(unittest.defaultTestLoader.loadTestsFromName('test_hysteria1_reference.Hysteria1ReferenceTests'))

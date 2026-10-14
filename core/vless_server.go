@@ -15,17 +15,32 @@ const vlessVisionFlow = "xtls-rprx-vision"
 
 func compileVLESSServer(s *serverSpec) error {
 	for key, value := range s.config.Options {
-		if key != "flow" || value != "" && value != vlessVisionFlow {
+		switch key {
+		case "flow":
+			if value != "" && value != vlessVisionFlow {
+				return errors.New("VLESS_SERVER_OPTION_UNSUPPORTED")
+			}
+			s.vlessFlow = value
+		case "decryption":
+			if value != "none" {
+				var err error
+				s.encryption, err = compileVLESSDecryption(value)
+				if err != nil {
+					return err
+				}
+			}
+		default:
 			return errors.New("VLESS_SERVER_OPTION_UNSUPPORTED")
 		}
-		s.vlessFlow = value
 	}
 	if s.vlessFlow != "" {
-		if s.tls == nil {
+		if s.tls == nil && s.encryption == nil {
 			return errors.New("VLESS_VISION_SERVER_TLS_REQUIRED")
 		}
-		s.tls.MinVersion, s.tls.MaxVersion = tls.VersionTLS13, tls.VersionTLS13
-		s.tls.SessionTicketsDisabled = true
+		if s.tls != nil {
+			s.tls.MinVersion, s.tls.MaxVersion = tls.VersionTLS13, tls.VersionTLS13
+			s.tls.SessionTicketsDisabled = true
+		}
 	}
 	return nil
 }
@@ -112,12 +127,15 @@ func vlessServerHeader(raw net.Conn, s serverSpec) (net.Conn, []byte, bool, bool
 	}
 	client := raw
 	if flow == vlessVisionFlow {
-		wire, ok := raw.(*directConn)
-		if !ok {
-			return nil, nil, false, false, errors.New("VISION_DIRECT_SECURITY")
+		var wire *directConn
+		if encrypted, ok := raw.(*vlessEncryptionConn); ok && s.encryption != nil {
+			wire = &directConn{Conn: encrypted, raw: encrypted.directTransport()}
+		} else if secured, ok := raw.(*directConn); ok {
+			if tlsConn, ok := secured.Conn.(*tls.Conn); ok && tlsConn.ConnectionState().Version == tls.VersionTLS13 {
+				wire = secured
+			}
 		}
-		secure, ok := wire.Conn.(*tls.Conn)
-		if !ok || secure.ConnectionState().Version != tls.VersionTLS13 {
+		if wire == nil {
 			return nil, nil, false, false, errors.New("VISION_DIRECT_SECURITY")
 		}
 		client = newVisionServerConn(wire, id)

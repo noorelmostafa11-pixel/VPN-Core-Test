@@ -3,10 +3,10 @@ package core
 import (
 	"context"
 	"crypto/sha256"
-	"errors"
 	"io"
 	"net"
 	"os"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -143,29 +143,22 @@ func openEncryption(ctx context.Context, raw net.Conn, c Config) (net.Conn, erro
 	if e != nil {
 		return nil, e
 	}
-	s := &encryptionSession{wire: raw, up: newByteQueue(), down: newByteQueue(), config: cfg, cacheID: sha256.Sum256([]byte(c.Encryption))}
+	cacheKey := c.Encryption + "\x00" + net.JoinHostPort(c.Server, strconv.Itoa(c.Port)) + "\x00" + c.Security + "\x00" + c.ServerName + "\x00" + c.Path
+	s := &encryptionSession{wire: raw, config: cfg, cacheID: sha256.Sum256([]byte(cacheKey)), paddingContext: ctx}
 	s.deadline = time.Now().Add(c.ConnectTimeout)
 	raw.SetDeadline(s.deadline)
 	if e = s.handshake(); e != nil {
+		forgetTicket(s.cacheID)
 		raw.Close()
 		return nil, e
 	}
 	raw.SetDeadline(time.Time{})
-	s.state = 1
-	conn := &queueConn{up: s.up, down: s.down, closeFn: func() { raw.Close() }}
-	go func() {
-		if e := s.upload(); e != nil {
-			s.fail(e)
-		}
-	}()
-	go func() {
-		e := s.download()
-		if errors.Is(e, io.EOF) {
-			s.down.close(nil)
-		} else if e != nil {
-			s.fail(e)
-		}
-	}()
+	conn := &vlessEncryptionConn{Conn: raw, readCipher: s.downCipher, writeCipher: s.upCipher,
+		inCTR: s.downCTR, outCTR: s.upCTR, united: s.united, useAES: true,
+		pendingRandom: s.pendingRandom, randomMode: cfg.mode == "random", cacheID: &s.cacheID}
+	if c.Flow != "" {
+		return &directConn{Conn: conn, raw: conn.directTransport()}, nil
+	}
 	return conn, nil
 }
 
