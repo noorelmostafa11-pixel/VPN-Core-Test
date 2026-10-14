@@ -154,16 +154,29 @@ type packetBridge struct {
 }
 
 func (b *packetBridge) peer(addr string) (*bridgePeer, error) {
+	return b.peerContext(b.ctx, addr)
+}
+func (b *packetBridge) peerContext(ctx context.Context, addr string) (*bridgePeer, error) {
 	host, port, err := splitProtocolTarget(addr)
 	if err != nil {
 		return nil, err
+	}
+	cacheKey := addr
+	if b.e.router != nil {
+		table := b.e.router.table.Load()
+		tag := table.target(ctx, "udp", host, port)
+		if outbound, ok := table.outbounds[tag]; ok && outbound.config.Protocol == "block" {
+			return nil, errors.New("ROUTE_BLOCKED")
+		}
+		metadata, _ := ctx.Value(routeMetadataKey{}).(RouteMetadata)
+		cacheKey += "\x00" + tag + "\x00" + metadata.SourceIP.String()
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.closed {
 		return nil, net.ErrClosed
 	}
-	if p := b.peers[addr]; p != nil {
+	if p := b.peers[cacheKey]; p != nil {
 		return p, nil
 	}
 	if len(b.peers) >= 16 {
@@ -172,7 +185,7 @@ func (b *packetBridge) peer(addr string) (*bridgePeer, error) {
 	if !b.e.acquire() {
 		return nil, errors.New("CONNECTION_LIMIT")
 	}
-	ctx, cancel := context.WithTimeout(b.ctx, b.e.config.ConnectTimeout)
+	ctx, cancel := context.WithTimeout(ctx, b.e.config.ConnectTimeout)
 	stream, err := b.e.dialPacket(ctx, host, port)
 	cancel()
 	if err != nil {
@@ -180,7 +193,7 @@ func (b *packetBridge) peer(addr string) (*bridgePeer, error) {
 		return nil, err
 	}
 	p := &bridgePeer{stream: stream, e: b.e}
-	b.peers[addr] = p
+	b.peers[cacheKey] = p
 	b.e.accepted.Add(1)
 	b.workers.Add(1)
 	go func() {
@@ -211,10 +224,13 @@ func (b *packetBridge) peer(addr string) (*bridgePeer, error) {
 	return p, nil
 }
 func (b *packetBridge) WriteTo(payload []byte, addr string) (int, error) {
+	return b.WriteToContext(b.ctx, payload, addr)
+}
+func (b *packetBridge) WriteToContext(ctx context.Context, payload []byte, addr string) (int, error) {
 	if len(payload) > 65507 {
 		return 0, errors.New("UDP_DATAGRAM_LENGTH")
 	}
-	p, err := b.peer(addr)
+	p, err := b.peerContext(ctx, addr)
 	if err != nil {
 		return 0, err
 	}

@@ -15,7 +15,7 @@ type tuicRelay struct {
 	e       *Engine
 	ctx     context.Context
 	cancel  context.CancelFunc
-	source  net.Addr
+	source  func() net.Addr
 	proxy   *packetBridge
 	mu      sync.Mutex
 	closed  bool
@@ -26,6 +26,9 @@ type tuicRelay struct {
 }
 
 func newTUICRelay(ctx context.Context, e *Engine, source net.Addr) *tuicRelay {
+	return newTUICRelaySource(ctx, e, func() net.Addr { return source })
+}
+func newTUICRelaySource(ctx context.Context, e *Engine, source func() net.Addr) *tuicRelay {
 	ctx, cancel := context.WithCancel(ctx)
 	pctx, pcancel := context.WithCancel(ctx)
 	b := &tuicRelay{e: e, ctx: ctx, cancel: cancel, source: source, sockets: map[string]net.PacketConn{}, queue: make(chan bridgeResult, 8), proxy: &packetBridge{e: e, ctx: pctx, cancel: pcancel, peers: map[string]*bridgePeer{}, queue: make(chan bridgeResult, 8)}}
@@ -95,7 +98,7 @@ func (b *tuicRelay) socket(ctx context.Context, network string) (net.PacketConn,
 			if err != nil {
 				continue
 			}
-			ctx := b.e.flowContext(b.ctx, b.source, host)
+			ctx := b.e.flowContext(b.ctx, b.source(), host)
 			if !b.direct(ctx, host, port) {
 				continue
 			}
@@ -112,6 +115,9 @@ func (b *tuicRelay) socket(ctx context.Context, network string) (net.PacketConn,
 	return s, nil
 }
 func (b *tuicRelay) WriteTo(body []byte, addr string) (int, error) {
+	return b.writeToSource(body, addr, b.source())
+}
+func (b *tuicRelay) writeToSource(body []byte, addr string, source net.Addr) (int, error) {
 	if len(body) > 65507 {
 		return 0, errors.New("UDP_DATAGRAM_LENGTH")
 	}
@@ -127,9 +133,9 @@ func (b *tuicRelay) WriteTo(body []byte, addr string) (int, error) {
 	}
 	ctx, cancel := context.WithTimeout(b.ctx, b.e.config.ConnectTimeout)
 	defer cancel()
-	ctx = b.e.flowContext(ctx, b.source, host)
+	ctx = b.e.flowContext(ctx, source, host)
 	if !b.direct(ctx, host, port) {
-		return b.proxy.WriteTo(body, addr)
+		return b.proxy.WriteToContext(ctx, body, addr)
 	}
 	ips, err := bootstrapIPs(ctx, host)
 	if err != nil {

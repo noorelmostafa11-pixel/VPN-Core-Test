@@ -8,7 +8,6 @@ import (
 	"errors"
 	"io"
 	"net"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -34,6 +33,7 @@ type serverSpec struct {
 	tls          *tls.Config
 	client       Config
 	vm           *vmServerAuth
+	ss           *ssServerState
 }
 
 func compileServer(c ServerConfig) (serverSpec, error) {
@@ -106,7 +106,7 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 		if err := validateHysteriaServer(c); err != nil {
 			return s, err
 		}
-	} else if c.Protocol != "hysteria" && c.Protocol != "anytls" && c.Protocol != "tuic" && len(c.Options) > 0 {
+	} else if c.Protocol != "hysteria" && c.Protocol != "anytls" && c.Protocol != "tuic" && c.Protocol != "ss" && len(c.Options) > 0 {
 		return s, errors.New("SERVER_OPTION_UNSUPPORTED")
 	}
 	if c.Protocol == "vless" {
@@ -128,11 +128,15 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 		s.passwordHash = hex.EncodeToString(h[:])
 	}
 	if c.Protocol == "ss" {
-		if !contains(ssMethods, c.Cipher) || strings.HasPrefix(c.Cipher, "2022-") {
+		if !contains(ssMethods, c.Cipher) {
 			return s, errors.New("SERVER_SS_METHOD_UNSUPPORTED")
 		}
 		s.client = defaults()
 		s.client.Protocol, s.client.Security, s.client.Transport, s.client.Password, s.client.Cipher = "ss", "none", "raw", c.Password, c.Cipher
+		s.ss, err = newSSServerState(s.client, c.Options)
+		if err != nil {
+			return s, err
+		}
 	}
 	return s, nil
 }
@@ -165,15 +169,25 @@ func (e *Engine) StartServer(c ServerConfig) (net.Addr, error) {
 	if c.Protocol == "tuic" {
 		return e.startTUICServer(s)
 	}
-	l, err := net.Listen("tcp", c.Listen)
+	var l net.Listener
+	var datagrams *ssUDPServer
+	if s.ss != nil && s.ss.udp {
+		l, datagrams, err = e.listenSSServer(s.ss, c.Listen, net.Listen)
+	} else {
+		l, err = net.Listen("tcp", c.Listen)
+		if err == nil && !e.track(l) {
+			err = net.ErrClosed
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
-	if !e.track(l) {
-		return nil, net.ErrClosed
-	}
 	if !e.spawn(func() {
 		defer l.Close()
+		defer e.untrack(l)
+		if datagrams != nil {
+			defer datagrams.stop()
+		}
 		for {
 			raw, err := l.Accept()
 			if err != nil {
@@ -210,6 +224,10 @@ func (e *Engine) StartServer(c ServerConfig) (net.Addr, error) {
 		}
 	}) {
 		l.Close()
+		e.untrack(l)
+		if datagrams != nil {
+			datagrams.stop()
+		}
 		return nil, net.ErrClosed
 	}
 	e.emit(Event{Event: "ready"})
@@ -339,7 +357,11 @@ func (e *Engine) serveServer(raw net.Conn, s serverSpec) {
 			}
 		}
 	case "ss":
-		client, address, err = serverSSConn(raw, s.client)
+		if s.ss.codec.modern {
+			client, address, err = ss2022ServerConn(raw, s.ss)
+		} else {
+			client, address, err = serverSSConn(raw, s.client)
+		}
 	}
 	if err != nil {
 		return

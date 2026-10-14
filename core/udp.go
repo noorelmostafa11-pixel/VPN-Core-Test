@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"crypto/cipher"
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
@@ -196,6 +197,9 @@ type ssUDP struct {
 	sessions        map[string]*udpSession
 	salts           map[[32]byte]bool
 	order           [][32]byte
+	tableOnce       sync.Once
+	tableCiphers    [2]*tableStream
+	tableErr        error
 }
 
 func newSSUDP(c Config) (*ssUDP, error) {
@@ -221,7 +225,37 @@ func (s *ssUDP) method() string {
 	return s.c.Cipher
 }
 func (s *ssUDP) stream(b, iv []byte, decrypt bool) ([]byte, error) {
-	c, e := ssStreamCipher(s.c.Cipher, s.master, iv, decrypt)
+	var c cipher.Stream
+	var e error
+	if s.c.Cipher == "table" {
+		if len(iv) != 0 {
+			return nil, errors.New("table key")
+		}
+		// Table has no IV or stream position. Build its immutable permutations
+		// once per codec, including when a listener shares it across UDP peers.
+		// Other ciphers keep their independent per-packet state.
+		s.tableOnce.Do(func() {
+			stream, err := ssStreamCipher("table", s.master, nil, false)
+			if err != nil {
+				s.tableErr = err
+				return
+			}
+			s.tableCiphers[0] = stream.(*tableStream)
+			inverse := &tableStream{}
+			for i, value := range s.tableCiphers[0].table {
+				inverse.table[value] = byte(i)
+			}
+			s.tableCiphers[1] = inverse
+		})
+		e = s.tableErr
+		if decrypt {
+			c = s.tableCiphers[1]
+		} else {
+			c = s.tableCiphers[0]
+		}
+	} else {
+		c, e = ssStreamCipher(s.c.Cipher, s.master, iv, decrypt)
+	}
 	if e != nil {
 		return nil, e
 	}

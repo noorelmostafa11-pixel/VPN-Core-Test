@@ -1,4 +1,4 @@
-# vpn-core 0.5.11-go — Core guide
+# vpn-core 0.5.12-go — Core guide
 
 vpn-core is a publicly available, general-purpose Go networking core for
 desktop and mobile VPN/proxy applications. This guide describes the current
@@ -7,7 +7,8 @@ servers, native TUN, routing, DNS, application integration and packaging.
 The source version is defined in [VERSION](../VERSION); GitHub Releases are
 published separately from source updates and workflow artifacts.
 
-The latest additions include VMess servers and VMess/VLESS MUX/XUDP server
+The latest additions include SS2022/native UDP Shadowsocks servers, SS2022
+inside ShadowTLS, VMess servers and VMess/VLESS MUX/XUDP server
 framing, HTTPS/body-verified outbound health selection, SSH
 forwarding servers, TUIC v5, ShadowTLS v2/v3 and Hysteria 1. Hysteria 2, AnyTLS and WireGuard
 clients/servers are also included. Protocol-specific acceptance records and
@@ -54,7 +55,7 @@ protection, flow admission and shutdown use the same engine as client traffic.
 | VLESS | Raw TCP with optional TLS, UDP-over-TCP and MUX/XUDP server framing; server Vision/REALITY/encryption and additional carriers remain pending |
 | VMess | Raw TCP/optional TLS, AEAD/opt-in legacy alter-ID, TCP/UDP/MUX, encrypted and masked/padded bodies; [guide](VMESS-SERVER.md) |
 | Trojan | TLS TCP and UDP-over-TCP |
-| Shadowsocks | Raw TCP with legacy/AEAD2017 methods; SS2022 and native UDP server support remain pending |
+| Shadowsocks | All 35 methods over TCP/native UDP, SS2022 fixed identity chains, bounded replay/session handling and optional TCP TLS; [guide](SHADOWSOCKS-SERVER.md) |
 | Hysteria 1 | Binary v3 TCP/UDP, xplus, negotiated Brutal and bounded lifetime; [guide](HYSTERIA1.md) |
 | Hysteria 2 | Authenticated TCP/UDP and documented congestion/obfuscation options; [guide](HYSTERIA2.md) |
 | WireGuard | Encrypted device and native server packet forwarding, including TCP/UDP IPv4/IPv6; [guide](WIREGUARD.md) |
@@ -315,7 +316,7 @@ python scripts/Package-Go.py --build build/windows-amd64
 ```
 
 The package name is derived from `VERSION` and the build provenance, for example
-`dist/vpn-core-0.5.11-go-windows-amd64.zip`. It contains only manifest-listed
+`dist/vpn-core-0.5.12-go-windows-amd64.zip`. It contains only manifest-listed
 runtime files, build provenance/hashes, the core guide and component license
 snapshots. Desktop workflow artifacts contain these packaged ZIPs; the outer
 artifact download ZIP is a separate wrapper. The Android artifact contains
@@ -328,7 +329,7 @@ version:
 1. Use packages from a successfully validated build of the intended main
    revision, with matching source provenance.
 2. Open [Draft a new release](https://github.com/noorelmostafa11-pixel/VPN-Core-Test/releases/new),
-   create a new tag such as `v0.5.11-go` and select the intended `main` revision.
+   create a new tag such as `v0.5.12-go` and select the intended `main` revision.
 3. Add an English title and release notes, then attach the inner packaged ZIPs
    and/or Android AAR. Include package SHA-256 sidecars if you generate them;
    the packager itself writes hashes inside the ZIP rather than an outer

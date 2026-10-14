@@ -79,8 +79,10 @@ Embedded server example:
 The handshake backend provides its actual TLS certificate; the core does not
 generate a substitute. Its socket is protected and the handshake has a deadline.
 Unauthenticated traffic remains a bounded TCP relay to that fixed backend.
-The embedded payload server currently supports legacy and AEAD2017 Shadowsocks
-TCP methods. SS2022 embedded servers remain pending. Alternatively configure
+The embedded payload server supports legacy, AEAD2017 and SS2022 Shadowsocks
+TCP methods, with optional UOT v2 UDP. SS2022 uses the shared authenticated
+header/body and bounded replay implementation; see [SHADOWSOCKS-SERVER.md](SHADOWSOCKS-SERVER.md).
+Alternatively configure
 `options.data-server` as an explicit external data backend and omit `cipher`,
 `ss-password` and `uot`; that relay can carry another backend protocol without
 pretending the core implements that backend's server.
@@ -124,3 +126,12 @@ Reference digest behavior:
 Run `test_shadowtls_reference.ShadowTLSReferenceTests` with
 `VPN_CORE_REFERENCE_SINGBOX` pointing to the official executable. These are
 local payload results; public-node and Windows route/DNS acceptance are separate.
+
+The 0.5.12 independent fixture also transfers TCP/UOT UDP in all three SS2022
+ciphers, v2/v3 and both directions, plus standalone/SIP003 client configuration.
+The initial modern server-direction UDP cases failed because the shared header
+parser rejected UOT's virtual port-zero destination before the ShadowTLS handler
+could process it. The parser now permits that exact virtual destination; actual
+forwarding still requires `uot=2`. Generic port-zero targets remain invalid.
+The corrected reference run and deterministic header regression passed; the
+initial six failures remain in local evidence.

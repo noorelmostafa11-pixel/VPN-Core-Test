@@ -25,7 +25,7 @@ states its boundary. "Pending" must not be advertised as supported.
 | --- | --- |
 | VLESS, VMess, Trojan, Shadowsocks clients | Baseline; retain independent wire tests |
 | SS2022, VLESS REALITY/Vision/encryption, VMess legacy/alter-ID | Baseline client scope; retain authentication and cipher tests |
-| ShadowTLS v2 and v3; Shadowsocks with ShadowTLS | Client/server added: verified TLS, v2 challenge, strict v3 handshake/data integrity, standalone/SIP003 Shadowsocks and optional UOT v2 UDP. Independent sing-box 1.14.3 payloads passed both directions with the documented v2 ticket boundary. Embedded SS2022, non-strict v3 and broader multi-user/SNI options remain pending; see SHADOWTLS.md |
+| ShadowTLS v2 and v3; Shadowsocks with ShadowTLS | Client/server added: verified TLS, v2 challenge, strict v3 handshake/data integrity, standalone/SIP003 Shadowsocks including all three SS2022 ciphers and optional UOT v2 UDP. Independent sing-box 1.14.3 payloads passed both directions with the documented v2 ticket boundary. Non-strict v3 and broader multi-user/SNI options remain pending; see SHADOWTLS.md |
 | Hysteria 1 and 2 | Both client/server protocols added: Hysteria 1 v3 TCP/UDP/xplus, negotiated Brutal, verified native TLS and bounded reuse/lifetime; official 1.3.5 payloads passed both directions. Hysteria 2 adds BBR/reno/negotiated Brutal, Salamander/Gecko, native/Chrome and trust/pins/ECH configuration; official 2.13.0 payloads passed both directions. Port hopping, realms, fake TCP and wider authentication/fingerprint options remain pending; see HYSTERIA1.md and HYSTERIA2.md |
 | TUIC | v5 client/server added: TLS-exporter authentication, TCP, native/QUIC UDP, fragmentation, direct Full Cone relay, bounded reuse/close and independent sing-box 1.14.3 payloads both modes/directions. Additional congestion selection, uTLS, 0-RTT and per-user passwords remain pending; see TUIC.md |
 | AnyTLS | Client/server added: session reuse, bounded padding updates, v1/v2 server framing, verified TLS, TCP and UOT v2 connect/non-connect UDP. Official 0.0.13 client/server payload tests in both directions passed; see ANYTLS.md |
@@ -60,7 +60,7 @@ states its boundary. "Pending" must not be advertised as supported.
 | SOCKS5 TCP/UDP inbound and native TUN | Baseline; retain packet/flow/lifecycle regression tests |
 | HTTP and mixed HTTP/SOCKS inbound | Added loopback listeners, CONNECT and HTTP body forwarding |
 | Redirect and TProxy | Pending platform-specific listeners and original-destination handling |
-| VLESS, Trojan, Shadowsocks server inbounds | Partial: raw TCP with optional TLS (required for Trojan); VLESS/Trojan UDP-over-TCP, VLESS MUX/XUDP and Shadowsocks legacy/AEAD2017 TCP. Payload tests with an independent Xray 26.7.28 client passed for VLESS, Trojan, SS AES-256-GCM and ChaCha20-Poly1305. Vision/REALITY/encryption, server carriers, SS2022/native UDP and remaining options are pending |
+| VLESS, Trojan, Shadowsocks server inbounds | Partial: raw TCP with optional TLS (required for Trojan); VLESS/Trojan UDP-over-TCP and VLESS MUX/XUDP. Shadowsocks now implements all 35 methods over TCP/native UDP, SS2022 fixed identity chains and bounded replay/session state; independent sing-box 1.14.3 transfers passed both directions. Xray 26.7.28 payload tests for legacy VLESS/Trojan/SS remain retained. Vision/REALITY/encryption, server carriers and wider multi-user/options are pending; see SHADOWSOCKS-SERVER.md |
 | VMess server inbound | Added raw TCP/optional TLS, TCP/UDP/MUX, AEAD and opt-in legacy alter-ID, AES-GCM/ChaCha/CFB/none/zero, length masking/padding and authenticated lengths. Independent Xray 26.7.28 and V2Ray 4.45.2 payload tests passed; server carriers and remaining upstream options are pending; see VMESS-SERVER.md |
 | Other protocol server inbounds | Pending with their corresponding client protocols |
 | Reverse proxy / server fallback | Pending authenticated reverse channels and fallback semantics |
@@ -384,3 +384,41 @@ passed separately under the race detector. Eleven final executable cross-builds
 passed: Windows/Linux/macOS/FreeBSD/OpenBSD amd64 and arm64 plus Android arm64.
 The clean Windows shared/Wintun package and ABI result are recorded with the
 published source checkpoint. No remote workflow conclusion is inferred.
+
+## 0.5.12 extension
+
+Shadowsocks servers now implement all 35 existing cipher methods over native
+UDP, plus SS2022 TCP with fixed AES identity chains, optional verified TLS,
+bounded authentication/replay/session state and owner shutdown. SS2022 inside
+ShadowTLS supports TCP and explicit UOT v2 over both versions. Independent
+sing-box 1.14.3 tests transfer data in both directions and exercise identity
+chains; see [SHADOWSOCKS-SERVER.md](SHADOWSOCKS-SERVER.md).
+
+Authenticated UDP migration preserves the direct relay source socket and
+captures source metadata per queued request. Routed proxy cache entries include
+source IP and route tag, with explicit block rejection before reuse. Stopped
+relays keep their replay tombstone without refreshing it on rejected traffic.
+Queues, peer state and relay connections retain shared limits; disabling native
+UDP creates no UDP listener/workers.
+
+Initial TLS/transport fixture omissions and a random-padding corruption-offset
+panic were corrected in tests. Production fixes address rejection of the exact
+UOT virtual port-zero destination, repeated `table` permutation construction
+per UDP packet, and Windows automatic TCP/UDP port collisions. The table cache
+is lazy and per-codec; its pressure test keeps the original deadline and sizes.
+Automatic port selection retries at most eight candidates; explicit occupied
+ports still fail and roll back TCP. Failure logs and deterministic regressions
+are retained in the local acceptance record. These do not establish varied
+public-node Internet, Windows route/DNS recovery or mobile host acceptance.
+
+Final combined independent wire validation passed: 184 tests run, 182 passed
+and two existing optional cases skipped. Core/mobile/CLI race tests and vet
+passed after the final dual-bind correction. The same full suite retains the
+older protocol/cipher/carrier/client tests and Hysteria/SSH/WireGuard/AnyTLS/
+TUIC/ShadowTLS reference payloads. Targeted `table` pressure/concurrency and
+real-socket dual-bind recovery/ceiling/rollback checks passed separately.
+The owner requested immediate source publication and delegated remaining builds
+and package/ABI checks to the workflow. The local portable matrix was stopped;
+no completed 0.5.12 matrix or clean Windows package/ABI result is claimed.
+Previous 0.5.11 packages remain preserved. Workflow review remains with the
+owner, without waiting for or polling its result.

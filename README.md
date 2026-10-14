@@ -1,4 +1,4 @@
-# vpn-core 0.5.11-go
+# vpn-core 0.5.12-go
 
 A public, general-purpose Go networking core for VPN and proxy applications,
 available to desktop and mobile users and developers. It provides a standalone
@@ -12,6 +12,11 @@ The executable and SDK use the same engine and protocol implementations.
 
 ## What's new in this source revision
 
+- **Shadowsocks servers:** all 35 existing cipher methods now support native
+  UDP; SS2022 adds TCP, identity chains, replay protection and bounded sessions;
+  [implementation/acceptance](docs/SHADOWSOCKS-SERVER.md).
+- **SS2022 inside ShadowTLS:** embedded TCP and UOT v2 for all three modern
+  ciphers, including independent client/server payload tests.
 - **VMess servers:** AEAD and opt-in legacy authentication, TCP/UDP, verified
   TLS, chunk masking/padding and authenticated lengths;
   [implementation/acceptance](docs/VMESS-SERVER.md).
