@@ -66,7 +66,7 @@ states its boundary. "Pending" must not be advertised as supported.
 | Reverse proxy / server fallback | Pending authenticated reverse channels and fallback semantics |
 | General management API | Added opt-in authenticated loopback stats, selection, route and DNS updates; wider API/events scope pending |
 | Statistics / connections / events | Baseline plus SDK flow accounting; richer per-outbound connection inventory pending |
-| Go SDK / C ABI / Android AAR / iOS packet hooks / Windows Wintun | Baseline interfaces retained; bind optional routing and new protocol controls across interfaces |
+| Go SDK / C ABI / Android AAR / iOS packet hooks / Windows Wintun | Baseline client/packet interfaces retained; Go server startup uses Engine.StartServer and the CLI launches configured inbounds. Mobile/C ABI server startup and broader optional controls still require bindings and acceptance |
 | Windows VPN service | Pending opt-in service host, lifecycle/recovery/install/remove acceptance |
 
 ## Acceptance requirements

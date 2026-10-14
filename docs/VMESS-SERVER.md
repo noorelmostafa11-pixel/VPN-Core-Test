@@ -1,7 +1,8 @@
 # VMess server
 
-Version 0.5.11-go adds an optional Go VMess inbound. The executable, Go SDK,
-mobile configuration and C ABI routing configuration use the same server.
+Version 0.5.11-go adds an optional Go VMess inbound for the executable and the
+Go SDK's `Engine.StartServer`. Server startup bindings in the mobile and C ABI
+wrappers remain pending; those wrappers currently provide the client/packet APIs.
 No other proxy engine is launched, and no server workers exist when unused.
 
 ## Configuration
