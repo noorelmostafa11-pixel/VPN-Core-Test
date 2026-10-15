@@ -82,7 +82,7 @@ func compileServerTransport(c ServerConfig) (*ServerTransportConfig, error) {
 		if t.Mode == "" {
 			t.Mode = "stream-one"
 		}
-		if t.Mode != "stream-one" {
+		if !contains([]string{"stream-one", "stream-up", "packet-up", "auto"}, t.Mode) {
 			return nil, bad
 		}
 		if t.HTTPVersion == "" {

@@ -34,8 +34,8 @@ states its boundary. "Pending" must not be advertised as supported.
 | Remote SOCKS4/4a/5 | Added, including SOCKS5 credentials and UDP association; SOCKS4 is IPv4 TCP by specification |
 | SSH, Naive, Tor | SSH TCP client and forwarding server added: password/public keys/host identity, protected sockets, shared channel budget, bounded setup/close and independent Paramiko 5.0.0 payload/auth tests. Server supports one username/listener; reverse forwarding remains pending. Naive and Tor remain pending; see SSH.md |
 | Snell, Tailcat | Pending: establish exact reference version and protocol scope before implementation |
-| Raw TCP, UDP, WS/early data, HTTP Upgrade, gRPC/multi, HTTP2/h2c | Baseline client carriers retained. WS/early-data, HTTP Upgrade, gRPC Tun/TunMulti and HTTP2/h2c server carriers added for VLESS/VMess/Trojan/Shadowsocks TCP; encrypted Vision retains parent carrier layers. XHTTP stream-one is added; split XHTTP and further server carriers remain pending; see SERVER-CARRIERS.md, GRPC-SERVER.md and HTTP2-SERVER.md |
-| XHTTP modes, metadata, padding and download settings | Baseline clients retained. Server stream-one adds native HTTP1/HTTP2/h2c, explicit protocol selection, protected streaming and encrypted Vision. Stream-up/packet-up, server metadata/padding options and HTTP3 remain next; see XHTTP-SERVER.md |
+| Raw TCP, UDP, WS/early data, HTTP Upgrade, gRPC/multi, HTTP2/h2c | Baseline client carriers retained. WS/early-data, HTTP Upgrade, gRPC Tun/TunMulti and HTTP2/h2c server carriers added for VLESS/VMess/Trojan/Shadowsocks TCP; encrypted Vision retains parent carrier layers. All three XHTTP modes are added; further server carriers remain pending; see SERVER-CARRIERS.md, GRPC-SERVER.md and HTTP2-SERVER.md |
+| XHTTP modes, metadata, padding and download settings | Baseline clients retained. All three server modes add native HTTP1/HTTP2/h2c, explicit protocol selection, protected streaming and encrypted Vision. Split sessions add bounded reordering, backing-allocation budgets and cancellation/expiry. Server metadata/padding options and HTTP3 remain next; see XHTTP-SERVER.md |
 | HTTP3, QUIC, mKCP, HTTP disguise, simple-obfs, v2ray-plugin | Baseline carriers, distinct from Hysteria/TUIC protocols |
 | TLS1.2/1.3, uTLS, ECH, REALITY, legacy XTLS, FinalMask | Baseline implemented scope; certificate verification remains enforced |
 | General multiplexing and XUDP/UoT | Partial: VMess/VLESS MUX server framing, concurrent TCP and XUDP destination/Full Cone UDP added with bounded lifetime and independent Xray payload tests. General outbound MUX, cross-parent XUDP migration, smux and additional UOT paths remain pending; see MUX-SERVER.md |
@@ -728,3 +728,40 @@ with the workflow and owner. No post-fix remote result or public Internet
 acceptance is claimed. The owner requested stopping after this correction;
 the checkpoint and remaining scope were saved. Next implementation remains
 XHTTP stream-up/packet-up, followed by the still-open complete gap register.
+
+## 0.5.20 extension
+
+The owner resumed on 15 October. Native XHTTP adds stream-up and packet-up
+servers plus explicit auto mode for VLESS/VMess/Trojan/Shadowsocks TCP over
+HTTP1/HTTP2/h2c. The preserved default remains stream-one. Split uploads and
+downloads use one listener-owned session manager, standard bounded path IDs
+and unsigned sequences; protocol authentication, protected routing, hybrid
+encryption and Vision reuse the existing stream implementation.
+
+Pending sessions get one owned setup watcher which exits on download attach
+or expires at ConnectTimeout; no periodic listener worker or idle session pool
+is added. Parent sockets, active handlers and sessions share engine admission.
+Packet bodies are limited to 1 MiB and a 30-position reordering window, with
+actual backing allocation charged before reads and retained through partial
+consumption: at most 2*(1 MiB+1) per session and 8*(1 MiB+1) per listener,
+including uploads still being read. Failure/close refunds buffers and admission.
+Duplicate downloads/uploads, mixed upload kinds, replay/stale/out-of-window sequences
+and oversize/over-budget requests fail explicitly. Finite stream-up EOF retains
+the final download body; controller lifetime is serialized with upload completion.
+
+Native tests passed all three selected modes across four protocols with/without
+TLS, TCP/large UDP, reordering/duplicate rejection, setup expiry/deadlines,
+backing allocation/admission bounds, finite 1.25-MiB response drain, malformed
+requests, protected-dial cancellation and partial POST owner loss. The final
+XHTTP group passed two race repetitions (14.070s). Full core/mobile/CLI race
+passed (75.748s) and vet passed. Official Xray 26.7.28 passed all modes over
+cleartext/HTTP1/HTTP2/TLS, native/random encrypted Vision, verified inner TLS
+and XUDP: four combined reference cases, 64.049s.
+
+Full independent wire regression passed: 197 tests run, 195 passed and two
+existing optional cases skipped, in 308.309s. This includes the prior client
+carrier/protocol suites and independent protocol-server references.
+Advanced server metadata/payload placement, padding/response options, HTTP3 and
+the complete remaining gap register stay open. Final platform/package builds
+remain delegated to the workflow without waiting or polling; local results do
+not establish varied public-node Internet or host route/DNS recovery.

@@ -19,6 +19,14 @@ class XHTTPServerReferenceTests(unittest.TestCase):
     payload_cases = visionref.VLESSVisionReferenceTests.payload_cases
 
     def test_xray_stream_one_four_protocols_http1_http2_and_cleartext(self):
+        self.four_protocol_matrix('stream-one')
+
+    def test_xray_split_four_protocols_http1_http2_and_cleartext(self):
+        for mode in ['stream-up', 'packet-up', 'auto']:
+            with self.subTest(mode=mode):
+                self.four_protocol_matrix(mode)
+
+    def four_protocol_matrix(self, mode):
         listener = socket.socket()
         listener.bind(('127.0.0.1', 0)); listener.listen(); listener.settimeout(.2)
         stop, handlers = threading.Event(), []
@@ -41,7 +49,7 @@ class XHTTPServerReferenceTests(unittest.TestCase):
                     with self.subTest(protocol=protocol, tls=secure, alpn=alpn):
                         cipher = 'aes-128-gcm' if protocol == 'vmess' else 'aes-256-gcm'
                         with self.reference_pair(protocol, cipher=cipher, secure=secure,
-                                                 transport={'type': 'xhttp', 'path': '/vpn path', 'host': 'localhost', 'mode': 'stream-one', 'alpn': alpn}) as socks:
+                                                 transport={'type': 'xhttp', 'path': '/vpn path', 'host': 'localhost', 'mode': mode, 'alpn': alpn}) as socks:
                             for cycle in range(8):
                                 c, _ = self.socks(socks, 1, listener.getsockname())
                                 with c:
@@ -67,6 +75,18 @@ class XHTTPServerReferenceTests(unittest.TestCase):
                 encryption = '.'.join(['mlkem768x25519plus', mode, '0rtt', '100-75-75', public])
                 self.payload_cases(decryption=decryption, encryption=encryption,
                                    transport={'type': 'xhttp', 'path': '/vpn', 'host': 'localhost', 'mode': 'stream-one', 'alpn': alpn})
+
+    def test_xray_split_hybrid_vision_inner_tls_xudp(self):
+        private = x25519.X25519PrivateKey.generate()
+        secret = base64.urlsafe_b64encode(private.private_bytes_raw()).decode().rstrip('=')
+        public = base64.urlsafe_b64encode(private.public_key().public_bytes_raw()).decode().rstrip('=')
+        for transport_mode in ['stream-up', 'packet-up']:
+            for cipher_mode, alpn in [('native', ['h2']), ('random', ['http/1.1'])]:
+                with self.subTest(mode=transport_mode, cipher=cipher_mode, alpn=alpn):
+                    decryption = '.'.join(['mlkem768x25519plus', cipher_mode, '60-60s', '100-75-75', secret])
+                    encryption = '.'.join(['mlkem768x25519plus', cipher_mode, '0rtt', '100-75-75', public])
+                    self.payload_cases(decryption=decryption, encryption=encryption,
+                                       transport={'type': 'xhttp', 'path': '/vpn', 'host': 'localhost', 'mode': transport_mode, 'alpn': alpn})
 
 
 if __name__ == '__main__':

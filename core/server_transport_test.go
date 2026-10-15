@@ -19,11 +19,14 @@ import (
 	"time"
 )
 
-func carrierServerFixture(t *testing.T, protocol, transport string, secure bool, early int) (Config, *Engine) {
+func carrierServerFixture(t *testing.T, protocol, transport string, secure bool, early int, modes ...string) (Config, *Engine) {
 	t.Helper()
 	server := testServerEngine(t)
 	spec := ServerConfig{Protocol: protocol, Listen: "127.0.0.1:0", UUIDs: []string{visionServerTestUUID}, Password: "carrier secret", Cipher: "aes-256-gcm",
 		Transport: &ServerTransportConfig{Type: transport, Path: "/native%20path", Host: "localhost", EarlyData: early}}
+	if len(modes) > 0 {
+		spec.Transport.Mode = modes[0]
+	}
 	if protocol == "ss" {
 		spec.Options = map[string]string{"udp": "false"}
 	} else {
@@ -46,6 +49,9 @@ func carrierServerFixture(t *testing.T, protocol, transport string, secure bool,
 	}
 	if transport == "xhttp" {
 		cfg.Mode = "stream-one"
+		if len(modes) > 0 {
+			cfg.Mode = modes[0]
+		}
 	}
 	cfg.Server, cfg.Port, _ = splitProtocolTarget(addr.String())
 	cfg.UUID, _ = uuidBytes(visionServerTestUUID)

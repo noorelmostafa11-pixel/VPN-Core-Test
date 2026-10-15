@@ -129,7 +129,7 @@ func TestXHTTPServerProtectionCancellationAndIncompleteOwnerLoss(t *testing.T) {
 	if server.Stats().Active != 0 || calls.Load() != 1 {
 		t.Fatal("XHTTP owner resources", server.Stats(), calls.Load())
 	}
-	for _, spec := range []ServerTransportConfig{{Type: "xhttp", Mode: "packet-up"}, {Type: "xhttp", Method: "GET"}, {Type: "xhttp", EarlyData: 1}, {Type: "http2", Mode: "stream-one"}} {
+	for _, spec := range []ServerTransportConfig{{Type: "xhttp", Mode: "unknown"}, {Type: "xhttp", Method: "GET"}, {Type: "xhttp", EarlyData: 1}, {Type: "http2", Mode: "stream-one"}} {
 		if _, err := compileServerTransport(ServerConfig{Protocol: "vless", Transport: &spec}); err == nil {
 			t.Fatal("unsupported XHTTP mode/options silently accepted", spec)
 		}

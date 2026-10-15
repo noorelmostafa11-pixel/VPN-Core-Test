@@ -1,4 +1,4 @@
-# vpn-core 0.5.19-go — Core guide
+# vpn-core 0.5.20-go — Core guide
 
 vpn-core is a publicly available, general-purpose Go networking core for
 desktop and mobile VPN/proxy applications. This guide describes the current
@@ -7,7 +7,7 @@ servers, native TUN, routing, DNS, application integration and packaging.
 The source version is defined in [VERSION](../VERSION); GitHub Releases are
 published separately from source updates and workflow artifacts.
 
-The latest additions include WebSocket/HTTP Upgrade/gRPC/HTTP2/XHTTP stream-one protocol servers, VLESS hybrid encryption/REALITY/Vision servers, SS2022/native UDP Shadowsocks servers, SS2022
+The latest additions include WebSocket/HTTP Upgrade/gRPC/HTTP2/XHTTP stream-one/stream-up/packet-up protocol servers, VLESS hybrid encryption/REALITY/Vision servers, SS2022/native UDP Shadowsocks servers, SS2022
 inside ShadowTLS, VMess servers and VMess/VLESS MUX/XUDP server
 framing, HTTPS/body-verified outbound health selection, SSH
 forwarding servers, TUIC v5, ShadowTLS v2/v3 and Hysteria 1. Hysteria 2, AnyTLS and WireGuard
@@ -74,7 +74,7 @@ The executable starts loopback SOCKS5 TCP/UDP by default. `--http-listen` and
 `--no-socks` disables the default SOCKS listener for HTTP/server-only setups.
 Configured protocol servers use their explicit listen addresses and credentials.
 
-Optional `transport` adds WebSocket/early data, HTTP Upgrade, gRPC Tun/TunMulti, HTTP2 or XHTTP stream-one on
+Optional `transport` adds WebSocket/early data, HTTP Upgrade, gRPC Tun/TunMulti, HTTP2 or XHTTP stream-one/stream-up/packet-up on
 VLESS/VMess/Trojan/Shadowsocks TCP servers; see [server carriers](SERVER-CARRIERS.md)
 and [gRPC](GRPC-SERVER.md)/[HTTP2](HTTP2-SERVER.md)/[XHTTP](XHTTP-SERVER.md) for TLS, encrypted Vision, UDP and remaining carrier boundaries.
 They do not configure host routes or firewall policy.

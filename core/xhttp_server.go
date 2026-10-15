@@ -5,9 +5,7 @@ import (
 	"crypto/tls"
 	"net"
 	"net/http"
-	"strings"
 	"sync"
-	"time"
 )
 
 // Native HTTP owns socket framing; admission and closure stay engine-owned.
@@ -72,63 +70,16 @@ func (e *Engine) startXHTTPServer(s serverSpec) (net.Addr, error) {
 		HTTP2: &http.HTTP2Config{MaxConcurrentStreams: e.config.MaxConnections, MaxReadFrameSize: 16384, MaxDecoderHeaderTableSize: 4096, MaxEncoderHeaderTableSize: 4096,
 			MaxReceiveBufferPerConnection: 1048576, MaxReceiveBufferPerStream: 65536, WriteByteTimeout: e.config.ConnectTimeout},
 		BaseContext: func(net.Listener) context.Context { return e.ctx }}
-	server.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !e.ownHTTPHandler() {
-			return
+	var sessions *xServerSessions
+	if s.transport.Mode != "stream-one" {
+		sessions = &xServerSessions{e: e}
+	}
+	server.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { e.serveXHTTP(w, r, s, sessions) })
+	if sessions != nil && !e.track(sessions) || !e.track(server) || !e.spawn(func() {
+		if sessions != nil {
+			defer e.untrack(sessions)
+			defer sessions.Close()
 		}
-		defer e.workers.Done()
-		if r.Method != s.transport.Method || r.URL.Path != s.transport.Path || !serverHostMatches(r.Host, s.transport.Host) || r.Header.Get("X-Session") != "" || r.Header.Get("X-Seq") != "" || r.URL.Query().Get("x_session") != "" || r.URL.Query().Get("x_seq") != "" || len(r.Header.Values("Content-Encoding")) > 1 || r.Header.Get("Content-Encoding") != "" && r.Header.Get("Content-Encoding") != "identity" {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		if !e.acquire() {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
-		}
-		defer e.release()
-		controller := http.NewResponseController(w)
-		if r.ProtoMajor == 1 && controller.EnableFullDuplex() != nil {
-			return
-		}
-		remote, err := net.ResolveTCPAddr("tcp", r.RemoteAddr)
-		if err != nil {
-			return
-		}
-		local, _ := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
-		c := &serverHTTP2Conn{request: r, writer: w, controller: controller, local: local, remote: remote}
-		if !e.track(c) {
-			return
-		}
-		defer e.untrack(c)
-		defer c.Close()
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Content-Encoding", "identity")
-		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("X-Accel-Buffering", "no")
-		w.Header().Set("X-Padding", strings.Repeat("X", 100))
-		w.WriteHeader(http.StatusOK)
-		if controller.Flush() != nil {
-			return
-		}
-		deadline := time.Now().Add(e.config.ConnectTimeout)
-		if c.SetDeadline(deadline) != nil {
-			return
-		}
-		ctx, cancel := context.WithCancel(r.Context())
-		defer cancel()
-		stop := context.AfterFunc(e.ctx, func() { cancel(); c.Close() })
-		defer stop()
-		conn := net.Conn(c)
-		if s.encryption != nil {
-			encrypted, err := s.encryption.handshake(ctx, c, deadline)
-			if err != nil {
-				return
-			}
-			conn = encrypted
-		}
-		e.serveServerContext(ctx, conn, s)
-	})
-	if !e.track(server) || !e.spawn(func() {
 		defer e.untrack(server)
 		defer server.Close()
 		defer e.untrack(listener)
@@ -142,6 +93,10 @@ func (e *Engine) startXHTTPServer(s serverSpec) (net.Addr, error) {
 		}
 		server.Serve(admitted)
 	}) {
+		if sessions != nil {
+			sessions.Close()
+			e.untrack(sessions)
+		}
 		server.Close()
 		listener.Close()
 		e.untrack(listener)

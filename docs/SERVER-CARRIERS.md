@@ -86,7 +86,9 @@ Version 0.5.17 adds gRPC Tun/TunMulti; see [GRPC-SERVER.md](GRPC-SERVER.md).
 Version 0.5.18 adds HTTP2/h2c; see [HTTP2-SERVER.md](HTTP2-SERVER.md).
 Version 0.5.19 adds XHTTP stream-one over HTTP1/HTTP2/h2c;
 see [XHTTP-SERVER.md](XHTTP-SERVER.md).
-XHTTP stream-up/packet-up, QUIC/HTTP3/mKCP server carriers, PROXY/trusted forwarding,
+Version 0.5.20 adds XHTTP stream-up/packet-up and explicit auto mode with bounded
+session queues, admission and owner lifetime. See [XHTTP-SERVER.md](XHTTP-SERVER.md).
+XHTTP metadata/padding options, QUIC/HTTP3/mKCP server carriers, PROXY/trusted forwarding,
 compression and wider HTTP listener options remain pending. Mobile/C ABI server
 startup remains pending. Final full builds belong to the workflow; local
 payload/race checks do not establish varied public-node Internet or host OS
