@@ -69,9 +69,14 @@ func (e *Engine) serveXHTTP(w http.ResponseWriter, r *http.Request, spec serverS
 			return
 		}
 	}
-	if kind == "packet" && r.ContentLength > xServerPostLimit {
-		xServerStatus(c, http.StatusRequestEntityTooLarge)
-		return
+	var packet xServerPacketPlan
+	if kind == "packet" {
+		var status int
+		packet, status = xServerPlanPacket(r, spec.transport.xhttpMetadata())
+		if status != 0 {
+			xServerStatus(c, status)
+			return
+		}
 	}
 	var session *xServerSession
 	if id != "" {
@@ -82,7 +87,7 @@ func (e *Engine) serveXHTTP(w http.ResponseWriter, r *http.Request, spec serverS
 		}
 	}
 	if kind == "packet" {
-		e.receiveXHTTPPost(c, session, seq)
+		e.receiveXHTTPPacket(c, session, seq, packet)
 		return
 	}
 	if kind == "upload" {
@@ -146,41 +151,4 @@ func xServerStatus(c *serverHTTP2Conn, status int) {
 	c.writer.WriteHeader(status)
 	c.controller.Flush()
 	c.CloseWrite()
-}
-
-func (e *Engine) receiveXHTTPPost(c *serverHTTP2Conn, session *xServerSession, seq uint64) {
-	if c.request.ContentLength > xServerPostLimit {
-		xServerStatus(c, http.StatusRequestEntityTooLarge)
-		return
-	}
-	cost := xServerPostLimit + 1
-	if c.request.ContentLength >= 0 {
-		cost = int(c.request.ContentLength) + 1
-	}
-	if !session.manager.reserve(cost) {
-		xServerStatus(c, http.StatusServiceUnavailable)
-		return
-	}
-	owned := true
-	defer func() {
-		if owned {
-			session.manager.buffered.Add(-int64(cost))
-		}
-	}()
-	body := make([]byte, cost)
-	n, err := io.ReadFull(c, body)
-	if n > xServerPostLimit {
-		xServerStatus(c, http.StatusRequestEntityTooLarge)
-		return
-	}
-	if err != io.EOF && err != io.ErrUnexpectedEOF || c.request.ContentLength >= 0 && int64(n) != c.request.ContentLength {
-		xServerStatus(c, http.StatusBadRequest)
-		return
-	}
-	if session.push(seq, xServerPacket{body: body[:n], cost: cost}) != nil {
-		xServerStatus(c, http.StatusConflict)
-		return
-	}
-	owned = false
-	xServerStatus(c, http.StatusOK)
 }

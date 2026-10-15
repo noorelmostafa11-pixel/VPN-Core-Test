@@ -103,13 +103,17 @@ func compileServerTransport(c ServerConfig) (*ServerTransportConfig, error) {
 			t.Extra = &metadata
 		}
 		metadata := t.xhttpMetadata()
+		if metadata.UplinkDataPlacement != "body" && t.Mode != "auto" && t.Mode != "packet-up" {
+			return nil, bad
+		}
 		if metadata.SessionIDPlacement == "path" || metadata.SeqPlacement == "path" {
 			t.Path = strings.TrimSuffix(t.Path, "/") + "/"
 		}
 		if t.Method == "" {
 			t.Method = "POST"
 		}
-		if len(t.Method) > 32 || !httpToken(t.Method) || contains([]string{"CONNECT", "GET", "HEAD", "TRACE", "OPTIONS"}, t.Method) {
+		if len(t.Method) > 32 || !httpToken(t.Method) || contains([]string{"CONNECT", "HEAD", "TRACE", "OPTIONS"}, t.Method) ||
+			t.Method == "GET" && metadata.UplinkDataPlacement != "header" && metadata.UplinkDataPlacement != "cookie" {
 			return nil, bad
 		}
 		return &t, nil

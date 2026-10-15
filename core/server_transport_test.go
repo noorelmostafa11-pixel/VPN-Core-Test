@@ -35,6 +35,9 @@ func carrierServerFixtureWithXHTTPExtra(t *testing.T, protocol, transport string
 	if len(modes) > 1 {
 		spec.Transport.HTTPVersion = modes[1]
 	}
+	if len(modes) > 2 {
+		spec.Transport.Method = modes[2]
+	}
 	if protocol == "ss" {
 		spec.Options = map[string]string{"udp": "false"}
 	} else {

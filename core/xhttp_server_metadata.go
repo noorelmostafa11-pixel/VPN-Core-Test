@@ -11,10 +11,12 @@ import (
 // XHTTPServerOptions exposes only the server options implemented here.
 // Unknown fields are rejected by the routing profile's strict JSON decoder.
 type XHTTPServerOptions struct {
-	SessionIDPlacement string `json:"sessionIDPlacement,omitempty"`
-	SessionIDKey       string `json:"sessionIDKey,omitempty"`
-	SeqPlacement       string `json:"seqPlacement,omitempty"`
-	SeqKey             string `json:"seqKey,omitempty"`
+	SessionIDPlacement  string `json:"sessionIDPlacement,omitempty"`
+	SessionIDKey        string `json:"sessionIDKey,omitempty"`
+	SeqPlacement        string `json:"seqPlacement,omitempty"`
+	SeqKey              string `json:"seqKey,omitempty"`
+	UplinkDataPlacement string `json:"uplinkDataPlacement,omitempty"`
+	UplinkDataKey       string `json:"uplinkDataKey,omitempty"`
 }
 
 func compileXHTTPMetadata(x XHTTPServerOptions) (XHTTPServerOptions, error) {
@@ -68,6 +70,33 @@ func compileXHTTPMetadata(x XHTTPServerOptions) (XHTTPServerOptions, error) {
 			return x, bad
 		}
 	}
+	if x.UplinkDataPlacement == "" {
+		x.UplinkDataPlacement = "body"
+	}
+	if !contains([]string{"body", "header", "cookie", "auto"}, x.UplinkDataPlacement) {
+		return x, bad
+	}
+	if x.UplinkDataKey == "" {
+		x.UplinkDataKey = "x_data"
+		if x.UplinkDataPlacement == "header" {
+			x.UplinkDataKey = "X-Data"
+		}
+	}
+	if len(x.UplinkDataKey) > 128 || !httpToken(x.UplinkDataKey) {
+		return x, bad
+	}
+	for _, field := range []struct{ placement, key string }{{x.SessionIDPlacement, x.SessionIDKey}, {x.SeqPlacement, x.SeqKey}} {
+		if field.placement == "header" {
+			if _, matched := xServerPayloadSuffix(field.key, x.UplinkDataKey, '-', true); matched {
+				return x, bad
+			}
+		}
+		if field.placement == "cookie" {
+			if _, matched := xServerPayloadSuffix(field.key, x.UplinkDataKey, '_', false); matched {
+				return x, bad
+			}
+		}
+	}
 	return x, nil
 }
 
@@ -75,7 +104,7 @@ func (t *ServerTransportConfig) xhttpMetadata() XHTTPServerOptions {
 	if t.Extra != nil {
 		return *t.Extra
 	}
-	return XHTTPServerOptions{SessionIDPlacement: "path", SeqPlacement: "path"}
+	return XHTTPServerOptions{SessionIDPlacement: "path", SeqPlacement: "path", UplinkDataPlacement: "body", UplinkDataKey: "x_data"}
 }
 
 // A configured carrier is authoritative. Repeated/empty metadata and alternate
@@ -155,7 +184,7 @@ func xServerRequest(r *http.Request, t *ServerTransportConfig) (kind, id string,
 		return "", "", 0, false
 	}
 	if !hasID {
-		return "single", "", 0, !hasSeq && r.Method == t.Method && t.Mode != "packet-up"
+		return "single", "", 0, !hasSeq && r.Method == t.Method && t.Method != "GET" && t.Mode != "packet-up"
 	}
 	if t.Mode == "stream-one" || len(id) > 128 {
 		return "", "", 0, false
@@ -165,7 +194,7 @@ func xServerRequest(r *http.Request, t *ServerTransportConfig) (kind, id string,
 			return "", "", 0, false
 		}
 	}
-	if r.Method == "GET" {
+	if r.Method == "GET" && !hasSeq {
 		return "down", id, 0, !hasSeq && (r.ContentLength == 0 || r.ProtoMajor == 3 && r.ContentLength < 0) && len(r.TransferEncoding) == 0
 	}
 	if r.Method != t.Method {

@@ -31,7 +31,7 @@ class XHTTPServerReferenceTests(unittest.TestCase):
             with self.subTest(mode=mode):
                 self.four_protocol_matrix(mode, http3=True)
 
-    def four_protocol_matrix(self, mode, http3=False, extra=None, cycles=8):
+    def four_protocol_matrix(self, mode, http3=False, extra=None, cycles=8, method=None):
         listener = socket.socket()
         listener.bind(('127.0.0.1', 0)); listener.listen(); listener.settimeout(.2)
         stop, handlers = threading.Event(), []
@@ -54,7 +54,7 @@ class XHTTPServerReferenceTests(unittest.TestCase):
                     with self.subTest(protocol=protocol, tls=secure, alpn=alpn):
                         cipher = 'aes-128-gcm' if protocol == 'vmess' else 'aes-256-gcm'
                         with self.reference_pair(protocol, cipher=cipher, secure=secure,
-                                                 transport={'type': 'xhttp', 'path': '/vpn path', 'host': 'localhost', 'mode': mode, 'alpn': alpn, **({'extra': extra} if extra else {})}) as socks:
+                                                 transport={'type': 'xhttp', 'path': '/vpn path', 'host': 'localhost', 'mode': mode, 'alpn': alpn, **({'extra': extra} if extra else {}), **({'method': method} if method else {})}) as socks:
                             for cycle in range(cycles):
                                 c, _ = self.socks(socks, 1, listener.getsockname())
                                 with c:
@@ -80,6 +80,17 @@ class XHTTPServerReferenceTests(unittest.TestCase):
             for http3 in [False, True]:
                 with self.subTest(session=session, seq=seq, http3=http3):
                     self.four_protocol_matrix('packet-up', http3=http3, extra=extra, cycles=2)
+
+    def test_xray_header_cookie_payloads_and_get(self):
+        for placement, method in [('header', 'POST'), ('cookie', 'GET')]:
+            extra = {'uplinkDataPlacement': placement, 'uplinkDataKey': 'Packet-Data',
+                     'sessionIDPlacement': 'header', 'sessionIDKey': 'Meta-Session',
+                     'seqPlacement': 'query', 'seqKey': 'seq', 'scMaxEachPostBytes': 2000,
+                     'scMinPostsIntervalMs': 1, 'uplinkChunkSize': '71-139'}
+            # Keep client chunk/timing options out of the strict server profile.
+            for http3 in [False, True]:
+                with self.subTest(placement=placement, method=method, http3=http3):
+                    self.four_protocol_matrix('packet-up', http3=http3, extra=extra, cycles=2, method=method)
 
     def test_xray_stream_one_hybrid_vision_inner_tls_xudp(self):
         private = x25519.X25519PrivateKey.generate()

@@ -472,10 +472,26 @@ func (x xOptions) request(ctx context.Context, base, session, seq string, body i
 		req.Header.Set("Content-Type", "application/grpc")
 	}
 	if packet && x.UplinkDataPlacement != "body" {
-		total := 0
+		// Budget the uncompressed HTTP2/HTTP3 field list, including the
+		// per-field 32-byte cost. This also bounds HTTP1 serialization.
+		total := 4*32 + len(":authority") + len(req.URL.Host) + len(":method") + len(req.Method) + len(":path") + len(req.URL.RequestURI()) + len(":scheme") + len(req.URL.Scheme)
+		if len(req.Header.Values("User-Agent")) == 0 {
+			total += 32 + len("user-agent") + len("Go-http-client/1.1")
+		}
+		total += 32 + len("content-length") + 1 // A transport may add zero length.
 		for k, values := range req.Header {
 			for _, v := range values {
-				total += len(k) + len(v) + 4
+				if strings.EqualFold(k, "Cookie") {
+					// HTTP2 splits Cookie into one field per cookie pair.
+					for _, cookie := range strings.Split(v, ";") {
+						cookie = strings.TrimSpace(cookie)
+						if cookie != "" {
+							total += 32 + len(k) + len(cookie)
+						}
+					}
+				} else {
+					total += len(k) + len(v) + 32
+				}
 			}
 		}
 		if total > x.ServerMaxHeaderBytes {
@@ -879,6 +895,12 @@ func (s *xSession) packets(ctx context.Context, c xSettings, x xOptions, client 
 					lifetimeMS = x.Xmux.CMaxLifetimeMS.choose()
 				}
 				req, e := x.request(ctx, base, id, strconv.FormatUint(seq, 10), nil, true, buffer[offset:offset+count])
+				// Header fitting happens before I/O. No delivered payload is
+				// replayed, and each reduction strictly bounds the next attempt.
+				for e != nil && xhttpErrorCode(e) == 406 && count > 1 {
+					count /= 2
+					req, e = x.request(ctx, base, id, strconv.FormatUint(seq, 10), nil, true, buffer[offset:offset+count])
+				}
 				if e != nil {
 					return e
 				}

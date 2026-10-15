@@ -1,6 +1,6 @@
 # Native XHTTP stream-one/stream-up/packet-up server carrier
 
-Version 0.5.22-go supports XHTTP `stream-one`, `stream-up`, `packet-up` and
+Version 0.5.23-go supports XHTTP `stream-one`, `stream-up`, `packet-up` and
 explicit `auto` on VLESS, VMess, Trojan and Shadowsocks TCP listeners.
 Native Go HTTP handles HTTP/1.1, HTTP/2 and cleartext prior-knowledge HTTP/2;
 explicit `http_version: "h3"` selects a TLS 1.3 QUIC/HTTP3 UDP listener.
@@ -32,7 +32,7 @@ state only on first use and release it with their download/setup lifetime.
 
 The project client uses `type=xhttp&mode=packet-up` (or another allowed mode)
 with the same path/host. Omitted server mode preserves the `stream-one` default.
-Advanced payload/padding options remain separate work; three-mode
+Advanced padding/response options remain separate work; three-mode
 wire compatibility does not imply all reference listener options.
 
 `http_version` defaults to `auto`, advertising `h2` and `http/1.1` with TLS and
@@ -52,7 +52,8 @@ Stream-one sends both directions in one request. Split modes use a GET for
 download plus one streaming upload or numbered packet uploads. Standard path
 metadata remains the default. Version 0.5.22 also supports independently selected
 path/query/header/cookie locations for session IDs and packet sequences, with
-optional custom key names. Packet payloads still use the request body.
+optional custom key names. Version 0.5.23 also supports body/header/cookie/auto
+packet payload placement, independently of session/sequence metadata.
 
 For example, both endpoints can use these XHTTP options (nested under the
 server's `transport.extra` or the client's XHTTP extra):
@@ -66,12 +67,14 @@ server's `transport.extra` or the client's XHTTP extra):
 }
 ```
 
-Only these four fields are currently accepted in server `extra`; the strict
-profile decoder rejects unimplemented options. Keys default to `X-Session` and
+These four fields and `uplinkDataPlacement`/`uplinkDataKey` are currently
+accepted in server `extra`; the strict profile decoder rejects unimplemented
+options. Metadata keys default to `X-Session` and
 `X-Seq` for headers, or `x_session` and `x_seq` for query/cookie. Path locations
 take no key. Header names compare without case; query/cookie keys retain case.
-Names are HTTP tokens of at most 128 bytes; framing/encoding/cookie header keys
-and colliding session/sequence keys in the same location are rejected at setup.
+Names are HTTP tokens of at most 128 bytes; framing/encoding/cookie header keys,
+colliding session/sequence keys in the same location and metadata names in the
+configured payload chunk namespaces are rejected at setup.
 Compiled options copy their configuration rather than aliasing mutable input.
 
 The base path gains a trailing slash when either field uses path metadata;
@@ -87,7 +90,10 @@ of 1–128 ASCII characters and an optional unsigned decimal sequence. Unknown
 segments, duplicate/ambiguous default metadata markers, wrong modes/methods,
 hosts and encodings are rejected before protocol forwarding. Host retains the
 shared 253-byte hostname/port policy. Uplink method defaults to POST; another
-bounded body-carrying token can be configured. Download GETs must have no body.
+bounded body-carrying token can be configured. Explicit GET uploads require
+header/cookie packet placement and a sequence; GET without a sequence remains
+the download and must have no body. Non-body packet placements require
+`packet-up` or explicit `auto` mode, not stream-one/stream-up.
 Forwarding headers do not override source socket metadata. WS early data,
 gRPC service and HTTP-version settings on other carriers remain rejected.
 
@@ -100,12 +106,32 @@ and protected forwarding. Duplicate downloads/uploads, mixed upload kinds,
 duplicate/stale packets and sequences outside the next 30 positions fail.
 Ordered packets are reassembled before protocol authentication reads them.
 
-Each packet body is at most 1 MiB, with at most 30 buffered posts. Actual
-backing allocations (including a consumed prefix) stay charged until fully
-released: at most 2*(1 MiB+1) per session and 8*(1 MiB+1) per listener, including
-POST bodies still being read. Reservations precede allocation, and failed POSTs
-refund their reservation. Overload is explicit (503); conflicts return 409 and
-oversized bodies 413. Stream-up uses the existing bounded HTTP receive windows
+`uplinkDataPlacement` defaults to `body`. `header` uses `uplinkDataKey-N`
+fields (default key `X-Data`); `cookie` uses `uplinkDataKey_N` cookies (default
+key `x_data`). Chunk indices start at zero, are canonical decimal, contiguous
+and unique, with at most 128 chunks per carrier. Chunks concatenate in numeric
+order before strict unpadded Base64URL decoding. Empty chunks, invalid alphabet,
+noncanonical trailing bits, duplicates/gaps and more than 8 KiB combined encoded
+header/cookie payload fail before session creation. Existing complete HTTP
+header limits also apply and generally bound the usable payload below that.
+`auto` uses the default key `x_data` and concatenates decoded header, decoded
+cookie and raw body, in that order. Body-only rejects configured payload chunks;
+header/cookie-only reject the other carrier and require an actually empty body,
+including unknown-length HTTP3 FIN. Client carrier/key settings must agree with
+the server; server `auto` accepts any of the three carriers with its configured
+key, while the client maps its own `auto` placement to body.
+
+Each combined decoded packet is at most 1 MiB, with at most 30 buffered posts.
+Actual backing allocations (including a consumed prefix) stay charged until fully
+released: at most 2*(1 MiB+1) queued per session and 8*(1 MiB+1) per listener,
+including uploads still being read. Decoded backing plus encoded scratch are
+reserved before allocation; scratch is refunded after decoding, and the retained decoded
+capacity is charged until consumed. Failed uploads refund their reservation.
+Overload is explicit (503); conflicts return 409 and oversized packets 413.
+The client also budgets the uncompressed HTTP2/HTTP3 field-list overhead and
+splits an oversized header/cookie packet before any network I/O, without
+replaying sent data or increasing header limits.
+Stream-up uses the existing bounded HTTP receive windows
 without allocating a packet queue. Its finite-body EOF half-closes upload
 while preserving final download response drain. Upload controllers are used
 only while their native HTTP handler is running.
@@ -119,7 +145,7 @@ padding. Compression is not enabled. Headers are bounded to 8 KiB, HTTP/2 frames
 to 16 KiB, HPACK tables to 4 KiB, and receive windows to 1 MiB per parent/64 KiB
 per stream. Header/setup deadlines and active owner/idle cancellation remain
 bounded. Advanced request-padding validation, response/header templates,
-payload placements, periodic stream-up response padding and browser CORS
+periodic stream-up response padding and browser CORS
 remain pending.
 
 Normal request-body EOF retains response drain and parent reuse. Closing an

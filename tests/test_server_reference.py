@@ -120,6 +120,9 @@ class ServerReferenceTests(unittest.TestCase):
                     'disableSystemRoot': True, 'certificates': [{'certificateFile': str(self.cert), 'usage': 'verify'}]}
         if transport:
             spec['transport'] = {key: value for key, value in transport.items() if key != 'alpn'}
+            if transport['type'] == 'xhttp' and 'extra' in spec['transport']:
+                client_only = {'scMaxEachPostBytes', 'scMinPostsIntervalMs', 'uplinkChunkSize'}
+                spec['transport']['extra'] = {key: value for key, value in spec['transport']['extra'].items() if key not in client_only}
             if transport['type'] == 'xhttp' and transport.get('alpn') in [['h2'], ['http/1.1'], ['h3']]:
                 spec['transport']['http_version'] = 'h3' if transport['alpn'] == ['h3'] else 'h2' if transport['alpn'] == ['h2'] else 'h1'
             if protocol == 'ss':

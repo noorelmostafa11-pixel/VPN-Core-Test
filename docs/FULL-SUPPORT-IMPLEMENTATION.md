@@ -35,7 +35,7 @@ states its boundary. "Pending" must not be advertised as supported.
 | SSH, Naive, Tor | SSH TCP client and forwarding server added: password/public keys/host identity, protected sockets, shared channel budget, bounded setup/close and independent Paramiko 5.0.0 payload/auth tests. Server supports one username/listener; reverse forwarding remains pending. Naive and Tor remain pending; see SSH.md |
 | Snell, Tailcat | Pending: establish exact reference version and protocol scope before implementation |
 | Raw TCP, UDP, WS/early data, HTTP Upgrade, gRPC/multi, HTTP2/h2c | Baseline client carriers retained. WS/early-data, HTTP Upgrade, gRPC Tun/TunMulti and HTTP2/h2c server carriers added for VLESS/VMess/Trojan/Shadowsocks TCP; encrypted Vision retains parent carrier layers. All three XHTTP modes are added; further server carriers remain pending; see SERVER-CARRIERS.md, GRPC-SERVER.md and HTTP2-SERVER.md |
-| XHTTP modes, metadata, padding and download settings | Baseline clients retained. All three server modes add native HTTP1/HTTP2/h2c and explicit HTTP3/TLS 1.3, protected streaming and encrypted Vision. Split sessions add bounded reordering, backing-allocation budgets and cancellation/expiry; header admission and joined control ownership also cover HTTP3. Session/sequence metadata supports path/query/header/cookie and custom keys with ambiguity rejection. Server payload/padding/CORS options remain next; see XHTTP-SERVER.md |
+| XHTTP modes, metadata, padding and download settings | Baseline clients retained. All three server modes add native HTTP1/HTTP2/h2c and explicit HTTP3/TLS 1.3, protected streaming and encrypted Vision. Split sessions add bounded reordering, backing-allocation budgets and cancellation/expiry; header admission and joined control ownership also cover HTTP3. Session/sequence metadata supports path/query/header/cookie and custom keys with ambiguity rejection. Packet data supports body/header/cookie/auto with strict chunks and shared scratch/backing budgets, including explicit GET header/cookie uploads. Server padding/response/CORS options remain next; see XHTTP-SERVER.md |
 | HTTP3, QUIC, mKCP, HTTP disguise, simple-obfs, v2ray-plugin | Baseline carriers, distinct from Hysteria/TUIC protocols |
 | TLS1.2/1.3, uTLS, ECH, REALITY, legacy XTLS, FinalMask | Baseline implemented scope; certificate verification remains enforced |
 | General multiplexing and XUDP/UoT | Partial: VMess/VLESS MUX server framing, concurrent TCP and XUDP destination/Full Cone UDP added with bounded lifetime and independent Xray payload tests. General outbound MUX, cross-parent XUDP migration, smux and additional UOT paths remain pending; see MUX-SERVER.md |
@@ -902,3 +902,58 @@ Header/cookie packet payloads, request-padding validation, response templates,
 periodic upload padding, browser CORS and the remaining complete gap register
 stay open. Final platform/package builds remain delegated to workflow; local
 loopback checks do not establish public-node Internet or live host recovery.
+
+## 0.5.23 extension
+
+XHTTP packet-up servers add body/header/cookie/auto payload placement and a
+custom payload key, independent of session/sequence placement. Explicit GET
+packet uploads work with header/cookie placement; GET without a sequence
+remains the download. Stream-one/stream-up reject packet-only placements.
+Server auto concatenates decoded header, decoded cookie and raw body. Default
+body framing and the existing authentication/protected-routing paths remain.
+See XHTTP-SERVER.md for the six supported server-extra fields and key defaults.
+
+Encoded header/cookie chunks have canonical contiguous zero-based indices,
+strict unpadded Base64URL and canonical trailing bits, at most 128 chunks per
+carrier and 8 KiB combined encoded data, within the existing HTTP header limit.
+Duplicate/gapped/empty/invalid chunks, metadata namespace collisions, forbidden
+carrier combinations and actual nonempty bodies on non-body uploads fail
+explicitly. The combined decoded packet stays within 1 MiB. Decoded backing
+plus encoded scratch are reserved against the listener budget before allocation;
+scratch is refunded after decode and retained backing remains charged through
+session consumption. Failed reads, duplicates, overload and close refund their
+owned reservations. No new workers, maintenance timers or idle pools are added.
+
+The new small-chunk native matrix exposed an existing client header-budget
+undercount: HTTP2/HTTP3 field-list per-field costs and generated fields were not
+included. The client now accounts for them, including split Cookie fields, and
+halves an oversized packet before network I/O until it fits. Sent data is never
+replayed and header limits are unchanged. An initial unpublished fit-loop
+implementation also hit a nil-error classifier panic; guarding the classifier
+before retry corrected it before the final native/race/reference runs. A raw
+Cookie control-character negative initially revealed standard parser trimming;
+raw CR/LF/NUL rejection now precedes cookie parsing rather than weakening it.
+
+Native checks passed 48 combinations of h1/h2/h3, header/cookie, POST/GET and
+four protocols, with repeated large TCP and supported UDP-over-stream. Separate
+tests cover numeric chunk ordering, header/cookie/body merge order, combined
+body size, malformed configuration/chunks, actual unknown-body reads and
+refunds, 32 concurrent duplicate uploads and encoded-scratch quota admission.
+The final native group passed (13.665s), its race group passed (26.526s), and
+the full core/mobile/CLI race suite passed (144.793s). Vet and Python syntax
+passed. Official Xray 26.7.28 header-POST/cookie-GET payloads over four protocols
+and HTTP1/HTTP2/HTTP3 plus all 22 prior XHTTP client tests passed together:
+23 cases, 49.907s. Negative certificate/status/encoding and real final-packet
+cancellation/empty-body controls remain enabled.
+
+Complete independent wire regression passed: 203 tests run, 201 passed and
+the same two optional external-Trojan cases skipped (380.708s). The HTTP3
+independent peer race guard passed (1.688s). Guarded mobile staging verified all
+29 patch hashes in seven modules, compiled current core/mobile in module mode
+and passed payload configuration/duplicate/quota regressions (3.660s). This is
+not an AAR or Apple framework build. The source-built CLI reports 0.5.23-go.
+Request-padding validation, response/header templates, periodic
+stream-up response padding, browser CORS and the complete remaining gap
+register stay open. Final platform/package builds remain delegated to workflow,
+without routine waiting or polling. No post-push workflow, varied public-node
+Internet or live host route/DNS recovery result is inferred from local checks.
