@@ -5,64 +5,9 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 )
-
-func xServerRequest(r *http.Request, t *ServerTransportConfig) (kind, id string, seq uint64, ok bool) {
-	if !serverHostMatches(r.Host, t.Host) || len(r.Header.Values("Content-Encoding")) > 1 || r.Header.Get("Content-Encoding") != "" && r.Header.Get("Content-Encoding") != "identity" {
-		return
-	}
-	for _, key := range []string{"X-Session", "X-Seq"} {
-		if len(r.Header.Values(key)) != 0 {
-			return
-		}
-	}
-	for _, key := range []string{"x_session", "x_seq"} {
-		if r.URL.Query().Has(key) {
-			return
-		}
-		if _, err := r.Cookie(key); err == nil {
-			return
-		}
-	}
-	if r.URL.Path == t.Path {
-		return "single", "", 0, r.Method == t.Method && t.Mode != "packet-up"
-	}
-	if t.Mode == "stream-one" || !strings.HasPrefix(r.URL.Path, t.Path) {
-		return
-	}
-	parts := strings.Split(strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, t.Path), "/"), "/")
-	if len(parts) < 1 || len(parts) > 2 || len(parts[0]) == 0 || len(parts[0]) > 128 {
-		return
-	}
-	id = parts[0]
-	for _, c := range id {
-		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.ContainsRune("-._~", c)) {
-			return "", "", 0, false
-		}
-	}
-	if r.Method == "GET" {
-		return "down", id, 0, len(parts) == 1 && (r.ContentLength == 0 || r.ProtoMajor == 3 && r.ContentLength < 0) && len(r.TransferEncoding) == 0
-	}
-	if r.Method != t.Method {
-		return "", "", 0, false
-	}
-	if len(parts) == 1 {
-		return "upload", id, 0, t.Mode == "auto" || t.Mode == "stream-up"
-	}
-	if t.Mode != "auto" && t.Mode != "packet-up" || len(parts[1]) == 0 || len(parts[1]) > 20 {
-		return "", "", 0, false
-	}
-	for _, c := range parts[1] {
-		if c < '0' || c > '9' {
-			return "", "", 0, false
-		}
-	}
-	seq, err := strconv.ParseUint(parts[1], 10, 64)
-	return "packet", id, seq, err == nil && seq != ^uint64(0)
-}
 
 func xServerHeaders(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/event-stream")

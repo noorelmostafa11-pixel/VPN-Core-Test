@@ -14,15 +14,16 @@ import (
 )
 
 type ServerTransportConfig struct {
-	Type        string `json:"type"`
-	Path        string `json:"path,omitempty"`
-	Host        string `json:"host,omitempty"`
-	EarlyData   int    `json:"early_data,omitempty"`
-	EarlyHeader string `json:"early_header,omitempty"`
-	Service     string `json:"service,omitempty"`
-	Method      string `json:"method,omitempty"`
-	Mode        string `json:"mode,omitempty"`
-	HTTPVersion string `json:"http_version,omitempty"`
+	Type        string              `json:"type"`
+	Path        string              `json:"path,omitempty"`
+	Host        string              `json:"host,omitempty"`
+	EarlyData   int                 `json:"early_data,omitempty"`
+	EarlyHeader string              `json:"early_header,omitempty"`
+	Service     string              `json:"service,omitempty"`
+	Method      string              `json:"method,omitempty"`
+	Mode        string              `json:"mode,omitempty"`
+	HTTPVersion string              `json:"http_version,omitempty"`
+	Extra       *XHTTPServerOptions `json:"extra,omitempty"`
 }
 
 func compileServerTransport(c ServerConfig) (*ServerTransportConfig, error) {
@@ -35,6 +36,9 @@ func compileServerTransport(c ServerConfig) (*ServerTransportConfig, error) {
 	}
 	t := *c.Transport
 	if t.HTTPVersion != "" && t.Type != "xhttp" {
+		return nil, bad
+	}
+	if t.Extra != nil && t.Type != "xhttp" {
 		return nil, bad
 	}
 	if t.Type == "raw" {
@@ -91,7 +95,17 @@ func compileServerTransport(c ServerConfig) (*ServerTransportConfig, error) {
 		if !contains([]string{"auto", "h1", "h2", "h3"}, t.HTTPVersion) {
 			return nil, bad
 		}
-		t.Path = strings.TrimSuffix(t.Path, "/") + "/"
+		if t.Extra != nil {
+			metadata, err := compileXHTTPMetadata(*t.Extra)
+			if err != nil {
+				return nil, bad
+			}
+			t.Extra = &metadata
+		}
+		metadata := t.xhttpMetadata()
+		if metadata.SessionIDPlacement == "path" || metadata.SeqPlacement == "path" {
+			t.Path = strings.TrimSuffix(t.Path, "/") + "/"
+		}
 		if t.Method == "" {
 			t.Method = "POST"
 		}

@@ -1,6 +1,6 @@
 # Native XHTTP stream-one/stream-up/packet-up server carrier
 
-Version 0.5.21-go supports XHTTP `stream-one`, `stream-up`, `packet-up` and
+Version 0.5.22-go supports XHTTP `stream-one`, `stream-up`, `packet-up` and
 explicit `auto` on VLESS, VMess, Trojan and Shadowsocks TCP listeners.
 Native Go HTTP handles HTTP/1.1, HTTP/2 and cleartext prior-knowledge HTTP/2;
 explicit `http_version: "h3"` selects a TLS 1.3 QUIC/HTTP3 UDP listener.
@@ -32,7 +32,7 @@ state only on first use and release it with their download/setup lifetime.
 
 The project client uses `type=xhttp&mode=packet-up` (or another allowed mode)
 with the same path/host. Omitted server mode preserves the `stream-one` default.
-Advanced metadata/padding options remain separate work; three-mode
+Advanced payload/padding options remain separate work; three-mode
 wire compatibility does not imply all reference listener options.
 
 `http_version` defaults to `auto`, advertising `h2` and `http/1.1` with TLS and
@@ -50,11 +50,39 @@ The `mode` accepts `stream-one` (the preserved default), `stream-up`,
 a sessionless stream-one request, matching the pinned reference's listener.
 Stream-one sends both directions in one request. Split modes use a GET for
 download plus one streaming upload or numbered packet uploads. Standard path
-metadata is supported here; custom header/query/cookie metadata and payload
-placements remain separate work.
+metadata remains the default. Version 0.5.22 also supports independently selected
+path/query/header/cookie locations for session IDs and packet sequences, with
+optional custom key names. Packet payloads still use the request body.
 
-Path is bounded to 2,048 bytes and normalized with a trailing `/`. The exact
-base path is used by stream-one. Split paths append an unreserved session ID
+For example, both endpoints can use these XHTTP options (nested under the
+server's `transport.extra` or the client's XHTTP extra):
+
+```json
+{
+  "sessionIDPlacement": "header",
+  "sessionIDKey": "Meta-Session",
+  "seqPlacement": "query",
+  "seqKey": "meta_seq"
+}
+```
+
+Only these four fields are currently accepted in server `extra`; the strict
+profile decoder rejects unimplemented options. Keys default to `X-Session` and
+`X-Seq` for headers, or `x_session` and `x_seq` for query/cookie. Path locations
+take no key. Header names compare without case; query/cookie keys retain case.
+Names are HTTP tokens of at most 128 bytes; framing/encoding/cookie header keys
+and colliding session/sequence keys in the same location are rejected at setup.
+Compiled options copy their configuration rather than aliasing mutable input.
+
+The base path gains a trailing slash when either field uses path metadata;
+otherwise the configured base path is matched exactly. Path fields are appended
+in session-then-sequence order. Missing session/sequence on the base path still
+selects sessionless stream-one when the listener mode allows it. Empty/repeated
+metadata, malformed queries, stray path segments and conflicting configured or
+default metadata in other locations fail before session allocation/admission.
+
+Path is bounded to 2,048 bytes, with trailing `/` normalization as described above. The exact
+base path is used by stream-one. Split requests carry an unreserved session ID
 of 1–128 ASCII characters and an optional unsigned decimal sequence. Unknown
 segments, duplicate/ambiguous default metadata markers, wrong modes/methods,
 hosts and encodings are rejected before protocol forwarding. Host retains the
@@ -91,7 +119,7 @@ padding. Compression is not enabled. Headers are bounded to 8 KiB, HTTP/2 frames
 to 16 KiB, HPACK tables to 4 KiB, and receive windows to 1 MiB per parent/64 KiB
 per stream. Header/setup deadlines and active owner/idle cancellation remain
 bounded. Advanced request-padding validation, response/header templates,
-metadata placements, periodic stream-up response padding and browser CORS
+payload placements, periodic stream-up response padding and browser CORS
 remain pending.
 
 Normal request-body EOF retains response drain and parent reuse. Closing an

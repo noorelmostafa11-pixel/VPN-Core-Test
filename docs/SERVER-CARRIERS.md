@@ -90,7 +90,9 @@ Version 0.5.20 adds XHTTP stream-up/packet-up and explicit auto mode with bounde
 session queues, admission and owner lifetime. See [XHTTP-SERVER.md](XHTTP-SERVER.md).
 Version 0.5.21 adds explicitly selected XHTTP HTTP3/TLS 1.3 over UDP with bounded
 request admission, header deadlines and joined parent/control ownership.
-XHTTP metadata/padding options, generic QUIC/mKCP server carriers, PROXY/trusted forwarding,
+Version 0.5.22 adds independently configured XHTTP session/sequence locations
+and keys in path/query/header/cookie, retaining strict ambiguity rejection.
+XHTTP payload/padding/CORS options, generic QUIC/mKCP server carriers, PROXY/trusted forwarding,
 compression and wider HTTP listener options remain pending. Mobile/C ABI server
 startup remains pending. Final full builds belong to the workflow; local
 payload/race checks do not establish varied public-node Internet or host OS

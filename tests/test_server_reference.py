@@ -137,8 +137,11 @@ class ServerReferenceTests(unittest.TestCase):
                     stream['httpSettings']['method'] = transport['method']
             elif transport['type'] == 'xhttp':
                 stream['xhttpSettings'] = {'path': transport.get('path', '/'), 'host': transport.get('host', 'localhost'), 'mode': transport.get('mode', 'stream-one')}
+                extra = dict(transport.get('extra', {}))
                 if transport.get('method'):
-                    stream['xhttpSettings']['extra'] = {'uplinkHTTPMethod': transport['method']}
+                    extra['uplinkHTTPMethod'] = transport['method']
+                if extra:
+                    stream['xhttpSettings']['extra'] = extra
                 if 'tlsSettings' in stream:
                     stream['tlsSettings']['alpn'] = transport.get('alpn', ['h2', 'http/1.1'])
             else:

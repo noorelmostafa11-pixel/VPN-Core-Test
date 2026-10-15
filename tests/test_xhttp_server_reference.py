@@ -31,7 +31,7 @@ class XHTTPServerReferenceTests(unittest.TestCase):
             with self.subTest(mode=mode):
                 self.four_protocol_matrix(mode, http3=True)
 
-    def four_protocol_matrix(self, mode, http3=False):
+    def four_protocol_matrix(self, mode, http3=False, extra=None, cycles=8):
         listener = socket.socket()
         listener.bind(('127.0.0.1', 0)); listener.listen(); listener.settimeout(.2)
         stop, handlers = threading.Event(), []
@@ -54,8 +54,8 @@ class XHTTPServerReferenceTests(unittest.TestCase):
                     with self.subTest(protocol=protocol, tls=secure, alpn=alpn):
                         cipher = 'aes-128-gcm' if protocol == 'vmess' else 'aes-256-gcm'
                         with self.reference_pair(protocol, cipher=cipher, secure=secure,
-                                                 transport={'type': 'xhttp', 'path': '/vpn path', 'host': 'localhost', 'mode': mode, 'alpn': alpn}) as socks:
-                            for cycle in range(8):
+                                                 transport={'type': 'xhttp', 'path': '/vpn path', 'host': 'localhost', 'mode': mode, 'alpn': alpn, **({'extra': extra} if extra else {})}) as socks:
+                            for cycle in range(cycles):
                                 c, _ = self.socks(socks, 1, listener.getsockname())
                                 with c:
                                     c.settimeout(8)
@@ -69,6 +69,17 @@ class XHTTPServerReferenceTests(unittest.TestCase):
             self.assertFalse(worker.is_alive())
             for handler in handlers:
                 handler.join(timeout=10); self.assertFalse(handler.is_alive())
+
+    def test_xray_metadata_placements_and_keys(self):
+        for session, seq in [('query', 'header'), ('header', 'query'), ('cookie', 'cookie'), ('path', 'header'), ('header', 'path')]:
+            extra = {'sessionIDPlacement': session, 'seqPlacement': seq}
+            if session != 'path':
+                extra['sessionIDKey'] = 'Meta-Session'
+            if seq != 'path':
+                extra['seqKey'] = 'Meta-Sequence'
+            for http3 in [False, True]:
+                with self.subTest(session=session, seq=seq, http3=http3):
+                    self.four_protocol_matrix('packet-up', http3=http3, extra=extra, cycles=2)
 
     def test_xray_stream_one_hybrid_vision_inner_tls_xudp(self):
         private = x25519.X25519PrivateKey.generate()

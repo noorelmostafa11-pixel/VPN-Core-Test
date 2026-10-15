@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -20,10 +21,14 @@ import (
 )
 
 func carrierServerFixture(t *testing.T, protocol, transport string, secure bool, early int, modes ...string) (Config, *Engine) {
+	return carrierServerFixtureWithXHTTPExtra(t, protocol, transport, secure, early, nil, modes...)
+}
+
+func carrierServerFixtureWithXHTTPExtra(t *testing.T, protocol, transport string, secure bool, early int, extra *XHTTPServerOptions, modes ...string) (Config, *Engine) {
 	t.Helper()
 	server := testServerEngine(t)
 	spec := ServerConfig{Protocol: protocol, Listen: "127.0.0.1:0", UUIDs: []string{visionServerTestUUID}, Password: "carrier secret", Cipher: "aes-256-gcm",
-		Transport: &ServerTransportConfig{Type: transport, Path: "/native%20path", Host: "localhost", EarlyData: early}}
+		Transport: &ServerTransportConfig{Type: transport, Path: "/native%20path", Host: "localhost", EarlyData: early, Extra: extra}}
 	if len(modes) > 0 {
 		spec.Transport.Mode = modes[0]
 	}
@@ -52,6 +57,12 @@ func carrierServerFixture(t *testing.T, protocol, transport string, secure bool,
 	}
 	if transport == "xhttp" {
 		cfg.Mode = "stream-one"
+		if extra != nil {
+			cfg.Extra, err = json.Marshal(extra)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
 		if len(modes) > 0 {
 			cfg.Mode = modes[0]
 		}
@@ -77,6 +88,8 @@ func carrierServerFixture(t *testing.T, protocol, transport string, secure bool,
 	}
 	if spec.Transport.HTTPVersion == "h3" {
 		cfg.ALPN = []string{"h3"}
+	} else if spec.Transport.HTTPVersion == "h2" && spec.CertFile != "" {
+		cfg.ALPN = []string{"h2"}
 	}
 	if err = cfg.Validate(); err != nil {
 		t.Fatal(err)

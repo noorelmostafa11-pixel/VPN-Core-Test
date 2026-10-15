@@ -35,7 +35,7 @@ states its boundary. "Pending" must not be advertised as supported.
 | SSH, Naive, Tor | SSH TCP client and forwarding server added: password/public keys/host identity, protected sockets, shared channel budget, bounded setup/close and independent Paramiko 5.0.0 payload/auth tests. Server supports one username/listener; reverse forwarding remains pending. Naive and Tor remain pending; see SSH.md |
 | Snell, Tailcat | Pending: establish exact reference version and protocol scope before implementation |
 | Raw TCP, UDP, WS/early data, HTTP Upgrade, gRPC/multi, HTTP2/h2c | Baseline client carriers retained. WS/early-data, HTTP Upgrade, gRPC Tun/TunMulti and HTTP2/h2c server carriers added for VLESS/VMess/Trojan/Shadowsocks TCP; encrypted Vision retains parent carrier layers. All three XHTTP modes are added; further server carriers remain pending; see SERVER-CARRIERS.md, GRPC-SERVER.md and HTTP2-SERVER.md |
-| XHTTP modes, metadata, padding and download settings | Baseline clients retained. All three server modes add native HTTP1/HTTP2/h2c and explicit HTTP3/TLS 1.3, protected streaming and encrypted Vision. Split sessions add bounded reordering, backing-allocation budgets and cancellation/expiry; header admission and joined control ownership also cover HTTP3. Server metadata/padding/CORS options remain next; see XHTTP-SERVER.md |
+| XHTTP modes, metadata, padding and download settings | Baseline clients retained. All three server modes add native HTTP1/HTTP2/h2c and explicit HTTP3/TLS 1.3, protected streaming and encrypted Vision. Split sessions add bounded reordering, backing-allocation budgets and cancellation/expiry; header admission and joined control ownership also cover HTTP3. Session/sequence metadata supports path/query/header/cookie and custom keys with ambiguity rejection. Server payload/padding/CORS options remain next; see XHTTP-SERVER.md |
 | HTTP3, QUIC, mKCP, HTTP disguise, simple-obfs, v2ray-plugin | Baseline carriers, distinct from Hysteria/TUIC protocols |
 | TLS1.2/1.3, uTLS, ECH, REALITY, legacy XTLS, FinalMask | Baseline implemented scope; certificate verification remains enforced |
 | General multiplexing and XUDP/UoT | Partial: VMess/VLESS MUX server framing, concurrent TCP and XUDP destination/Full Cone UDP added with bounded lifetime and independent Xray payload tests. General outbound MUX, cross-parent XUDP migration, smux and additional UOT paths remain pending; see MUX-SERVER.md |
@@ -857,3 +857,48 @@ not an Android AAR or Apple framework build. Shadowsocks HTTP3 requires native
 UDP disabled to avoid sharing its QUIC UDP port. Final full platform/package
 builds remain delegated to workflow, without routine waiting/polling. Public
 Internet, varied-node and live host route/DNS acceptance remain open.
+
+## 0.5.22 extension
+
+XHTTP server `transport.extra` adds independently configured session-ID and
+packet-sequence locations: path, query, header or cookie, with custom key names.
+Defaults preserve existing path framing. The base path is normalized only when
+a path field is selected, so header/query/cookie-only metadata matches the
+client's exact base path. Stream-one, stream-up and explicit auto retain their
+existing selection semantics; packet uploads still require an ordered unsigned
+sequence. See XHTTP-SERVER.md for the four accepted options and their bounds.
+
+Metadata keys are bounded HTTP tokens; framing header collisions and duplicate
+session/sequence keys in one location are rejected at configuration time.
+Compiled options copy input state. Duplicate/empty fields, alternate configured
+or default metadata carriers, malformed query escapes, invalid IDs/sequences
+and stray path segments fail before session creation or protocol forwarding.
+Query and cookie metadata retain case; headers compare without case. Query and
+cookies are parsed once per request. There are no new workers, sessions, pools
+or unbounded payload buffers; existing admission, reordering and memory budgets
+remain shared with HTTP3. Unsupported server extra fields are rejected by the
+strict profile decoder, rather than silently importing client-only options.
+
+Native tests cover all 16 session/sequence placement pairs over h1/h2/h3,
+repeated 100,019-byte TCP and supported UDP-over-stream with four protocols
+distributed across the matrix. Separate stream-mode tests cover stream-one,
+stream-up and auto with every session location. Configuration isolation, strict
+JSON decoding and ambiguity/length/sequence rejection controls passed. The
+targeted metadata/protection/reordering race group passed (36.510s).
+Official Xray 26.7.28 passed mixed query/header, header/query, cookie/cookie,
+path/header and header/path metadata with custom keys across four protocols
+and HTTP1/HTTP2/HTTP3 (48.502s).
+
+Final full core/mobile/CLI race checks passed (121.716s), and vet/Python syntax
+checks passed. Complete independent wire regression passed: 202 tests run,
+200 passed and two existing optional external-Trojan cases skipped (370.257s);
+the independent HTTP3 peer race guard passed (1.623s). Guarded mobile staging
+verified 29 patch hashes in seven modules, compiled core/mobile and passed the
+strict metadata configuration regression in module mode (3.411s). The
+source-built CLI reports 0.5.22-go. No final local package/platform matrix or
+post-push workflow result is inferred.
+
+Header/cookie packet payloads, request-padding validation, response templates,
+periodic upload padding, browser CORS and the remaining complete gap register
+stay open. Final platform/package builds remain delegated to workflow; local
+loopback checks do not establish public-node Internet or live host recovery.
