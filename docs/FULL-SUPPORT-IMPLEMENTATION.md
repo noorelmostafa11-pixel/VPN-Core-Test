@@ -1158,3 +1158,13 @@ metadata matrix passed again (three methods, 56.622s). The dedicated Ubuntu
 workflow also runs the three reservation regressions before that diagnostic.
 The original Trojan mismatch remains unconfirmed and must not be described
 as repaired merely because the separate port-alias bug was reproduced/fixed.
+
+Post-correction Ubuntu diagnostic [38698884223](https://github.com/noorelmostafa11-pixel/VPN-Core-Test/actions/runs/38698884223)
+at bc4c7ae succeeded: three reservation regressions passed (0.208s), followed
+by all three diagnostic methods (37.926s), with zero skips/errors/failures.
+The 128 pressure echo streams contained no synthetic header. All 268 packets
+in 42 trace files had complete metadata identities, with no duplicate sequence
+or repeated synthetic header per observed session. This verifies the fixture
+correction and the observed test paths, not the root cause of the original
+Trojan mismatch, a complete final 209-case wire run or public-network/host
+acceptance. Production core remains unchanged from the 6b16c08 feature batch.
