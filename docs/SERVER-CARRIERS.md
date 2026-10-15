@@ -99,7 +99,10 @@ pre-I/O header fitting retain the existing HTTP limits.
 Version 0.5.24 adds opt-in XHTTP request-padding validation across four carriers,
 repeat-x/tokenish sizing, bounded response padding carriers and noSSEHeader.
 Unconfigured listeners retain their previous request/response defaults.
-XHTTP periodic padding/arbitrary response templates/CORS, generic QUIC/mKCP server carriers, PROXY/trusted forwarding,
+Version 0.5.25 adds bounded owner-joined periodic stream-up response padding,
+safe response-header templates and opt-in allowlisted CORS/preflight handling.
+Disabled features retain previous defaults; CORS does not replace protocol auth.
+Generic QUIC/mKCP server carriers, arbitrary HTTP status/body templates, PROXY/trusted forwarding,
 compression and wider HTTP listener options remain pending. Mobile/C ABI server
 startup remains pending. Final full builds belong to the workflow; local
 payload/race checks do not establish varied public-node Internet or host OS

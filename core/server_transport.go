@@ -103,6 +103,9 @@ func compileServerTransport(c ServerConfig) (*ServerTransportConfig, error) {
 			t.Extra = &metadata
 		}
 		metadata := t.xhttpMetadata()
+		if metadata.ScStreamUpServerSecs != nil && metadata.ScStreamUpServerSecs.To > 0 && t.Mode != "auto" && t.Mode != "stream-up" {
+			return nil, bad
+		}
 		if metadata.UplinkDataPlacement != "body" && t.Mode != "auto" && t.Mode != "packet-up" {
 			return nil, bad
 		}

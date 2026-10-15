@@ -61,7 +61,12 @@ func carrierServerFixtureWithXHTTPExtra(t *testing.T, protocol, transport string
 	if transport == "xhttp" {
 		cfg.Mode = "stream-one"
 		if extra != nil {
-			cfg.Extra, err = json.Marshal(extra)
+			var fields map[string]json.RawMessage
+			encoded, _ := json.Marshal(extra)
+			json.Unmarshal(encoded, &fields)
+			delete(fields, "responseHeaders")
+			delete(fields, "cors")
+			cfg.Extra, err = json.Marshal(fields)
 			if err != nil {
 				t.Fatal(err)
 			}

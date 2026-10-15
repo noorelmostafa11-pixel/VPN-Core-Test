@@ -1,6 +1,6 @@
 # Native XHTTP stream-one/stream-up/packet-up server carrier
 
-Version 0.5.24-go supports XHTTP `stream-one`, `stream-up`, `packet-up` and
+Version 0.5.25-go supports XHTTP `stream-one`, `stream-up`, `packet-up` and
 explicit `auto` on VLESS, VMess, Trojan and Shadowsocks TCP listeners.
 Native Go HTTP handles HTTP/1.1, HTTP/2 and cleartext prior-knowledge HTTP/2;
 explicit `http_version: "h3"` selects a TLS 1.3 QUIC/HTTP3 UDP listener.
@@ -32,7 +32,7 @@ state only on first use and release it with their download/setup lifetime.
 
 The project client uses `type=xhttp&mode=packet-up` (or another allowed mode)
 with the same path/host. Omitted server mode preserves the `stream-one` default.
-Periodic padding, arbitrary response templates and CORS remain separate work; three-mode
+Optional upload padding, header templates and CORS are described below; three-mode
 wire compatibility does not imply all reference listener options.
 
 `http_version` defaults to `auto`, advertising `h2` and `http/1.1` with TLS and
@@ -68,7 +68,8 @@ server's `transport.extra` or the client's XHTTP extra):
 ```
 
 These four fields, `uplinkDataPlacement`/`uplinkDataKey`, the six `xPadding*`
-fields below and `noSSEHeader` are currently accepted in server `extra`; the
+fields below, `noSSEHeader`, `scStreamUpServerSecs`, `responseHeaders` and `cors`
+are currently accepted in server `extra`; the
 strict profile decoder rejects unimplemented options. Metadata keys default to `X-Session` and
 `X-Seq` for headers, or `x_session` and `x_seq` for query/cookie. Path locations
 take no key. Header names compare without case; query/cookie keys retain case.
@@ -181,6 +182,78 @@ The selected placement is authoritative rather than silently falling back to
 another carrier. Generation/validation runs in existing request handlers; no
 padding worker, pool, maintenance timer or listener is added.
 
+Version 0.5.25 adds three independently optional response controls. For example,
+these server-only options can accompany the padding options above:
+
+```json
+{
+  "scStreamUpServerSecs": "20-80",
+  "responseHeaders": {
+    "Server": "gateway",
+    "X-Core": "${version}",
+    "X-Request-Method": "${method}",
+    "X-HTTP-Version": "${httpVersion}"
+  },
+  "cors": {
+    "origins": ["https://frontend.example"],
+    "allowCredentials": true,
+    "allowHeaders": ["X-Custom"],
+    "exposeHeaders": ["X-Core"],
+    "maxAgeSeconds": 60
+  }
+}
+```
+
+`scStreamUpServerSecs` is disabled when omitted or explicitly zero. A positive
+inclusive range is 1–300 seconds and requires stream-up or auto mode. An active
+streaming upload with legacy Referer or validated obfuscated padding gets an
+immediate repeat-X response chunk, followed by bounded periodic chunks. Only
+that upload response carries padding; protocol bytes still use the download.
+The existing handler owns one reusable timer and one buffer of at most 4 KiB
+(default padding range: 100–1,000 bytes). No periodic worker exists for unused
+listeners or other modes. Upload EOF stops the timer without canceling final
+download drain. Writes retain the setup deadline and are bounded by the lesser
+of ConnectTimeout and five seconds after setup; owner cancellation interrupts
+blocked writes. The cancellation callback joins before the HTTP handler returns.
+
+`responseHeaders` is an immutable, canonicalized map of at most 16 fields, with
+names up to 128 bytes and values up to 512 bytes. Literal values and the three
+placeholders `${version}`, `${method}`, `${httpVersion}` are supported. No
+request headers, URI/query, cookies, credentials or arbitrary expressions can
+be interpolated. Expansion is bounded before listener startup; unknown tokens,
+control characters and duplicate case-insensitive names fail configuration.
+Custom fields have a combined 1 KiB field-list budget, including HTTP2/HTTP3's
+32-byte per-field overhead. Framing, compression, cache/no-buffering, padding,
+cookie and CORS-owned fields cannot be replaced. Content-Type is customizable
+only with noSSEHeader enabled. The combined conservative maximum for fixed
+fields, configured padding, custom fields and CORS must still fit 8 KiB; reduce
+padding or custom fields if this check rejects a combination. Arbitrary HTTP
+status/body templates are not implemented and do not alter protocol framing.
+
+`cors` is opt-in. Omission preserves the old OPTIONS rejection and ignores
+browser Origin as before. Enabled policies contain 1–16 explicit serialized
+HTTP/HTTPS origins (up to 256 ASCII bytes each), or a single `"*"` only when
+allowCredentials is false. Opaque `null` origins, URL paths/user-info, malformed
+origins and duplicates are rejected. No Origin still permits non-browser
+clients. Credentials are explicit; browser cookie metadata requires an
+appropriate credential policy. Actual requests with denied origins fail before
+session allocation; allowed origins may also read HTTP validation errors.
+Origin-dependent responses include Vary: Origin.
+
+Preflight OPTIONS checks host/path, origin, GET or the configured upload method,
+and the requested header list. It requires an actually empty body, including
+unknown-length HTTP3 FIN within the setup deadline. It skips protocol padding
+and credentials but never allocates a split session, dials an upstream or enters
+protocol forwarding. Actual requests still undergo padding and protocol
+authentication. Requested fields are limited to 64 names/1 KiB; duplicates,
+malformed names, forbidden fields and fields outside policy fail. Content-Type,
+Accept and configured metadata/padding/payload header names are understood;
+allowHeaders adds at most 32 names/512 bytes. exposeHeaders adds at most 16
+names/512 bytes; maxAgeSeconds is 0–600. Preflights vary on Origin and both
+Access-Control request fields. Credentialed responses never use wildcard
+origins or wildcard allowed headers. The policy tests cover wire semantics,
+not a completed browser-dialer application or live browser acceptance.
+
 HTTP/1.1 explicitly enables full duplex before flushing acceptance. The raw
 request body carries protocol bytes, even if the client uses an
 `application/grpc` camouflage header; it is not gRPC protobuf framing.
@@ -191,8 +264,8 @@ to 16 KiB, HPACK tables to 4 KiB, and receive windows to 1 MiB per parent/64 KiB
 per stream. Header/setup deadlines and active owner/idle cancellation remain
 bounded. `noSSEHeader: true` suppresses the explicit SSE Content-Type only;
 identity encoding, no-store and no-buffering invariants remain. Arbitrary
-response/header templates, periodic stream-up response padding and browser CORS
-remain pending; OPTIONS is not a new unauthenticated forwarding path.
+HTTP status/body templates and wider listener options remain pending; OPTIONS
+is not a new unauthenticated forwarding path.
 
 Normal request-body EOF retains response drain and parent reuse. Closing an
 incomplete body interrupts its read deadline; a body that already reached EOF
@@ -251,4 +324,5 @@ separate.
 Primary sources:
 [pinned XHTTP listener](https://github.com/XTLS/Xray-core/blob/v26.7.28/transport/internet/splithttp/hub.go),
 [pinned XHTTP configuration](https://github.com/XTLS/Xray-core/blob/v26.7.28/transport/internet/splithttp/config.go),
-[pinned padding semantics](https://github.com/XTLS/Xray-core/blob/v26.7.28/transport/internet/splithttp/xpadding.go).
+[pinned padding semantics](https://github.com/XTLS/Xray-core/blob/v26.7.28/transport/internet/splithttp/xpadding.go),
+[Fetch CORS protocol](https://fetch.spec.whatwg.org/#http-cors-protocol).

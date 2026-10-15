@@ -66,7 +66,7 @@ class ServerReferenceTests(unittest.TestCase):
 
     @contextlib.contextmanager
     def reference_pair(self, protocol, cipher='aes-256-gcm', wrong_password=False, secure=False,
-                       alter_id=0, authenticated_length=False, mux=False, legacy=None, flow='', server_flow=None, reality=None, fingerprint='chrome', decryption=None, encryption=None, transport=None, grpc_multi=False):
+                       alter_id=0, authenticated_length=False, mux=False, legacy=None, flow='', server_flow=None, reality=None, fingerprint='chrome', decryption=None, encryption=None, transport=None, grpc_multi=False, inspect_http=False):
         server_port, socks_port = free_port(), free_port()
         http3 = transport and transport.get('type') == 'xhttp' and transport.get('alpn') == ['h3']
         if http3:
@@ -121,7 +121,7 @@ class ServerReferenceTests(unittest.TestCase):
         if transport:
             spec['transport'] = {key: value for key, value in transport.items() if key != 'alpn'}
             if transport['type'] == 'xhttp' and 'extra' in spec['transport']:
-                client_only = {'scMaxEachPostBytes', 'scMinPostsIntervalMs', 'uplinkChunkSize'}
+                client_only = {'scMaxEachPostBytes', 'scMinPostsIntervalMs', 'uplinkChunkSize', 'headers'}
                 spec['transport']['extra'] = {key: value for key, value in spec['transport']['extra'].items() if key not in client_only}
             if transport['type'] == 'xhttp' and transport.get('alpn') in [['h2'], ['http/1.1'], ['h3']]:
                 spec['transport']['http_version'] = 'h3' if transport['alpn'] == ['h3'] else 'h2' if transport['alpn'] == ['h2'] else 'h1'
@@ -141,6 +141,8 @@ class ServerReferenceTests(unittest.TestCase):
             elif transport['type'] == 'xhttp':
                 stream['xhttpSettings'] = {'path': transport.get('path', '/'), 'host': transport.get('host', 'localhost'), 'mode': transport.get('mode', 'stream-one')}
                 extra = dict(transport.get('extra', {}))
+                for server_only in ['responseHeaders', 'cors']:
+                    extra.pop(server_only, None)
                 if transport.get('method'):
                     extra['uplinkHTTPMethod'] = transport['method']
                 if extra:
@@ -176,7 +178,7 @@ class ServerReferenceTests(unittest.TestCase):
                     other = subprocess.Popen(args, stdout=reference_log, stderr=reference_log)
                     processes.append(other)
                     self.wait_port(other, socks_port)
-                    yield socks_port
+                    yield (socks_port, server_port) if inspect_http else socks_port
                 except BaseException as error:
                     project_log.flush()
                     reference_log.flush()

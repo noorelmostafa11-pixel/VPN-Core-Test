@@ -30,7 +30,13 @@ func (e *Engine) serveXHTTP(w http.ResponseWriter, r *http.Request, spec serverS
 		return
 	}
 	cookies := r.Cookies()
+	x := spec.transport.xhttpMetadata()
+	preflight := r.Method == "OPTIONS" && x.CORS != nil
 	kind, id, seq, valid := xServerClassifyRequest(r, spec.transport, query, cookies)
+	if preflight {
+		kind, id, seq = "preflight", "", 0
+		valid = serverHostMatches(r.Host, spec.transport.Host) && xServerPreflightPath(r, spec.transport) && len(r.Header.Values("Content-Encoding")) <= 1 && (r.Header.Get("Content-Encoding") == "" || r.Header.Get("Content-Encoding") == "identity")
+	}
 	if !valid {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -66,8 +72,25 @@ func (e *Engine) serveXHTTP(w http.ResponseWriter, r *http.Request, spec serverS
 	if c.SetDeadline(time.Now().Add(e.config.ConnectTimeout)) != nil {
 		return
 	}
-	x := spec.transport.xhttpMetadata()
 	xServerHeaders(w, x)
+	xServerCustomHeaders(w, r, x)
+	if status := xServerCORS(w, r, spec.transport, preflight); status != 0 {
+		xServerStatus(c, status)
+		return
+	}
+	if preflight {
+		var first [1]byte
+		if r.ContentLength > 0 || len(r.TransferEncoding) != 0 {
+			xServerStatus(c, http.StatusBadRequest)
+			return
+		}
+		if n, err := c.Read(first[:]); n != 0 || err != io.EOF {
+			xServerStatus(c, http.StatusBadRequest)
+			return
+		}
+		xServerStatus(c, http.StatusOK)
+		return
+	}
 	if !xServerValidPadding(r, query, cookies, x) {
 		xServerStatus(c, http.StatusBadRequest)
 		return
@@ -113,12 +136,7 @@ func (e *Engine) serveXHTTP(w http.ResponseWriter, r *http.Request, spec serverS
 			session.Close()
 			return
 		}
-		select {
-		case <-done:
-		case <-r.Context().Done():
-			session.Close()
-		case <-session.ctx.Done():
-		}
+		e.waitXHTTPUpload(c, session, done, x)
 		return
 	}
 	conn := net.Conn(c)

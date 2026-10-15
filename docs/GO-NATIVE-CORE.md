@@ -1,4 +1,4 @@
-# vpn-core 0.5.24-go — Core guide
+# vpn-core 0.5.25-go — Core guide
 
 vpn-core is a publicly available, general-purpose Go networking core for
 desktop and mobile VPN/proxy applications. This guide describes the current

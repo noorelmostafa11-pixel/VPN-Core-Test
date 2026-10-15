@@ -1,6 +1,8 @@
 """Pinned Xray XHTTP stream-one client against synthetic native Go servers."""
 import base64
+import http.client
 import socket
+import ssl
 import threading
 import unittest
 from cryptography.hazmat.primitives.asymmetric import x25519
@@ -103,6 +105,63 @@ class XHTTPServerReferenceTests(unittest.TestCase):
                 for http3 in [False, True]:
                     with self.subTest(placement=placement, method=method, mode=mode, http3=http3):
                         self.four_protocol_matrix(mode, http3=http3, extra=extra, cycles=2)
+
+    def test_xray_combined_response_policy(self):
+        for mode in ['stream-one', 'stream-up', 'packet-up', 'auto']:
+            extra = {'xPaddingObfsMode': True, 'xPaddingPlacement': 'header',
+                     'xPaddingBytes': '64-96', 'noSSEHeader': True,
+                     'responseHeaders': {'Content-Type': 'application/octet-stream',
+                                         'X-Core': '${version}/${method}/${httpVersion}'},
+                     'cors': {'origins': ['http://front.example'], 'maxAgeSeconds': 60},
+                     'headers': {'Origin': 'http://front.example'}}
+            if mode in ['stream-up', 'auto']:
+                extra['scStreamUpServerSecs'] = 1
+            for http3 in [False, True]:
+                with self.subTest(mode=mode, http3=http3):
+                    self.four_protocol_matrix(mode, http3=http3, extra=extra, cycles=2)
+
+    def test_independent_cors_preflight_and_response_headers(self):
+        for secure in [False, True]:
+            extra = {'responseHeaders': {'X-Core': '${version}/${method}/${httpVersion}'},
+                     'cors': {'origins': ['http://front.example'], 'allowCredentials': True,
+                              'allowHeaders': ['X-Custom'], 'exposeHeaders': ['X-Core'], 'maxAgeSeconds': 60}}
+            transport = {'type': 'xhttp', 'path': '/vpn', 'host': 'localhost', 'mode': 'packet-up',
+                         'alpn': ['http/1.1'], 'extra': extra}
+            with self.subTest(tls=secure), self.reference_pair('vless', secure=secure, transport=transport, inspect_http=True) as (_, port):
+                cases = [('http://front.example', 'POST', 'Content-Type, X-Custom', '/vpn/', b'', 200),
+                         ('http://denied.example', 'POST', '', '/vpn/', b'', 403),
+                         ('http://front.example', 'DELETE', '', '/vpn/', b'', 403),
+                         ('http://front.example', 'POST', 'X-Unknown', '/vpn/', b'', 403),
+                         ('http://front.example', 'POST', 'X-Custom,x-custom', '/vpn/', b'', 400),
+                         ('null', 'POST', '', '/vpn/', b'', 400),
+                         ('http://front.example', 'POST', '', '/wrong/', b'', 404),
+                         ('http://front.example', 'POST', '', '/vpn/', b'body', 400)]
+                for origin, method, fields, path, body, expected in cases:
+                    connection = (http.client.HTTPSConnection('localhost', port, timeout=5,
+                                  context=ssl.create_default_context(cafile=str(self.cert))) if secure
+                                  else http.client.HTTPConnection('127.0.0.1', port, timeout=5))
+                    try:
+                        headers = {'Host': 'localhost', 'Origin': origin, 'Access-Control-Request-Method': method}
+                        if fields:
+                            headers['Access-Control-Request-Headers'] = fields
+                        connection.request('OPTIONS', path, body=body, headers=headers)
+                        response = connection.getresponse()
+                        self.assertEqual(response.status, expected)
+                        self.assertEqual(response.read(), b'')
+                        if expected == 200:
+                            self.assertEqual(response.getheader('Access-Control-Allow-Origin'), origin)
+                            self.assertEqual(response.getheader('Access-Control-Allow-Credentials'), 'true')
+                            self.assertIn('X-Custom', response.getheader('Access-Control-Allow-Headers'))
+                            self.assertIn('/OPTIONS/HTTP/1.1', response.getheader('X-Core'))
+                            self.assertEqual(response.getheader('Cache-Control'), 'no-store')
+                        elif body:
+                            # A permitted origin may read an HTTP validation
+                            # error; CORS is not protocol/body authentication.
+                            self.assertEqual(response.getheader('Access-Control-Allow-Origin'), origin)
+                        else:
+                            self.assertIsNone(response.getheader('Access-Control-Allow-Origin'))
+                    finally:
+                        connection.close()
 
     def test_xray_stream_one_hybrid_vision_inner_tls_xudp(self):
         private = x25519.X25519PrivateKey.generate()

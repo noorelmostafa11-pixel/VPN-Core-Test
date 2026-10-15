@@ -11,20 +11,23 @@ import (
 // XHTTPServerOptions exposes only the server options implemented here.
 // Unknown fields are rejected by the routing profile's strict JSON decoder.
 type XHTTPServerOptions struct {
-	SessionIDPlacement  string             `json:"sessionIDPlacement,omitempty"`
-	SessionIDKey        string             `json:"sessionIDKey,omitempty"`
-	SeqPlacement        string             `json:"seqPlacement,omitempty"`
-	SeqKey              string             `json:"seqKey,omitempty"`
-	UplinkDataPlacement string             `json:"uplinkDataPlacement,omitempty"`
-	UplinkDataKey       string             `json:"uplinkDataKey,omitempty"`
-	XPaddingBytes       *XHTTPPaddingRange `json:"xPaddingBytes,omitempty"`
-	XPaddingObfsMode    bool               `json:"xPaddingObfsMode,omitempty"`
-	XPaddingKey         string             `json:"xPaddingKey,omitempty"`
-	XPaddingHeader      string             `json:"xPaddingHeader,omitempty"`
-	XPaddingPlacement   string             `json:"xPaddingPlacement,omitempty"`
-	XPaddingMethod      string             `json:"xPaddingMethod,omitempty"`
-	NoSSEHeader         bool               `json:"noSSEHeader,omitempty"`
-	paddingRequired     bool
+	SessionIDPlacement   string             `json:"sessionIDPlacement,omitempty"`
+	SessionIDKey         string             `json:"sessionIDKey,omitempty"`
+	SeqPlacement         string             `json:"seqPlacement,omitempty"`
+	SeqKey               string             `json:"seqKey,omitempty"`
+	UplinkDataPlacement  string             `json:"uplinkDataPlacement,omitempty"`
+	UplinkDataKey        string             `json:"uplinkDataKey,omitempty"`
+	XPaddingBytes        *XHTTPPaddingRange `json:"xPaddingBytes,omitempty"`
+	XPaddingObfsMode     bool               `json:"xPaddingObfsMode,omitempty"`
+	XPaddingKey          string             `json:"xPaddingKey,omitempty"`
+	XPaddingHeader       string             `json:"xPaddingHeader,omitempty"`
+	XPaddingPlacement    string             `json:"xPaddingPlacement,omitempty"`
+	XPaddingMethod       string             `json:"xPaddingMethod,omitempty"`
+	NoSSEHeader          bool               `json:"noSSEHeader,omitempty"`
+	ScStreamUpServerSecs *XHTTPPaddingRange `json:"scStreamUpServerSecs,omitempty"`
+	ResponseHeaders      map[string]string  `json:"responseHeaders,omitempty"`
+	CORS                 *XHTTPCORSOptions  `json:"cors,omitempty"`
+	paddingRequired      bool
 }
 
 func compileXHTTPMetadata(x XHTTPServerOptions) (XHTTPServerOptions, error) {
@@ -105,7 +108,11 @@ func compileXHTTPMetadata(x XHTTPServerOptions) (XHTTPServerOptions, error) {
 			}
 		}
 	}
-	return compileXHTTPPadding(x)
+	x, err := compileXHTTPPadding(x)
+	if err != nil {
+		return x, err
+	}
+	return compileXHTTPResponse(x)
 }
 
 func (t *ServerTransportConfig) xhttpMetadata() XHTTPServerOptions {

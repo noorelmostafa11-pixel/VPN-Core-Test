@@ -35,7 +35,7 @@ states its boundary. "Pending" must not be advertised as supported.
 | SSH, Naive, Tor | SSH TCP client and forwarding server added: password/public keys/host identity, protected sockets, shared channel budget, bounded setup/close and independent Paramiko 5.0.0 payload/auth tests. Server supports one username/listener; reverse forwarding remains pending. Naive and Tor remain pending; see SSH.md |
 | Snell, Tailcat | Pending: establish exact reference version and protocol scope before implementation |
 | Raw TCP, UDP, WS/early data, HTTP Upgrade, gRPC/multi, HTTP2/h2c | Baseline client carriers retained. WS/early-data, HTTP Upgrade, gRPC Tun/TunMulti and HTTP2/h2c server carriers added for VLESS/VMess/Trojan/Shadowsocks TCP; encrypted Vision retains parent carrier layers. All three XHTTP modes are added; further server carriers remain pending; see SERVER-CARRIERS.md, GRPC-SERVER.md and HTTP2-SERVER.md |
-| XHTTP modes, metadata, padding and download settings | Baseline clients retained. All three server modes add native HTTP1/HTTP2/h2c and explicit HTTP3/TLS 1.3, protected streaming and encrypted Vision. Split sessions add bounded reordering, backing-allocation budgets and cancellation/expiry; header admission and joined control ownership also cover HTTP3. Session/sequence metadata supports path/query/header/cookie and custom keys with ambiguity rejection. Packet data supports body/header/cookie/auto with strict chunks and shared scratch/backing budgets, including explicit GET header/cookie uploads. Opt-in request padding validates four carriers and repeat-x/tokenish sizes; bounded response padding and noSSEHeader are added. Periodic padding, arbitrary response templates and CORS remain next; see XHTTP-SERVER.md |
+| XHTTP modes, metadata, padding and download settings | Baseline clients retained. All three server modes add native HTTP1/HTTP2/h2c and explicit HTTP3/TLS 1.3, protected streaming and encrypted Vision. Split sessions add bounded reordering, backing-allocation budgets and cancellation/expiry; header admission and joined control ownership also cover HTTP3. Session/sequence metadata supports path/query/header/cookie and custom keys with ambiguity rejection. Packet data supports body/header/cookie/auto with strict chunks and shared scratch/backing budgets, including explicit GET header/cookie uploads. Opt-in request padding validates four carriers and repeat-x/tokenish sizes; bounded response padding/noSSEHeader, owned periodic upload padding, safe response-header templates and allowlisted CORS/preflights are added. Arbitrary status/body templates and live browser-dialer acceptance remain open; see XHTTP-SERVER.md |
 | HTTP3, QUIC, mKCP, HTTP disguise, simple-obfs, v2ray-plugin | Baseline carriers, distinct from Hysteria/TUIC protocols |
 | TLS1.2/1.3, uTLS, ECH, REALITY, legacy XTLS, FinalMask | Baseline implemented scope; certificate verification remains enforced |
 | General multiplexing and XUDP/UoT | Partial: VMess/VLESS MUX server framing, concurrent TCP and XUDP destination/Full Cone UDP added with bounded lifetime and independent Xray payload tests. General outbound MUX, cross-parent XUDP migration, smux and additional UOT paths remain pending; see MUX-SERVER.md |
@@ -1018,3 +1018,77 @@ browser CORS and the remaining complete gap register stay open. These local
 results do not establish public-node Internet, live host route/DNS recovery or
 final platform/mobile package acceptance. Full final builds remain delegated
 to workflow without routine waiting or polling.
+
+
+## 0.5.25 extension
+
+This larger XHTTP batch adds three opt-in server capabilities together:
+periodic stream-up upload-response padding, bounded response-header templates,
+and allowlisted CORS with finite OPTIONS preflights. Unconfigured listeners
+retain their previous behavior and protocol authentication is unchanged.
+
+scStreamUpServerSecs accepts zero/omission to disable or an inclusive 1–300
+second interval range for stream-up/auto listeners. A nonempty Referer marker
+or validated obfuscated padding activates immediate and periodic upload-only
+padding. The existing handler owns one reusable timer and a buffer of at most
+4 KiB; no idle-listener worker or additional periodic goroutine is introduced.
+Writes retain setup deadlines, then remain bounded to at most five seconds.
+EOF stops padding while preserving final download drain. Owner cancellation
+interrupts blocked writes and joins its callback before the HTTP writer exits.
+
+responseHeaders copies/canonicalizes at most 16 fields with bounded names and
+values. It supports literals and only version/method/httpVersion placeholders;
+request paths, cookies, credentials and arbitrary expressions are excluded.
+A 1 KiB custom-field budget and the existing combined 8 KiB header budget
+include field overhead, maximum template expansion, padding and CORS reserves.
+Framing, encoding, caching, no-buffering, padding and CORS fields remain owned
+by the protocol. Custom Content-Type requires noSSEHeader.
+
+CORS is explicitly configured with at most 16 serialized HTTP(S) origins,
+or a single noncredentialed wildcard. Credentials are explicit and rejected
+with wildcard origins. Missing Origin permits non-browser clients; malformed,
+duplicate or denied origins fail before split-session allocation. Preflights
+check host/path, requested method/headers and actual empty-body FIN, including
+unknown-length HTTP3. They do not authenticate, allocate protocol sessions,
+dial or forward. Actual requests still require padding and protocol auth.
+Origin-dependent results include Vary, and preflights vary on both Access-
+Control request fields. Header lists, exposed fields and max age are bounded.
+
+Native coverage includes 48 combinations of h1/h2/h3, four modes and four
+protocols, repeated large TCP and supported UDP-over-stream; real periodic
+upload padding beyond a 350 ms setup deadline; finite upload EOF/download
+drain; and joined owner close with a deliberately blocked response write.
+Additional controls cover configuration budgets, template/header injection,
+immutable maps/slices/ranges, denied origins, duplicate/wildcard/credential
+policy, preflight bodies/paths/methods/headers and 32 repeated failures without
+any retained session/buffer/admission. The initial native group passed (6.600s);
+two targeted race repetitions passed (14.278s). The final full core/mobile/CLI
+race passed (162.578s), with vet and Python syntax checks also passing.
+
+Official Xray 26.7.28 passed combined policy over four modes/four protocols,
+cleartext/verified HTTP1/HTTP2 and HTTP3. An independent Python HTTP oracle
+covers HTTP1 and verified TLS preflight/response headers. Its first run had
+two overstrict test expectations: an allowed origin may read a body-validation
+400 response. The expectations were corrected without relaxing denied-origin
+or forbidden-header controls; the corrected method passed (17.668s). The
+earlier combined two-method run remains recorded as failed (54.668s), not
+misreported as a complete pass.
+
+Complete independent wire regression passed: 206 tests run, 204 passed and
+the same two optional external-Trojan cases skipped (511.428s), including both
+new independent methods and all prior XHTTP/client/server/protocol controls.
+The independent HTTP3 peer race guard passed (1.638s). The rebuilt CLI reports
+0.5.25-go; no final platform/package build is inferred from this executable.
+
+Guarded mobile staging verified all 29 patch hashes across seven modules;
+current core/mobile compiled in module mode and passed policy-budget/isolation,
+pre-session rejection, wildcard/credential, periodic upload lifetime and blocked
+write owner-join controls (6.588s). This is host module staging, not an Android
+AAR or Apple framework build.
+
+Arbitrary HTTP status/body templates, wider listener options, live browser
+application acceptance and the complete remaining gap register remain open.
+Local checks do not establish post-push workflow success, varied public-node
+Internet or live host route/DNS recovery. Full final builds remain delegated
+to workflow without routine waiting or polling. The owner-supplied failed job
+will be investigated separately after this batch is published.
