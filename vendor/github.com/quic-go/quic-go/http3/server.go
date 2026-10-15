@@ -176,6 +176,15 @@ type Server struct {
 	// used.
 	MaxHeaderBytes int
 
+	// ReadHeaderTimeout bounds request headers before invoking Handler.
+	// Zero preserves the original behavior. The deadline is cleared at Handler.
+	ReadHeaderTimeout time.Duration
+
+	// RequestStreamAdmission optionally reserves an application request budget
+	// before creating its request goroutine. Successful reservations are released
+	// after header parsing and Handler have both finished, including failures.
+	RequestStreamAdmission func() (release func(), accepted bool)
+
 	// AdditionalSettings specifies additional HTTP/3 settings.
 	// It is invalid to specify any settings defined by RFC 9114 (HTTP/3) and RFC 9297 (HTTP Datagrams).
 	AdditionalSettings map[uint64]uint64
@@ -477,6 +486,17 @@ func (s *Server) newRawServerConn(conn *quic.Conn) (*RawServerConn, *quic.SendSt
 			panic("http3: ConnContext returned nil")
 		}
 	}
+	handler := s.Handler
+	if s.ReadHeaderTimeout > 0 {
+		if handler == nil {
+			handler = http.DefaultServeMux
+		}
+		next := handler
+		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_ = http.NewResponseController(w).SetReadDeadline(time.Time{})
+			next.ServeHTTP(w, r)
+		})
+	}
 	hconn := newRawServerConn(
 		conn,
 		s.EnableDatagrams,
@@ -484,7 +504,7 @@ func (s *Server) newRawServerConn(conn *quic.Conn) (*RawServerConn, *quic.SendSt
 		qlogger,
 		s.Logger,
 		connCtx,
-		s.Handler,
+		handler,
 		s.maxHeaderBytes(),
 	)
 
@@ -521,7 +541,7 @@ func (s *Server) handleConn(conn *quic.Conn) error {
 			if err != nil {
 				return
 			}
-			go hconn.HandleUnidirectionalStream(str)
+			wg.Go(func() { hconn.HandleUnidirectionalStream(str) })
 		}
 	})
 
@@ -585,7 +605,23 @@ func (s *Server) handleConn(conn *quic.Conn) error {
 		}
 
 		nextStreamID = str.StreamID() + 4
+		var release func()
+		if s.RequestStreamAdmission != nil {
+			var accepted bool
+			release, accepted = s.RequestStreamAdmission()
+			if !accepted {
+				str.CancelRead(quic.StreamErrorCode(ErrCodeExcessiveLoad))
+				str.CancelWrite(quic.StreamErrorCode(ErrCodeExcessiveLoad))
+				continue
+			}
+		}
 		wg.Go(func() {
+			if release != nil {
+				defer release()
+			}
+			if s.ReadHeaderTimeout > 0 {
+				_ = str.SetReadDeadline(time.Now().Add(s.ReadHeaderTimeout))
+			}
 			// HandleRequestStream will return once the request has been handled,
 			// or the underlying connection is closed.
 			hconn.HandleRequestStream(str)

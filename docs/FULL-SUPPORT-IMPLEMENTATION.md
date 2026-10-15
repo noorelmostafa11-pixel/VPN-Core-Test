@@ -35,7 +35,7 @@ states its boundary. "Pending" must not be advertised as supported.
 | SSH, Naive, Tor | SSH TCP client and forwarding server added: password/public keys/host identity, protected sockets, shared channel budget, bounded setup/close and independent Paramiko 5.0.0 payload/auth tests. Server supports one username/listener; reverse forwarding remains pending. Naive and Tor remain pending; see SSH.md |
 | Snell, Tailcat | Pending: establish exact reference version and protocol scope before implementation |
 | Raw TCP, UDP, WS/early data, HTTP Upgrade, gRPC/multi, HTTP2/h2c | Baseline client carriers retained. WS/early-data, HTTP Upgrade, gRPC Tun/TunMulti and HTTP2/h2c server carriers added for VLESS/VMess/Trojan/Shadowsocks TCP; encrypted Vision retains parent carrier layers. All three XHTTP modes are added; further server carriers remain pending; see SERVER-CARRIERS.md, GRPC-SERVER.md and HTTP2-SERVER.md |
-| XHTTP modes, metadata, padding and download settings | Baseline clients retained. All three server modes add native HTTP1/HTTP2/h2c, explicit protocol selection, protected streaming and encrypted Vision. Split sessions add bounded reordering, backing-allocation budgets and cancellation/expiry. Server metadata/padding options and HTTP3 remain next; see XHTTP-SERVER.md |
+| XHTTP modes, metadata, padding and download settings | Baseline clients retained. All three server modes add native HTTP1/HTTP2/h2c and explicit HTTP3/TLS 1.3, protected streaming and encrypted Vision. Split sessions add bounded reordering, backing-allocation budgets and cancellation/expiry; header admission and joined control ownership also cover HTTP3. Server metadata/padding/CORS options remain next; see XHTTP-SERVER.md |
 | HTTP3, QUIC, mKCP, HTTP disguise, simple-obfs, v2ray-plugin | Baseline carriers, distinct from Hysteria/TUIC protocols |
 | TLS1.2/1.3, uTLS, ECH, REALITY, legacy XTLS, FinalMask | Baseline implemented scope; certificate verification remains enforced |
 | General multiplexing and XUDP/UoT | Partial: VMess/VLESS MUX server framing, concurrent TCP and XUDP destination/Full Cone UDP added with bounded lifetime and independent Xray payload tests. General outbound MUX, cross-parent XUDP migration, smux and additional UOT paths remain pending; see MUX-SERVER.md |
@@ -809,3 +809,51 @@ new forced final-packet cancellation and real empty-body rejection. A further
 Chrome/VMess/HTTP3 packet-up combination, 32 controlled aborts and the malformed
 empty-body control. These local results do not claim post-fix Linux CI success;
 the owner reviews that workflow, without routine waiting or polling.
+
+## 0.5.21 extension
+
+XHTTP adds an explicit HTTP3/TLS 1.3 UDP server for VLESS/VMess/Trojan/Shadowsocks
+TCP in all three modes and auto; the omitted/default listener remains TCP
+HTTP1/HTTP2. It reuses protected native protocol forwarding, shared admission
+and bounded split sessions. QUIC windows stay at 64 KiB per stream and 1 MiB
+per parent, with at most min(MaxConnections, 128) incoming bidirectional streams
+and eight unidirectional streams. Header parsing reserves request admission
+before starting its worker, rejects overload and bounds incomplete HEADERS by
+ConnectTimeout. Unidirectional/control handlers join the owning parent on close.
+The vendored quic-go change and exact replacement have a recorded patch hash;
+mobile staging covers all 29 patches. Generic legacy QUIC/mKCP server carriers
+and advanced XHTTP metadata/padding/CORS are still pending; see XHTTP-SERVER.md.
+
+The previously parked prototype was restored after its three archived hashes
+and replay check matched. HTTP3 represents GET without Content-Length as an
+unknown-length body; the handler verifies actual empty-body FIN within the
+setup deadline before creating a split session. Ended download GETs clear their
+physical read deadlines while protocol setup reads remain bounded through the
+upload/session. A new timed stream-up regression initially passed h1/h3 but
+failed h2 after ConnectTimeout. HTTP2's upload write timer was still active
+after protocol setup. Clearing both upload deadlines at that established
+transition corrects the reset; setup, idle, body and admission limits remain.
+All three timed payload cases then passed three ordinary repetitions and the
+subsequent race groups/full suite. The first h1 fixture lacked explicit
+security=none; that configuration error was corrected before its payload run.
+
+Native HTTP3 race checks cover all modes/four protocols, repeated large TCP,
+supported UDP-over-stream, pre-header admission, incomplete-header expiry,
+reusable parents and incomplete control-stream owner shutdown. Official Xray
+26.7.28 passed the HTTP3 four-protocol/all-mode matrix and native hybrid
+Vision/verified-inner-TLS/XUDP across the three modes. The complete six-case
+XHTTP server reference suite passed (79.779s), and all 22 existing XHTTP client
+cases passed. Two XHTTP native race repetitions passed (54.637s); the full
+core/mobile race suite passed (92.432s), and vet passed for core/mobile/CLI and
+the independent HTTP3 test peer. The source-built CLI reports 0.5.21-go;
+core.Version now agrees with VERSION and the current public guides, correcting
+the previous stale 0.5.19-go runtime string.
+
+Full independent wire regression passed: 201 tests run, 199 passed and the two
+existing optional external-Trojan cases skipped, in 309.967s. Its peer race
+guard passed as well (1.717s). Guarded mobile module staging verified all 29
+patches in seven staged modules and compiled core/mobile in module mode; it is
+not an Android AAR or Apple framework build. Shadowsocks HTTP3 requires native
+UDP disabled to avoid sharing its QUIC UDP port. Final full platform/package
+builds remain delegated to workflow, without routine waiting/polling. Public
+Internet, varied-node and live host route/DNS acceptance remain open.

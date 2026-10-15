@@ -1,4 +1,4 @@
-# vpn-core 0.5.20-go
+# vpn-core 0.5.21-go
 
 A public, general-purpose Go networking core for VPN and proxy applications,
 available to desktop and mobile users and developers. It provides a standalone

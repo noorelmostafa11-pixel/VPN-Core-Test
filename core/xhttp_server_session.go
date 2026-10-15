@@ -171,6 +171,12 @@ func (s *xServerSession) SetReadDeadline(t time.Time) error {
 	if s.upload != nil && s.uploadErr == nil {
 		// Serialize with upload completion: its controller belongs only to
 		// the still-running HTTP handler.
+		if t.IsZero() {
+			// HTTP/2 applies the setup write deadline to the upload stream too.
+			// Clear both directions once protocol setup has completed so that
+			// its response handler can remain attached for the session lifetime.
+			return s.upload.SetDeadline(t)
+		}
 		return s.upload.SetReadDeadline(t)
 	}
 	return nil
@@ -297,7 +303,12 @@ type xServerSplitConn struct {
 
 func (c *xServerSplitConn) Read(b []byte) (int, error) { return c.session.Read(b) }
 func (c *xServerSplitConn) SetReadDeadline(t time.Time) error {
-	return c.session.SetReadDeadline(t)
+	if err := c.session.SetReadDeadline(t); err != nil {
+		return err
+	}
+	// The download GET has already ended its body; its physical read deadline
+	// must not expire a still-active response. Setup reads belong to the upload.
+	return c.serverHTTP2Conn.SetReadDeadline(time.Time{})
 }
 func (c *xServerSplitConn) SetDeadline(t time.Time) error {
 	if err := c.SetReadDeadline(t); err != nil {

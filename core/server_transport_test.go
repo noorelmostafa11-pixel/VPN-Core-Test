@@ -27,6 +27,9 @@ func carrierServerFixture(t *testing.T, protocol, transport string, secure bool,
 	if len(modes) > 0 {
 		spec.Transport.Mode = modes[0]
 	}
+	if len(modes) > 1 {
+		spec.Transport.HTTPVersion = modes[1]
+	}
 	if protocol == "ss" {
 		spec.Options = map[string]string{"udp": "false"}
 	} else {
@@ -71,6 +74,9 @@ func carrierServerFixture(t *testing.T, protocol, transport string, secure bool,
 		cfg.CAFile = spec.CertFile
 		cfg.ServerName = cfg.Server
 		cfg.Fingerprint = "native"
+	}
+	if spec.Transport.HTTPVersion == "h3" {
+		cfg.ALPN = []string{"h3"}
 	}
 	if err = cfg.Validate(); err != nil {
 		t.Fatal(err)

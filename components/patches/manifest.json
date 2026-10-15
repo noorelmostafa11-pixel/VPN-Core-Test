@@ -166,5 +166,11 @@
     "original_sha256": "6f9ce8f40e30e0ba5bc494d2e2053314b686c6d2e59000f7009fa6b5591b70a1",
     "patched_sha256": "0282fe45826627a18ade6e8bbd7b6bfa28ae2ea0a8490366f76265cc5eca9473",
     "replacement": "gvisor_tcp_protocol.go.replacement"
+  },
+  {
+    "path": "vendor/github.com/quic-go/quic-go/http3/server.go",
+    "original_sha256": "766aadc0a0ce5e598ef684a1f345e0e0c83dee54175ec7f8674077761b9a8066",
+    "replacement": "quic_http3_server.go.replacement",
+    "patched_sha256": "4e748de3d4ceb90abe511f6a0b9bb81a70b631fcef4e19057ff57ac364096545"
   }
 ]

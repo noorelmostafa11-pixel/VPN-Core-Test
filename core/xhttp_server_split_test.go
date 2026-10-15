@@ -230,6 +230,72 @@ func TestXHTTPStreamUpFiniteBodyHalfClose(t *testing.T) {
 	}
 }
 
+func TestXHTTPSplitDownloadSurvivesSetupTimeout(t *testing.T) {
+	for _, httpVersion := range []string{"h1", "h2", "h3"} {
+		t.Run(httpVersion, func(t *testing.T) {
+			serverConfig, _ := ParseURI("direct://")
+			serverConfig.ConnectTimeout = 250 * time.Millisecond
+			serverConfig.IdleTimeout = 3 * time.Second
+			server, err := NewEngine(context.Background(), serverConfig, Hooks{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer server.Close()
+			spec := ServerConfig{Protocol: "vless", Listen: "127.0.0.1:0", UUIDs: []string{visionServerTestUUID},
+				Transport: &ServerTransportConfig{Type: "xhttp", Mode: "stream-up", HTTPVersion: httpVersion, Path: "/native%20path", Host: "localhost"}}
+			if httpVersion != "h1" {
+				spec.CertFile, spec.KeyFile = testServerCertificate(t)
+			}
+			addr, err := server.StartServer(spec)
+			if err != nil {
+				t.Fatal(err)
+			}
+			clientConfig := defaults()
+			clientConfig.Protocol, clientConfig.Transport, clientConfig.Mode, clientConfig.Security = "vless", "xhttp", "stream-up", "none"
+			clientConfig.Server, clientConfig.Port, _ = splitProtocolTarget(addr.String())
+			clientConfig.UUID, _ = uuidBytes(visionServerTestUUID)
+			clientConfig.Path, clientConfig.Host = "/native path", "localhost"
+			if spec.CertFile != "" {
+				clientConfig.Security = "tls"
+				clientConfig.CAFile = spec.CertFile
+				clientConfig.ServerName = clientConfig.Server
+				clientConfig.Fingerprint = "native"
+				clientConfig.ALPN = []string{httpVersion}
+			}
+			if err := clientConfig.Validate(); err != nil {
+				t.Fatal(err)
+			}
+			client, err := NewEngine(context.Background(), clientConfig, Hooks{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer client.Close()
+			conn, err := client.DialContext(client.ctx, "tcp", echoPeer(t))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close()
+			conn.SetDeadline(time.Now().Add(3 * time.Second))
+			for cycle, payload := range [][]byte{[]byte("before setup timeout"), []byte("after setup timeout")} {
+				if _, err := conn.Write(payload); err != nil {
+					t.Fatal("split upload stopped", cycle, err)
+				}
+				got := make([]byte, len(payload))
+				if _, err := io.ReadFull(conn, got); err != nil || !bytes.Equal(got, payload) {
+					t.Fatal("split download stopped", cycle, err)
+				}
+				time.Sleep(400 * time.Millisecond)
+			}
+			conn.Close()
+			client.Close()
+			server.Close()
+			if client.Stats().Active != 0 || server.Stats().Active != 0 {
+				t.Fatal("split timeout regression retained admission")
+			}
+		})
+	}
+}
+
 func TestXHTTPSplitProtectionCancellationAndMalformed(t *testing.T) {
 	for _, mode := range []string{"stream-up", "packet-up"} {
 		t.Run(mode, func(t *testing.T) {

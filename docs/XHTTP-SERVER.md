@@ -1,9 +1,10 @@
 # Native XHTTP stream-one/stream-up/packet-up server carrier
 
-Version 0.5.20-go supports XHTTP `stream-one`, `stream-up`, `packet-up` and
+Version 0.5.21-go supports XHTTP `stream-one`, `stream-up`, `packet-up` and
 explicit `auto` on VLESS, VMess, Trojan and Shadowsocks TCP listeners.
-Native Go HTTP handles HTTP/1.1, HTTP/2 and cleartext
-prior-knowledge HTTP/2 on the configured listener. Accepted sockets and logical
+Native Go HTTP handles HTTP/1.1, HTTP/2 and cleartext prior-knowledge HTTP/2;
+explicit `http_version: "h3"` selects a TLS 1.3 QUIC/HTTP3 UDP listener.
+Accepted connections and logical
 streams consume the shared engine budget; handlers are registered with the
 owner and execute protocols directly. Optional split sessions allocate their
 state only on first use and release it with their download/setup lifetime.
@@ -31,14 +32,16 @@ state only on first use and release it with their download/setup lifetime.
 
 The project client uses `type=xhttp&mode=packet-up` (or another allowed mode)
 with the same path/host. Omitted server mode preserves the `stream-one` default.
-Advanced metadata/padding options and HTTP3 remain separate work; three-mode
+Advanced metadata/padding options remain separate work; three-mode
 wire compatibility does not imply all reference listener options.
 
 `http_version` defaults to `auto`, advertising `h2` and `http/1.1` with TLS and
 accepting both cleartext HTTP versions. `h1` or `h2` explicitly restricts the
-listener and TLS ALPN. The reference fixtures match HTTP request framing to
+listener and TLS ALPN. `h3` requires a certificate/key and advertises only `h3`;
+`auto` retains the existing TCP HTTP1/HTTP2 listener and does not open UDP.
+The reference fixtures match HTTP request framing to
 the selected listener protocol; negotiating h2 and then sending HTTP/1.1 bytes
-is rejected by the native server. TLS remains optional except on Trojan.
+is rejected by the native server. TLS remains optional except on Trojan and h3.
 REALITY and pure Vision combinations remain rejected; hybrid encrypted Vision
 keeps parent HTTP/TLS framing at its AEAD direct transition.
 
@@ -88,7 +91,7 @@ padding. Compression is not enabled. Headers are bounded to 8 KiB, HTTP/2 frames
 to 16 KiB, HPACK tables to 4 KiB, and receive windows to 1 MiB per parent/64 KiB
 per stream. Header/setup deadlines and active owner/idle cancellation remain
 bounded. Advanced request-padding validation, response/header templates,
-metadata placements, periodic stream-up response padding, browser CORS and HTTP/3
+metadata placements, periodic stream-up response padding and browser CORS
 remain pending.
 
 Normal request-body EOF retains response drain and parent reuse. Closing an
@@ -99,6 +102,25 @@ close joins protocol handlers, closes admitted sockets and preserves zero
 active admission. VLESS/VMess/Trojan UDP-over-stream and MUX/XUDP retain bounds;
 Shadowsocks generic XHTTP is TCP, with separately configured native UDP retained
 through the existing bounded dual-bind/rollback path.
+
+HTTP3 shares the same request parser, protected protocol handler and split
+session manager. QUIC receives at most 64 KiB per stream and 1 MiB per parent,
+with at most min(MaxConnections, 128) incoming request streams and eight
+unidirectional streams per parent. Header parsing reserves engine admission
+before starting a request worker; overload resets that stream with
+H3_EXCESSIVE_LOAD. Incomplete HEADERS expire at ConnectTimeout, while completed
+headers clear their parsing deadline. Control-stream handlers join the parent
+on close. These quic-go interfaces are recorded in the component patch manifest
+and verified in mobile module staging.
+
+HTTP3 download GETs without a Content-Length are accepted only after reading
+their actual empty-body FIN within the setup deadline. The ended GET's physical
+read deadline is cleared independently of the upload/setup read deadline.
+Established stream-up clears both upload deadlines, preventing HTTP/2's setup
+write timer from resetting an active session after ConnectTimeout. The existing
+flow idle timer and owner cancellation still close stalled established flows.
+On h3, Shadowsocks must set `options.udp` to `"false"`: native SS UDP and QUIC
+cannot bind the same UDP listener. Generic SS XHTTP remains TCP-only.
 
 Go race checks passed repeated TCP/atomic UDP, native TLS, encrypted Vision with
 verified inner TLS/metadata, HTTP/1.1 finite-body half-close/reuse, malformed
@@ -115,6 +137,12 @@ Failures and combined local results are retained in the capability register.
 
 Split-mode native and independent results are recorded in the capability
 register; configuration acceptance does not imply all upstream options.
+HTTP3 native tests cover all modes/four protocols, repeated TCP, supported
+UDP-over-stream, pre-header admission, incomplete request/control streams and
+joined owner shutdown. A timed stream-up regression transfers payloads before
+and after ConnectTimeout over h1/h2/h3. Official Xray 26.7.28 also passes the
+four-protocol/all-mode h3 matrix and hybrid Vision/inner-TLS/XUDP across the
+three modes. This does not establish generic legacy QUIC carrier servers.
 
 Only final full builds are delegated to the workflow. These are local protocol
 results; varied public-node Internet and live host route/DNS acceptance remain

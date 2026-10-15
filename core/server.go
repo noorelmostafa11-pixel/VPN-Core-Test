@@ -93,6 +93,9 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 	if c.Protocol == "trojan" && s.tls == nil {
 		return s, errors.New("TROJAN_SERVER_TLS_REQUIRED")
 	}
+	if transport != nil && transport.HTTPVersion == "h3" && s.tls == nil {
+		return s, errors.New("XHTTP3_SERVER_TLS_REQUIRED")
+	}
 	if transport != nil && s.tls != nil {
 		s.tls.NextProtos = []string{"http/1.1"}
 		if contains([]string{"grpc", "http2"}, transport.Type) {
@@ -104,6 +107,9 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 				s.tls.NextProtos = []string{"http/1.1"}
 			} else if transport.HTTPVersion == "h2" {
 				s.tls.NextProtos = []string{"h2"}
+			} else if transport.HTTPVersion == "h3" {
+				s.tls.NextProtos = []string{"h3"}
+				s.tls.MinVersion = tls.VersionTLS13
 			}
 		}
 	}
@@ -175,6 +181,9 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 		s.ss, err = newSSServerState(s.client, c.Options)
 		if err != nil {
 			return s, err
+		}
+		if transport != nil && transport.HTTPVersion == "h3" && s.ss.udp {
+			return s, errors.New("XHTTP3_SS_NATIVE_UDP_PORT_CONFLICT")
 		}
 	}
 	return s, nil

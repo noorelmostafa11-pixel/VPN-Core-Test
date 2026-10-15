@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-const Version = "0.5.19-go"
+const Version = "0.5.21-go"
 
 type Event struct {
 	Protocol     string `json:"protocol,omitempty"`

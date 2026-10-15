@@ -44,7 +44,7 @@ func xServerRequest(r *http.Request, t *ServerTransportConfig) (kind, id string,
 		}
 	}
 	if r.Method == "GET" {
-		return "down", id, 0, len(parts) == 1 && r.ContentLength == 0 && len(r.TransferEncoding) == 0
+		return "down", id, 0, len(parts) == 1 && (r.ContentLength == 0 || r.ProtoMajor == 3 && r.ContentLength < 0) && len(r.TransferEncoding) == 0
 	}
 	if r.Method != t.Method {
 		return "", "", 0, false
@@ -82,16 +82,25 @@ func (e *Engine) serveXHTTP(w http.ResponseWriter, r *http.Request, spec serverS
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	if !e.acquire() {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		return
+	// HTTP3 reserves request admission before reading its HEADERS frame.
+	if r.ProtoMajor != 3 {
+		if !e.acquire() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		defer e.release()
 	}
-	defer e.release()
 	controller := http.NewResponseController(w)
 	if r.ProtoMajor == 1 && controller.EnableFullDuplex() != nil {
 		return
 	}
-	remote, err := net.ResolveTCPAddr("tcp", r.RemoteAddr)
+	var remote net.Addr
+	var err error
+	if r.ProtoMajor == 3 {
+		remote, err = net.ResolveUDPAddr("udp", r.RemoteAddr)
+	} else {
+		remote, err = net.ResolveTCPAddr("tcp", r.RemoteAddr)
+	}
 	if err != nil {
 		return
 	}
@@ -102,7 +111,19 @@ func (e *Engine) serveXHTTP(w http.ResponseWriter, r *http.Request, spec serverS
 	}
 	defer e.untrack(c)
 	defer c.Close()
+	if c.SetDeadline(time.Now().Add(e.config.ConnectTimeout)) != nil {
+		return
+	}
 	xServerHeaders(w)
+	if kind == "down" && r.ProtoMajor == 3 {
+		// HTTP3 represents an absent Content-Length as -1, including GETs.
+		// Validate their actual FIN before allocating a split session.
+		var first [1]byte
+		if n, err := c.Read(first[:]); n != 0 || err != io.EOF {
+			xServerStatus(c, http.StatusNotFound)
+			return
+		}
+	}
 	if kind == "packet" && r.ContentLength > xServerPostLimit {
 		xServerStatus(c, http.StatusRequestEntityTooLarge)
 		return

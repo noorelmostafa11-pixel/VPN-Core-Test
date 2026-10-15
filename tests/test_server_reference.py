@@ -68,6 +68,11 @@ class ServerReferenceTests(unittest.TestCase):
     def reference_pair(self, protocol, cipher='aes-256-gcm', wrong_password=False, secure=False,
                        alter_id=0, authenticated_length=False, mux=False, legacy=None, flow='', server_flow=None, reality=None, fingerprint='chrome', decryption=None, encryption=None, transport=None, grpc_multi=False):
         server_port, socks_port = free_port(), free_port()
+        http3 = transport and transport.get('type') == 'xhttp' and transport.get('alpn') == ['h3']
+        if http3:
+            with socket.socket(type=socket.SOCK_DGRAM) as reservation:
+                reservation.bind(('127.0.0.1', 0))
+                server_port = reservation.getsockname()[1]
         spec = {'protocol': protocol, 'listen': f'127.0.0.1:{server_port}'}
         if protocol == 'vmess':
             spec['uuids'] = [UUID]
@@ -115,8 +120,8 @@ class ServerReferenceTests(unittest.TestCase):
                     'disableSystemRoot': True, 'certificates': [{'certificateFile': str(self.cert), 'usage': 'verify'}]}
         if transport:
             spec['transport'] = {key: value for key, value in transport.items() if key != 'alpn'}
-            if transport['type'] == 'xhttp' and transport.get('alpn') in [['h2'], ['http/1.1']]:
-                spec['transport']['http_version'] = 'h2' if transport['alpn'] == ['h2'] else 'h1'
+            if transport['type'] == 'xhttp' and transport.get('alpn') in [['h2'], ['http/1.1'], ['h3']]:
+                spec['transport']['http_version'] = 'h3' if transport['alpn'] == ['h3'] else 'h2' if transport['alpn'] == ['h2'] else 'h1'
             if protocol == 'ss':
                 spec.setdefault('options', {})['udp'] = 'false'
             stream = outbound.setdefault('streamSettings', {})
@@ -152,7 +157,15 @@ class ServerReferenceTests(unittest.TestCase):
                 try:
                     project = subprocess.Popen([str(BIN), '--config', str(project_file), '--no-socks'], stdout=project_log, stderr=project_log)
                     processes.append(project)
-                    self.wait_port(project, server_port)
+                    if http3:
+                        deadline = time.monotonic() + 8
+                        marker = f'Server listening on 127.0.0.1:{server_port}'
+                        while marker not in (root / 'project.log').read_text(encoding='utf-8', errors='replace'):
+                            if project.poll() is not None or time.monotonic() >= deadline:
+                                raise RuntimeError('HTTP3 project listener did not report ready')
+                            time.sleep(.01)
+                    else:
+                        self.wait_port(project, server_port)
                     args = [str(legacy), '-config', str(reference_file)] if legacy else [str(self.xray), 'run', '-config', str(reference_file)]
                     other = subprocess.Popen(args, stdout=reference_log, stderr=reference_log)
                     processes.append(other)

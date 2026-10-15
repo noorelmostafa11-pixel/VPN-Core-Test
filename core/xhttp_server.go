@@ -48,6 +48,9 @@ func (l *admittedHTTPListener) Accept() (net.Conn, error) {
 }
 
 func (e *Engine) startXHTTPServer(s serverSpec) (net.Addr, error) {
+	if s.transport.HTTPVersion == "h3" {
+		return e.startXHTTP3Server(s)
+	}
 	var listener net.Listener
 	var packets *ssUDPServer
 	var err error

@@ -88,7 +88,7 @@ func compileServerTransport(c ServerConfig) (*ServerTransportConfig, error) {
 		if t.HTTPVersion == "" {
 			t.HTTPVersion = "auto"
 		}
-		if !contains([]string{"auto", "h1", "h2"}, t.HTTPVersion) {
+		if !contains([]string{"auto", "h1", "h2", "h3"}, t.HTTPVersion) {
 			return nil, bad
 		}
 		t.Path = strings.TrimSuffix(t.Path, "/") + "/"
