@@ -765,3 +765,47 @@ Advanced server metadata/payload placement, padding/response options, HTTP3 and
 the complete remaining gap register stay open. Final platform/package builds
 remain delegated to the workflow without waiting or polling; local results do
 not establish varied public-node Internet or host route/DNS recovery.
+
+## HTTP3 client oracle cancellation correction after 0.5.20
+
+The owner supplied Linux job 116178582809 from run 38659940521 at cf071c3.
+The failing packet-up/Chrome/VMess subcase completed its bidirectional body
+hash check, then failed the independent peer's empty-log assertion with
+`PEER_VALIDATION: packet payload`. These client/peer paths were unchanged by
+the 0.5.20 server extension. Sixty-four local repetitions did not reproduce
+that spontaneous scheduling window; the original CI message omitted its
+underlying body-read error, so that error subtype cannot be recovered.
+
+A controlled real-HTTP3 regression now closes the already-verified downstream
+as VMess's final 18-byte termination POST starts. Before correction this
+reproduced the same validation failure: zero received body bytes, declared
+length 18, HTTP3 close code zero and request context canceled, after all
+100,019 application bytes were returned correctly. The test peer had treated
+normal request/connection cancellation as a malformed completed packet.
+
+Only the independent test peer and validation checks change here. Interrupted
+body reads with canceled request context, explicit cancellation or normal remote
+HTTP3 cancellation/close return without forwarding partial data to the crypto
+oracle. Completed empty packets, uncanceled short bodies, timeouts, local stream
+errors and protocol errors remain failures. A real HTTP empty-body control
+still requires 422 and the validation diagnostic. Existing body hashes, TLS
+checks, peer-log assertions and time limits remain intact. Failed non-cancel
+diagnostics now include body length/error type/context for future diagnosis.
+
+The peer's two-listener setup also constructs separate HTTP servers and clones
+their TLS configuration instead of copying the server's embedded locks. Explicit
+peer race/vet checks now cover the cancellation classifier, and Validate-Go runs
+them in the native workflow. Runtime core/protocol sources are unchanged by
+this correction; the version remains 0.5.20-go. Local validation and post-fix
+remote Linux acceptance are recorded separately. The unpublished HTTP3 server
+prototype is parked outside the repository while this owner-reported failure
+is addressed; HTTP3 server support is still pending in the gap register.
+
+The classifier's 12 cancellation/error controls passed 32 race repetitions
+(2.104s), and explicit peer vet/Python syntax checks passed. All 22 XHTTP client
+cases passed (25.812s), including wrong certificate/status/encoding and the
+new forced final-packet cancellation and real empty-body rejection. A further
+97-case pressure run passed (29.767s): 64 repetitions of the reported
+Chrome/VMess/HTTP3 packet-up combination, 32 controlled aborts and the malformed
+empty-body control. These local results do not claim post-fix Linux CI success;
+the owner reviews that workflow, without routine waiting or polling.

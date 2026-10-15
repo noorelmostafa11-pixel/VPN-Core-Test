@@ -6,6 +6,7 @@ if os.name=='nt' and not shutil.which('openssl'):
  if (git_tools/'openssl.exe').exists():os.environ['PATH']=str(git_tools)+os.pathsep+os.environ['PATH']
 p=argparse.ArgumentParser(description=__doc__);p.add_argument('--skip-build',action='store_true');p.add_argument('--binary',type=pathlib.Path);a=p.parse_args()
 binary=(a.binary or ROOT/'bin'/('vpn-core.exe' if os.name=='nt' else 'vpn-core')).resolve();suffix='.exe' if os.name=='nt' else '';(ROOT/'bin').mkdir(exist_ok=True)
+subprocess.run(['go','test','-race','tests/xhttp_peer.go','tests/xhttp_peer_test.go'],cwd=ROOT,check=True)
 def build(output,source,tags=None):subprocess.run(['go','build','-mod=vendor',*(['-tags',tags] if tags else []),'-o',str(ROOT/'bin'/(output+suffix)),source],cwd=ROOT,check=True)
 if not a.skip_build:
  build('vpn-core','./cmd/vpn-core')
