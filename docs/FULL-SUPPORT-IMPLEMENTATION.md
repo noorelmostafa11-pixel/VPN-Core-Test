@@ -34,8 +34,8 @@ states its boundary. "Pending" must not be advertised as supported.
 | Remote SOCKS4/4a/5 | Added, including SOCKS5 credentials and UDP association; SOCKS4 is IPv4 TCP by specification |
 | SSH, Naive, Tor | SSH TCP client and forwarding server added: password/public keys/host identity, protected sockets, shared channel budget, bounded setup/close and independent Paramiko 5.0.0 payload/auth tests. Server supports one username/listener; reverse forwarding remains pending. Naive and Tor remain pending; see SSH.md |
 | Snell, Tailcat | Pending: establish exact reference version and protocol scope before implementation |
-| Raw TCP, UDP, WS/early data, HTTP Upgrade, gRPC/multi, HTTP2/h2c | Baseline client carriers retained. WS/early-data and HTTP Upgrade server carriers added for VLESS/VMess/Trojan/Shadowsocks TCP; encrypted Vision retains parent carrier layers. Other server carriers remain pending; see SERVER-CARRIERS.md |
-| XHTTP modes, metadata, padding and download settings | Baseline implemented scope; preserve original URI semantics |
+| Raw TCP, UDP, WS/early data, HTTP Upgrade, gRPC/multi, HTTP2/h2c | Baseline client carriers retained. WS/early-data, HTTP Upgrade, gRPC Tun/TunMulti and HTTP2/h2c server carriers added for VLESS/VMess/Trojan/Shadowsocks TCP; encrypted Vision retains parent carrier layers. All three XHTTP modes are added; further server carriers remain pending; see SERVER-CARRIERS.md, GRPC-SERVER.md and HTTP2-SERVER.md |
+| XHTTP modes, metadata, padding and download settings | Baseline clients retained. All three server modes add native HTTP1/HTTP2/h2c and explicit HTTP3/TLS 1.3, protected streaming and encrypted Vision. Split sessions add bounded reordering, backing-allocation budgets and cancellation/expiry; header admission and joined control ownership also cover HTTP3. Session/sequence metadata supports path/query/header/cookie and custom keys with ambiguity rejection. Packet data supports body/header/cookie/auto with strict chunks and shared scratch/backing budgets, including explicit GET header/cookie uploads. Opt-in request padding validates four carriers and repeat-x/tokenish sizes; bounded response padding/noSSEHeader, owned periodic upload padding, safe response-header templates and allowlisted CORS/preflights are added. Arbitrary status/body templates and live browser-dialer acceptance remain open; see XHTTP-SERVER.md |
 | HTTP3, QUIC, mKCP, HTTP disguise, simple-obfs, v2ray-plugin | Baseline carriers, distinct from Hysteria/TUIC protocols |
 | TLS1.2/1.3, uTLS, ECH, REALITY, legacy XTLS, FinalMask | Baseline implemented scope; certificate verification remains enforced |
 | General multiplexing and XUDP/UoT | Partial: VMess/VLESS MUX server framing, concurrent TCP and XUDP destination/Full Cone UDP added with bounded lifetime and independent Xray payload tests. General outbound MUX, cross-parent XUDP migration, smux and additional UOT paths remain pending; see MUX-SERVER.md |
@@ -60,8 +60,8 @@ states its boundary. "Pending" must not be advertised as supported.
 | SOCKS5 TCP/UDP inbound and native TUN | Baseline; retain packet/flow/lifecycle regression tests |
 | HTTP and mixed HTTP/SOCKS inbound | Added loopback listeners, CONNECT and HTTP body forwarding |
 | Redirect and TProxy | Pending platform-specific listeners and original-destination handling |
-| VLESS, Trojan, Shadowsocks server inbounds | Partial: raw TCP with optional TLS (required for Trojan); VLESS/Trojan UDP-over-TCP and VLESS MUX/XUDP. VLESS Vision adds native TLS 1.3, flow authentication, bounded padding/direct transitions and UDP-only MUX/XUDP. REALITY adds interoperable native TLS authentication/data transfer and protected HTTPS fallback; exact target mirroring/ML-DSA remain pending. Hybrid VLESS decryption adds three wire modes, fixed X25519/ML-KEM chains, bounded tickets/replay and optional Vision, using synchronous reusable record buffers. Shadowsocks implements all 35 methods over TCP/native UDP and SS2022 identity chains. Server carriers and wider options remain pending; see VLESS-SERVER.md, REALITY-SERVER.md, VLESS-ENCRYPTION-SERVER.md and SHADOWSOCKS-SERVER.md |
-| VMess server inbound | Added raw TCP/optional TLS, TCP/UDP/MUX, AEAD and opt-in legacy alter-ID, AES-GCM/ChaCha/CFB/none/zero, length masking/padding and authenticated lengths. Independent Xray 26.7.28 and V2Ray 4.45.2 payload tests passed; server carriers and remaining upstream options are pending; see VMESS-SERVER.md |
+| VLESS, Trojan, Shadowsocks server inbounds | Partial: raw TCP with optional TLS (required for Trojan); VLESS/Trojan UDP-over-TCP and VLESS MUX/XUDP. VLESS Vision adds native TLS 1.3, flow authentication, bounded padding/direct transitions and UDP-only MUX/XUDP. REALITY adds interoperable native TLS authentication/data transfer and protected HTTPS fallback; exact target mirroring/ML-DSA remain pending. Hybrid VLESS decryption adds three wire modes, fixed X25519/ML-KEM chains, bounded tickets/replay and optional Vision, using synchronous reusable record buffers. Shadowsocks implements all 35 methods over TCP/native UDP and SS2022 identity chains. WS/Upgrade/gRPC/HTTP2 carriers are added; further carriers and wider options remain pending; see VLESS-SERVER.md, REALITY-SERVER.md, VLESS-ENCRYPTION-SERVER.md and SHADOWSOCKS-SERVER.md |
+| VMess server inbound | Added raw TCP/optional TLS, TCP/UDP/MUX, AEAD and opt-in legacy alter-ID, AES-GCM/ChaCha/CFB/none/zero, length masking/padding and authenticated lengths. Independent Xray 26.7.28 and V2Ray 4.45.2 payload tests passed; WS/Upgrade/gRPC/HTTP2 carriers are added; further carriers and remaining upstream options are pending; see VMESS-SERVER.md |
 | Other protocol server inbounds | Pending with their corresponding client protocols |
 | Reverse proxy / server fallback | Pending authenticated reverse channels and fallback semantics |
 | General management API | Added opt-in authenticated loopback stats, selection, route and DNS updates; wider API/events scope pending |
@@ -558,3 +558,613 @@ and two existing optional cases skipped, in 223.859 seconds. Full core/mobile/
 CLI race checks passed in 65.527 seconds; vet passed. Native encrypted carrier
 inner-TLS/metadata cases and independent Xray matrices passed before that full
 run. No final local platform/package build or remote workflow result is claimed.
+
+## 0.5.17 extension
+
+gRPC Tun/TunMulti servers add cleartext/native TLS HTTP/2 to VLESS, VMess,
+Trojan and Shadowsocks TCP, with optional hybrid encrypted Vision. Existing
+vendored HTTP/2 and project protobuf framing retain bounded frames/messages,
+stream flow control, protected routing and shared parent/stream admission.
+Protocol execution reuses the owned native handler instead of adding another
+worker/channel. A validated preface clears the parent setup deadline, while
+incomplete prefaces retain it. Owner shutdown joins handlers and protocol
+forwarding. See [GRPC-SERVER.md](GRPC-SERVER.md).
+
+Targeted Go race checks passed both methods/four protocols, repeated TCP,
+large atomic UDP, 16 concurrent payloads over one parent, upload half-close and
+successful trailers, malformed request/message isolation, protection rejection,
+capacity accounting, incomplete owner loss and parent reuse after setup timeout.
+Official Xray 26.7.28 passed both four-protocol matrices and native/random
+hybrid Vision with verified inner TLS/XUDP. The initial compile failure was a
+fixture still asserting gRPC was unsupported. Review then found a stale parent
+deadline; an explicit timed reuse regression and preface adapter correct it.
+Failed evidence is retained separately from successful runs.
+
+The first combined independent wire validation passed 192 tests: 190 passed
+and two existing optional cases skipped, in 252.956 seconds. That executable
+preceded the parent-deadline correction; final checks follow separately.
+HTTP2/XHTTP and remaining report scope stay open. Only final full builds are
+delegated to the workflow, without polling/waiting. Public-node Internet and
+host route/DNS acceptance are not inferred from loopback results.
+
+Final core/mobile/CLI race tests passed in 65.755 seconds and vet passed after
+the parent-deadline/worker correction. Both independent Xray gRPC matrices
+passed again against the corrected executable in 15.736 seconds. No final
+local platform/package build or remote workflow conclusion is claimed.
+
+## 0.5.18 extension
+
+Legacy HTTP/2/h2c servers add VLESS/VMess/Trojan/Shadowsocks TCP, optional
+hybrid encrypted Vision, explicit bounded method/host/path policy and raw
+request/response streaming. The shared HTTP/2 handler retains independent
+stream deadlines, protected routing/cancellation, shared parent/stream budget,
+upload half-close and joined owner loss. Raw streams allocate no protobuf
+buffer; gRPC decode buffers now allocate lazily. See [HTTP2-SERVER.md](HTTP2-SERVER.md).
+
+Targeted Go race tests passed four protocols over cleartext/native TLS, large
+atomic UDP, 16 concurrent streams, half-close, custom method, malformed isolation,
+protected dial cancellation, capacity rejection and incomplete owner cleanup.
+The native hybrid inner-TLS/metadata/UDP matrix now includes HTTP2 and gRPC.
+Its first gRPC fixture used mismatched service names; matching the two names
+corrected the fixture without a production protocol change. Official V2Ray
+4.45.2 passed four protocols, PUT/POST and repeated 200,001-byte verified TLS
+payloads in 6.855 seconds. Independent hybrid encryption over legacy HTTP/2 is
+not claimed; that matrix uses the native client.
+
+Combined independent wire validation passed: 193 tests run, 191 passed and
+two existing optional cases skipped, in 236.221 seconds. Core/mobile/CLI race
+checks passed in 68.581 seconds and vet passed. The owner reported Ubuntu CI
+failure at source 49301e3: the SS fixed-port rollback fixture selected UDP's
+port without establishing TCP availability, then interpreted a failed TCP
+rebind as a retained listener. The corrected test reserves both transports,
+injects its owned TCP listener into the existing dual-bind function, requires
+an actual UDP listen error/exactly one fixed-port attempt, and checks closed
+and untracked TCP ownership. No runtime bind policy, cleanup threshold or test
+is disabled. Both dual-bind checks passed 32 race repetitions in 4.145 seconds;
+vet also passed after the fixture correction, published separately as 9bacac4.
+Linux acceptance after that correction remains with the workflow.
+
+XHTTP and remaining report items stay open. Final full platform/package builds
+remain delegated to the workflow without waiting or polling. Loopback checks
+do not establish varied public-node Internet or host route/DNS recovery.
+
+## WireGuard worker correction after 0.5.18
+
+The owner supplied macOS job 115803104716 from run 38549120436, at ce65650.
+Its unchanged bad-key test returned the expected context deadline error but
+took 1.51 seconds, exceeding its one-second bound. This is a separate failure
+from the preceding Ubuntu fixed-port fixture. Sixteen local auth race runs at
+GOMAXPROCS=128 passed before correction, so the exact macOS delay is not locally
+reproduced. A separate real-stack control exposed 128 per-stack TCP processors
+at that setting; the crypto stages were already limited to two workers each.
+
+A hash-pinned gVisor factory extension now lets embedded WireGuard request two
+TCP dispatchers while other factories keep their prior behavior. Core setup
+checks cancellation before/after stack construction and joins canceled stacks;
+peer test fixtures join crypto workers as well. The new 16-cycle real-stack
+resource test fails against the original factory and passes with the bound.
+All WireGuard race tests passed four repetitions at GOMAXPROCS=128 (41.025s),
+and independent Noise/encrypted TCP/UDP/auth/source payloads passed. Authentication
+and one-second failure/owner-close thresholds remain unchanged. Patch hashes and
+vet passed. Post-fix macOS verification is still with the workflow; a full remote
+pass or sole proven cause of its scheduling delay is not claimed.
+
+## 0.5.19 extension
+
+XHTTP stream-one servers add native HTTP1/HTTP2/h2c for the four TCP protocols,
+explicit protocol/method/host/path policy, protected raw streaming and optional
+hybrid encrypted Vision. Accepted sockets and logical streams share admission;
+protocol execution reuses owned native handlers, without session pools/timers
+or another carrier worker. HTTP1 enables full duplex, and EOF-aware closure
+preserves response drain/reuse instead of forcing a completed body into a read
+timeout. Shadowsocks retains its separately configured native UDP through the
+same bounded dual-bind path. See [XHTTP-SERVER.md](XHTTP-SERVER.md).
+
+Go race checks passed repeated TCP/atomic UDP, verified TLS, encrypted inner
+TLS/Vision/metadata, finite-body HTTP1 half-close/reuse, malformed configuration/
+requests, protection cancellation and incomplete owner shutdown. A direct
+HTTP2 cleartext payload and native SS UDP also passed (4.022s). The initial SS
+fixture omitted its client raw transport; correcting that field fixed its
+validation failure. The first finite-body test exposed an EOF read-deadline
+reset canceling final HTTP1 output; explicit EOF tracking corrected production
+closure. Reference fixtures initially passed a reference-only ALPN field to
+strict project configuration, then sent HTTP1 bytes after h2 negotiation;
+explicit matching listener/framing settings corrected the fixtures. Original
+failed evidence remains preserved, without weakening body/time limits.
+
+Official Xray 26.7.28 passed four protocols over cleartext and verified TLS,
+HTTP1/HTTP2, native/random hybrid Vision, inner TLS and XUDP. Independent
+WireGuard Noise/TCP/UDP/auth/source cases passed alongside that reference matrix
+(five combined cases, 14.907s). Full independent wire validation then passed:
+195 tests run, 193 passed and two existing optional cases skipped, in 248.246s.
+Core/mobile/CLI race passed in 66.997s and vet passed. The additional h2c/SS
+native-UDP case was added afterwards and passed its targeted race run.
+
+The owner supplied Android job 115812155285 from run 38552055818 at 870087d.
+The preceding WireGuard extension was copied into module-mode mobile staging,
+but its new gVisor dependency patch was omitted. Build-Mobile now stages the
+same reviewed gVisor source and verifies every patch hash before invoking
+bindings. All 28 patches were verified in the actual seven-module stage, and
+native host module-mode core/mobile compilation plus the real-stack worker
+bound/join test passed (3.510s). This directly checks the formerly missing API;
+final Android AAR/Apple framework builds remain with the workflow. No final
+mobile artifact or post-fix remote result is claimed.
+
+XHTTP stream-up/packet-up, server metadata/padding options and the remaining
+report scope stay open. Final full builds remain delegated without waiting or
+polling; local checks continue. Public-node Internet and host route/DNS
+acceptance are separate from these loopback/source results.
+
+## Windows DNS dual-listener correction and owner-requested stop
+
+The owner supplied Windows job 115819385127 from run 38554251054 at df769de.
+TestDNSLocalAndNativeTCPUDP failed while binding UDP to TCP's automatically
+selected 127.0.0.1:50151 port: Windows returned a socket access-permission error.
+DNS had assumed a TCP-selected port was available for UDP and did not retry.
+The log establishes UDP bind denial, not the identity or reason for the OS
+reservation. It is unrelated to whether an upstream node supports IPv6.
+
+DNS and Shadowsocks now share one engine-owned TCP/UDP bind path. Automatic
+ports have at most eight attempts; explicit ports have exactly one. Every
+failed UDP bind closes and untracks its TCP listener before another attempt;
+workers start only after both sockets are bound and owned. Owner cancellation
+or StopAccepting revokes newly created sockets. DNS workers now untrack their
+listeners on exit, and failed startup removes both resources. No DNS query,
+DoH transport, address-family policy or background worker budget is changed.
+
+A controlled UDP permission-denial regression failed before correction after
+one attempt, then passed with recovery and joined TCP/UDP cleanup. Real UDP
+collisions, fixed-port single attempts, eight-attempt exhaustion, unchanged
+error propagation, TCP failure and owner-stop phases passed along with the
+existing DNS native/local payload and SS atomic-bind cases for 16 race
+repetitions (4.386s). Full core/mobile/CLI race checks passed (68.499s), and vet
+passed. Source-built CLI payload tests against sing-box 1.14.3 (native TCP/UDP
+in both directions and SS2022 identity chains) and Xray 26.7.28 (XHTTP four
+protocols over cleartext/HTTP1/HTTP2/TLS) passed: three cases, 17.472s.
+
+The version remains 0.5.19-go; this is a stability correction, not an additional
+report capability. Final platform/package builds and Windows post-fix CI remain
+with the workflow and owner. No post-fix remote result or public Internet
+acceptance is claimed. The owner requested stopping after this correction;
+the checkpoint and remaining scope were saved. Next implementation remains
+XHTTP stream-up/packet-up, followed by the still-open complete gap register.
+
+## 0.5.20 extension
+
+The owner resumed on 15 October. Native XHTTP adds stream-up and packet-up
+servers plus explicit auto mode for VLESS/VMess/Trojan/Shadowsocks TCP over
+HTTP1/HTTP2/h2c. The preserved default remains stream-one. Split uploads and
+downloads use one listener-owned session manager, standard bounded path IDs
+and unsigned sequences; protocol authentication, protected routing, hybrid
+encryption and Vision reuse the existing stream implementation.
+
+Pending sessions get one owned setup watcher which exits on download attach
+or expires at ConnectTimeout; no periodic listener worker or idle session pool
+is added. Parent sockets, active handlers and sessions share engine admission.
+Packet bodies are limited to 1 MiB and a 30-position reordering window, with
+actual backing allocation charged before reads and retained through partial
+consumption: at most 2*(1 MiB+1) per session and 8*(1 MiB+1) per listener,
+including uploads still being read. Failure/close refunds buffers and admission.
+Duplicate downloads/uploads, mixed upload kinds, replay/stale/out-of-window sequences
+and oversize/over-budget requests fail explicitly. Finite stream-up EOF retains
+the final download body; controller lifetime is serialized with upload completion.
+
+Native tests passed all three selected modes across four protocols with/without
+TLS, TCP/large UDP, reordering/duplicate rejection, setup expiry/deadlines,
+backing allocation/admission bounds, finite 1.25-MiB response drain, malformed
+requests, protected-dial cancellation and partial POST owner loss. The final
+XHTTP group passed two race repetitions (14.070s). Full core/mobile/CLI race
+passed (75.748s) and vet passed. Official Xray 26.7.28 passed all modes over
+cleartext/HTTP1/HTTP2/TLS, native/random encrypted Vision, verified inner TLS
+and XUDP: four combined reference cases, 64.049s.
+
+Full independent wire regression passed: 197 tests run, 195 passed and two
+existing optional cases skipped, in 308.309s. This includes the prior client
+carrier/protocol suites and independent protocol-server references.
+Advanced server metadata/payload placement, padding/response options, HTTP3 and
+the complete remaining gap register stay open. Final platform/package builds
+remain delegated to the workflow without waiting or polling; local results do
+not establish varied public-node Internet or host route/DNS recovery.
+
+## HTTP3 client oracle cancellation correction after 0.5.20
+
+The owner supplied Linux job 116178582809 from run 38659940521 at cf071c3.
+The failing packet-up/Chrome/VMess subcase completed its bidirectional body
+hash check, then failed the independent peer's empty-log assertion with
+`PEER_VALIDATION: packet payload`. These client/peer paths were unchanged by
+the 0.5.20 server extension. Sixty-four local repetitions did not reproduce
+that spontaneous scheduling window; the original CI message omitted its
+underlying body-read error, so that error subtype cannot be recovered.
+
+A controlled real-HTTP3 regression now closes the already-verified downstream
+as VMess's final 18-byte termination POST starts. Before correction this
+reproduced the same validation failure: zero received body bytes, declared
+length 18, HTTP3 close code zero and request context canceled, after all
+100,019 application bytes were returned correctly. The test peer had treated
+normal request/connection cancellation as a malformed completed packet.
+
+Only the independent test peer and validation checks change here. Interrupted
+body reads with canceled request context, explicit cancellation or normal remote
+HTTP3 cancellation/close return without forwarding partial data to the crypto
+oracle. Completed empty packets, uncanceled short bodies, timeouts, local stream
+errors and protocol errors remain failures. A real HTTP empty-body control
+still requires 422 and the validation diagnostic. Existing body hashes, TLS
+checks, peer-log assertions and time limits remain intact. Failed non-cancel
+diagnostics now include body length/error type/context for future diagnosis.
+
+The peer's two-listener setup also constructs separate HTTP servers and clones
+their TLS configuration instead of copying the server's embedded locks. Explicit
+peer race/vet checks now cover the cancellation classifier, and Validate-Go runs
+them in the native workflow. Runtime core/protocol sources are unchanged by
+this correction; the version remains 0.5.20-go. Local validation and post-fix
+remote Linux acceptance are recorded separately. The unpublished HTTP3 server
+prototype is parked outside the repository while this owner-reported failure
+is addressed; HTTP3 server support is still pending in the gap register.
+
+The classifier's 12 cancellation/error controls passed 32 race repetitions
+(2.104s), and explicit peer vet/Python syntax checks passed. All 22 XHTTP client
+cases passed (25.812s), including wrong certificate/status/encoding and the
+new forced final-packet cancellation and real empty-body rejection. A further
+97-case pressure run passed (29.767s): 64 repetitions of the reported
+Chrome/VMess/HTTP3 packet-up combination, 32 controlled aborts and the malformed
+empty-body control. These local results do not claim post-fix Linux CI success;
+the owner reviews that workflow, without routine waiting or polling.
+
+## 0.5.21 extension
+
+XHTTP adds an explicit HTTP3/TLS 1.3 UDP server for VLESS/VMess/Trojan/Shadowsocks
+TCP in all three modes and auto; the omitted/default listener remains TCP
+HTTP1/HTTP2. It reuses protected native protocol forwarding, shared admission
+and bounded split sessions. QUIC windows stay at 64 KiB per stream and 1 MiB
+per parent, with at most min(MaxConnections, 128) incoming bidirectional streams
+and eight unidirectional streams. Header parsing reserves request admission
+before starting its worker, rejects overload and bounds incomplete HEADERS by
+ConnectTimeout. Unidirectional/control handlers join the owning parent on close.
+The vendored quic-go change and exact replacement have a recorded patch hash;
+mobile staging covers all 29 patches. Generic legacy QUIC/mKCP server carriers
+and advanced XHTTP metadata/padding/CORS are still pending; see XHTTP-SERVER.md.
+
+The previously parked prototype was restored after its three archived hashes
+and replay check matched. HTTP3 represents GET without Content-Length as an
+unknown-length body; the handler verifies actual empty-body FIN within the
+setup deadline before creating a split session. Ended download GETs clear their
+physical read deadlines while protocol setup reads remain bounded through the
+upload/session. A new timed stream-up regression initially passed h1/h3 but
+failed h2 after ConnectTimeout. HTTP2's upload write timer was still active
+after protocol setup. Clearing both upload deadlines at that established
+transition corrects the reset; setup, idle, body and admission limits remain.
+All three timed payload cases then passed three ordinary repetitions and the
+subsequent race groups/full suite. The first h1 fixture lacked explicit
+security=none; that configuration error was corrected before its payload run.
+
+Native HTTP3 race checks cover all modes/four protocols, repeated large TCP,
+supported UDP-over-stream, pre-header admission, incomplete-header expiry,
+reusable parents and incomplete control-stream owner shutdown. Official Xray
+26.7.28 passed the HTTP3 four-protocol/all-mode matrix and native hybrid
+Vision/verified-inner-TLS/XUDP across the three modes. The complete six-case
+XHTTP server reference suite passed (79.779s), and all 22 existing XHTTP client
+cases passed. Two XHTTP native race repetitions passed (54.637s); the full
+core/mobile race suite passed (92.432s), and vet passed for core/mobile/CLI and
+the independent HTTP3 test peer. The source-built CLI reports 0.5.21-go;
+core.Version now agrees with VERSION and the current public guides, correcting
+the previous stale 0.5.19-go runtime string.
+
+Full independent wire regression passed: 201 tests run, 199 passed and the two
+existing optional external-Trojan cases skipped, in 309.967s. Its peer race
+guard passed as well (1.717s). Guarded mobile module staging verified all 29
+patches in seven staged modules and compiled core/mobile in module mode; it is
+not an Android AAR or Apple framework build. Shadowsocks HTTP3 requires native
+UDP disabled to avoid sharing its QUIC UDP port. Final full platform/package
+builds remain delegated to workflow, without routine waiting/polling. Public
+Internet, varied-node and live host route/DNS acceptance remain open.
+
+## 0.5.22 extension
+
+XHTTP server `transport.extra` adds independently configured session-ID and
+packet-sequence locations: path, query, header or cookie, with custom key names.
+Defaults preserve existing path framing. The base path is normalized only when
+a path field is selected, so header/query/cookie-only metadata matches the
+client's exact base path. Stream-one, stream-up and explicit auto retain their
+existing selection semantics; packet uploads still require an ordered unsigned
+sequence. See XHTTP-SERVER.md for the four accepted options and their bounds.
+
+Metadata keys are bounded HTTP tokens; framing header collisions and duplicate
+session/sequence keys in one location are rejected at configuration time.
+Compiled options copy input state. Duplicate/empty fields, alternate configured
+or default metadata carriers, malformed query escapes, invalid IDs/sequences
+and stray path segments fail before session creation or protocol forwarding.
+Query and cookie metadata retain case; headers compare without case. Query and
+cookies are parsed once per request. There are no new workers, sessions, pools
+or unbounded payload buffers; existing admission, reordering and memory budgets
+remain shared with HTTP3. Unsupported server extra fields are rejected by the
+strict profile decoder, rather than silently importing client-only options.
+
+Native tests cover all 16 session/sequence placement pairs over h1/h2/h3,
+repeated 100,019-byte TCP and supported UDP-over-stream with four protocols
+distributed across the matrix. Separate stream-mode tests cover stream-one,
+stream-up and auto with every session location. Configuration isolation, strict
+JSON decoding and ambiguity/length/sequence rejection controls passed. The
+targeted metadata/protection/reordering race group passed (36.510s).
+Official Xray 26.7.28 passed mixed query/header, header/query, cookie/cookie,
+path/header and header/path metadata with custom keys across four protocols
+and HTTP1/HTTP2/HTTP3 (48.502s).
+
+Final full core/mobile/CLI race checks passed (121.716s), and vet/Python syntax
+checks passed. Complete independent wire regression passed: 202 tests run,
+200 passed and two existing optional external-Trojan cases skipped (370.257s);
+the independent HTTP3 peer race guard passed (1.623s). Guarded mobile staging
+verified 29 patch hashes in seven modules, compiled core/mobile and passed the
+strict metadata configuration regression in module mode (3.411s). The
+source-built CLI reports 0.5.22-go. No final local package/platform matrix or
+post-push workflow result is inferred.
+
+Header/cookie packet payloads, request-padding validation, response templates,
+periodic upload padding, browser CORS and the remaining complete gap register
+stay open. Final platform/package builds remain delegated to workflow; local
+loopback checks do not establish public-node Internet or live host recovery.
+
+## 0.5.23 extension
+
+XHTTP packet-up servers add body/header/cookie/auto payload placement and a
+custom payload key, independent of session/sequence placement. Explicit GET
+packet uploads work with header/cookie placement; GET without a sequence
+remains the download. Stream-one/stream-up reject packet-only placements.
+Server auto concatenates decoded header, decoded cookie and raw body. Default
+body framing and the existing authentication/protected-routing paths remain.
+See XHTTP-SERVER.md for the six supported server-extra fields and key defaults.
+
+Encoded header/cookie chunks have canonical contiguous zero-based indices,
+strict unpadded Base64URL and canonical trailing bits, at most 128 chunks per
+carrier and 8 KiB combined encoded data, within the existing HTTP header limit.
+Duplicate/gapped/empty/invalid chunks, metadata namespace collisions, forbidden
+carrier combinations and actual nonempty bodies on non-body uploads fail
+explicitly. The combined decoded packet stays within 1 MiB. Decoded backing
+plus encoded scratch are reserved against the listener budget before allocation;
+scratch is refunded after decode and retained backing remains charged through
+session consumption. Failed reads, duplicates, overload and close refund their
+owned reservations. No new workers, maintenance timers or idle pools are added.
+
+The new small-chunk native matrix exposed an existing client header-budget
+undercount: HTTP2/HTTP3 field-list per-field costs and generated fields were not
+included. The client now accounts for them, including split Cookie fields, and
+halves an oversized packet before network I/O until it fits. Sent data is never
+replayed and header limits are unchanged. An initial unpublished fit-loop
+implementation also hit a nil-error classifier panic; guarding the classifier
+before retry corrected it before the final native/race/reference runs. A raw
+Cookie control-character negative initially revealed standard parser trimming;
+raw CR/LF/NUL rejection now precedes cookie parsing rather than weakening it.
+
+Native checks passed 48 combinations of h1/h2/h3, header/cookie, POST/GET and
+four protocols, with repeated large TCP and supported UDP-over-stream. Separate
+tests cover numeric chunk ordering, header/cookie/body merge order, combined
+body size, malformed configuration/chunks, actual unknown-body reads and
+refunds, 32 concurrent duplicate uploads and encoded-scratch quota admission.
+The final native group passed (13.665s), its race group passed (26.526s), and
+the full core/mobile/CLI race suite passed (144.793s). Vet and Python syntax
+passed. Official Xray 26.7.28 header-POST/cookie-GET payloads over four protocols
+and HTTP1/HTTP2/HTTP3 plus all 22 prior XHTTP client tests passed together:
+23 cases, 49.907s. Negative certificate/status/encoding and real final-packet
+cancellation/empty-body controls remain enabled.
+
+Complete independent wire regression passed: 203 tests run, 201 passed and
+the same two optional external-Trojan cases skipped (380.708s). The HTTP3
+independent peer race guard passed (1.688s). Guarded mobile staging verified all
+29 patch hashes in seven modules, compiled current core/mobile in module mode
+and passed payload configuration/duplicate/quota regressions (3.660s). This is
+not an AAR or Apple framework build. The source-built CLI reports 0.5.23-go.
+Request-padding validation, response/header templates, periodic
+stream-up response padding, browser CORS and the complete remaining gap
+register stay open. Final platform/package builds remain delegated to workflow,
+without routine waiting or polling. No post-push workflow, varied public-node
+Internet or live host route/DNS recovery result is inferred from local checks.
+
+## 0.5.24 extension
+
+XHTTP adds opt-in request-padding validation in query, header, cookie and
+query-in-header carriers, independently of all three protocol transport modes.
+The six xPadding options match the existing client's names. Repeat-x measures
+raw bytes; tokenish measures HPACK Huffman bytes with a two-byte tolerance.
+Explicit server ranges stay within 1–4,096 target bytes to retain the existing
+8 KiB complete-header limit, including tokenish expansion. Generated response
+padding uses the configured header, URL-in-header or cookie; query placement
+adds no unused response value. noSSEHeader suppresses only the explicit SSE
+Content-Type, retaining identity/no-store/no-buffering behavior.
+
+Padding is enforced only when explicitly configured. Unconfigured listeners
+preserve their existing request behavior, metadata namespaces and exact
+100-byte X-Padding response. Merely setting noSSEHeader does not require
+padding. Compiled ranges copy caller state, and serializing/reloading disabled
+options must not turn policy on. Query/cookie metadata is parsed once per
+request and shared with padding checks. Invalid padding fails before creating
+a split session or forwarding protocol bytes. Duplicate/cross-carrier values,
+malformed URL/query data, raw CR/LF/NUL and out-of-range values are rejected;
+raw cookie counts also detect malformed copies silently discarded by standard
+cookie parsing. Configuration checks reject framing and metadata/payload
+namespace collisions, including the effective legacy Referer/x_padding names.
+No worker, listener, idle pool or maintenance timer is added.
+
+Native tests cover 72 h1/h2/h3, placement, sizing-method and mode combinations,
+with four protocols distributed across the matrix, repeated 100,019-byte TCP
+and supported UDP-over-stream. Separate controls cover required/missing and
+legacy padding, malformed/duplicate/alternate carriers, range JSON roundtrips,
+immutable configuration, disabled-policy serialization, bounded response
+headers/SSE behavior and 32 failures before any session allocation/admission
+retention. The initial native group passed (5.000s); two targeted race
+repetitions passed (14.448s). The final compatibility review added explicit
+disabled-policy roundtrip and discarded-cookie controls, which passed their
+ordinary targeted group (3.060s). Official Xray 26.7.28 passed four protocols
+over cleartext/verified HTTP1/HTTP2 and HTTP3, all placements and both sizing
+methods with modes distributed across that independent matrix (68.348s).
+
+Final full core/mobile/CLI race checks passed on the reviewed source (151.962s),
+including the added roundtrip and discarded-cookie controls. Vet and Python
+syntax checks passed. The rebuilt source CLI reports 0.5.24-go. The earlier
+full race pass (152.807s) preceded those last compatibility controls and is not
+used as the final-source result.
+
+Complete independent wire regression passed: 204 tests run, 202 passed and
+the same two optional external-Trojan cases skipped (455.540s), including the
+new padding matrix and all previous XHTTP client/server suites. The independent
+HTTP3 peer race guard passed (1.670s). No final local platform/package build or
+post-push workflow success is inferred.
+
+Guarded mobile staging verified all 29 patch hashes in seven modules, compiled
+current core/mobile in module mode and passed padding configuration, legacy/
+malformed validation, response bounds and pre-session rejection tests (3.573s).
+This is host module staging, not an Android AAR or Apple framework build.
+
+Periodic stream-up response padding, arbitrary response/header templates,
+browser CORS and the remaining complete gap register stay open. These local
+results do not establish public-node Internet, live host route/DNS recovery or
+final platform/mobile package acceptance. Full final builds remain delegated
+to workflow without routine waiting or polling.
+
+
+## 0.5.25 extension
+
+This larger XHTTP batch adds three opt-in server capabilities together:
+periodic stream-up upload-response padding, bounded response-header templates,
+and allowlisted CORS with finite OPTIONS preflights. Unconfigured listeners
+retain their previous behavior and protocol authentication is unchanged.
+
+scStreamUpServerSecs accepts zero/omission to disable or an inclusive 1–300
+second interval range for stream-up/auto listeners. A nonempty Referer marker
+or validated obfuscated padding activates immediate and periodic upload-only
+padding. The existing handler owns one reusable timer and a buffer of at most
+4 KiB; no idle-listener worker or additional periodic goroutine is introduced.
+Writes retain setup deadlines, then remain bounded to at most five seconds.
+EOF stops padding while preserving final download drain. Owner cancellation
+interrupts blocked writes and joins its callback before the HTTP writer exits.
+
+responseHeaders copies/canonicalizes at most 16 fields with bounded names and
+values. It supports literals and only version/method/httpVersion placeholders;
+request paths, cookies, credentials and arbitrary expressions are excluded.
+A 1 KiB custom-field budget and the existing combined 8 KiB header budget
+include field overhead, maximum template expansion, padding and CORS reserves.
+Framing, encoding, caching, no-buffering, padding and CORS fields remain owned
+by the protocol. Custom Content-Type requires noSSEHeader.
+
+CORS is explicitly configured with at most 16 serialized HTTP(S) origins,
+or a single noncredentialed wildcard. Credentials are explicit and rejected
+with wildcard origins. Missing Origin permits non-browser clients; malformed,
+duplicate or denied origins fail before split-session allocation. Preflights
+check host/path, requested method/headers and actual empty-body FIN, including
+unknown-length HTTP3. They do not authenticate, allocate protocol sessions,
+dial or forward. Actual requests still require padding and protocol auth.
+Origin-dependent results include Vary, and preflights vary on both Access-
+Control request fields. Header lists, exposed fields and max age are bounded.
+
+Native coverage includes 48 combinations of h1/h2/h3, four modes and four
+protocols, repeated large TCP and supported UDP-over-stream; real periodic
+upload padding beyond a 350 ms setup deadline; finite upload EOF/download
+drain; and joined owner close with a deliberately blocked response write.
+Additional controls cover configuration budgets, template/header injection,
+immutable maps/slices/ranges, denied origins, duplicate/wildcard/credential
+policy, preflight bodies/paths/methods/headers and 32 repeated failures without
+any retained session/buffer/admission. The initial native group passed (6.600s);
+two targeted race repetitions passed (14.278s). The final full core/mobile/CLI
+race passed (162.578s), with vet and Python syntax checks also passing.
+
+Official Xray 26.7.28 passed combined policy over four modes/four protocols,
+cleartext/verified HTTP1/HTTP2 and HTTP3. An independent Python HTTP oracle
+covers HTTP1 and verified TLS preflight/response headers. Its first run had
+two overstrict test expectations: an allowed origin may read a body-validation
+400 response. The expectations were corrected without relaxing denied-origin
+or forbidden-header controls; the corrected method passed (17.668s). The
+earlier combined two-method run remains recorded as failed (54.668s), not
+misreported as a complete pass.
+
+Complete independent wire regression passed: 206 tests run, 204 passed and
+the same two optional external-Trojan cases skipped (511.428s), including both
+new independent methods and all prior XHTTP/client/server/protocol controls.
+The independent HTTP3 peer race guard passed (1.638s). The rebuilt CLI reports
+0.5.25-go; no final platform/package build is inferred from this executable.
+
+Guarded mobile staging verified all 29 patch hashes across seven modules;
+current core/mobile compiled in module mode and passed policy-budget/isolation,
+pre-session rejection, wildcard/credential, periodic upload lifetime and blocked
+write owner-join controls (6.588s). This is host module staging, not an Android
+AAR or Apple framework build.
+
+Arbitrary HTTP status/body templates, wider listener options, live browser
+application acceptance and the complete remaining gap register remain open.
+Local checks do not establish post-push workflow success, varied public-node
+Internet or live host route/DNS recovery. Full final builds remain delegated
+to workflow without routine waiting or polling. The owner-supplied failed job
+will be investigated separately after this batch is published.
+
+### Owner-supplied Ubuntu failure diagnosis
+
+After publishing the three-feature batch, the owner-supplied run 38692058868 /
+job 116280056232 was reviewed. The owner authorized a dedicated Ubuntu diagnostic on
+the feature branch. That run used 0.5.24 source 70de3e1. Ubuntu failed only
+test_xray_metadata_placements_and_keys, Trojan packet-up, header session ID /
+query sequence, HTTP1 (Trojan still uses verified TLS despite the matrix's
+tls=False label). Its large echo began with the synthetic Trojan request hash
+instead of the expected payload. This identifies a byte mismatch, not its
+origin. Windows/macOS runtime, portable builds, Android SDK and source-selection
+jobs succeeded in that older run; those results do not validate 0.5.25.
+
+The exact exchange passed 128 local connections in one reference instance
+(11.510s), then 128 connections across 64 fresh instances (43.306s). No runtime
+repair or relaxed equality/retry rule is inferred from these non-reproductions.
+There is no local Linux installation. A separate, bounded Ubuntu workflow now
+builds the current source and official pinned Xray, repeats fresh exchanges
+directly and through an extra verified-TLS HTTP1 observer, and reruns the
+original metadata matrix. The observer records only sequence/session hashes,
+body lengths/hashes and a synthetic-header classification, never credentials,
+raw bodies, profiles or keys. It is test-only and excluded from core/packages.
+The observed path is a diagnostic perturbation, not an identical direct path.
+
+Observer unit/race/vet and Python syntax checks passed; all three diagnostic
+methods, including the unchanged metadata matrix, passed local smoke with
+four fresh attempts per path (55.913s). Early observer-only SHA-224 selection
+and Windows temporary-log ownership errors were corrected before that pass.
+Remote diagnostic results and the root cause remain pending. Neither a rerun
+nor a passing local suite is evidence that the reported Ubuntu fault is fixed.
+
+The authorized Ubuntu diagnostic 38697103997 at 9980fea succeeded: all three
+methods passed in 39.137s with zero skips, including 128 fresh pressure
+connections split between direct/observed paths and the original matrix.
+Its 128 pressure echo streams contained no synthetic Trojan header. The
+42 hash-only trace files contain 263 packets. The 228 records with complete
+header/query metadata had no repeated sequence/header; 35 path/cookie records
+lacked a complete observer identity and cannot establish replay behavior.
+Observer extraction now follows all five metadata pairs, with a regression
+against merging unrelated path/cookie sessions. Production source is unchanged;
+the original fault has not reproduced and its root cause remains unresolved.
+
+The next Ubuntu diagnostic, 38697803695 at 47cc8df, passed both pressure paths
+but failed the unchanged metadata matrix at VMess/TLS/HTTP1 cookie metadata,
+before SOCKS negotiation completed (44.590s; one error). This is not the
+original Trojan payload mismatch. Its logs establish a separate fixture bug:
+the native server and Xray SOCKS listener were both assigned 34299; Xray
+reported address already in use, while the readiness probe connected to the
+native TLS endpoint. Two independent released free-port choices can alias.
+
+Injecting that same alias against the old fixture reproduced the identical
+SOCKS timeout and Xray bind failure locally. The fixture now reserves distinct
+TCP/UDP server and TCP SOCKS endpoints simultaneously, holding each socket
+until its own process launches. Reservations close on errors and the UDP/TCP
+number-distinction search is bounded to eight attempts. No application payload
+retry, deadline increase, mismatch suppression or production change is added.
+Three new live-kernel/integration controls cover exclusivity, staged ownership,
+exception cleanup and a forced released-selector alias with real verified
+Xray/VMess large payload. They passed locally (0.829s); the controlled alias
+also passed after correction. The full 206-case wire result above predates
+this fixture-only change; do not relabel it as a final 209-case run.
+After the reservation correction, both local pressure paths and the original
+metadata matrix passed again (three methods, 56.622s). The dedicated Ubuntu
+workflow also runs the three reservation regressions before that diagnostic.
+The original Trojan mismatch remains unconfirmed and must not be described
+as repaired merely because the separate port-alias bug was reproduced/fixed.
+
+Post-correction Ubuntu diagnostic [38698884223](https://github.com/noorelmostafa11-pixel/VPN-Core-Test/actions/runs/38698884223)
+at bc4c7ae succeeded: three reservation regressions passed (0.208s), followed
+by all three diagnostic methods (37.926s), with zero skips/errors/failures.
+The 128 pressure echo streams contained no synthetic header. All 268 packets
+in 42 trace files had complete metadata identities, with no duplicate sequence
+or repeated synthetic header per observed session. This verifies the fixture
+correction and the observed test paths, not the root cause of the original
+Trojan mismatch, a complete final 209-case wire run or public-network/host
+acceptance. Production core remains unchanged from the 6b16c08 feature batch.

@@ -22,6 +22,23 @@ UUID = '12345678-1234-4567-9234-567812345678'
 PASSWORD = 'synthetic-reference-server-password'
 
 
+@contextlib.contextmanager
+def reserve_reference_ports(http3=False):
+    """Keep endpoints distinct and bound until their respective processes start."""
+    with contextlib.ExitStack() as owners:
+        server = owners.enter_context(socket.socket(type=socket.SOCK_DGRAM if http3 else socket.SOCK_STREAM))
+        server.bind(('127.0.0.1', 0))
+        for _ in range(8):
+            socks = owners.enter_context(socket.socket())
+            socks.bind(('127.0.0.1', 0))
+            if socks.getsockname()[1] != server.getsockname()[1]:
+                break
+            socks.close()
+        else:
+            raise RuntimeError('could not reserve distinct reference endpoints')
+        yield server, socks
+
+
 class ServerReferenceTests(unittest.TestCase):
     def socks(self, *args):
         return hyref.HysteriaReferenceTests.socks(self, *args)
@@ -66,98 +83,134 @@ class ServerReferenceTests(unittest.TestCase):
 
     @contextlib.contextmanager
     def reference_pair(self, protocol, cipher='aes-256-gcm', wrong_password=False, secure=False,
-                       alter_id=0, authenticated_length=False, mux=False, legacy=None, flow='', server_flow=None, reality=None, fingerprint='chrome', decryption=None, encryption=None, transport=None):
-        server_port, socks_port = free_port(), free_port()
-        spec = {'protocol': protocol, 'listen': f'127.0.0.1:{server_port}'}
-        if protocol == 'vmess':
-            spec['uuids'] = [UUID]
-            if alter_id:
-                spec['options'] = {'alter-id': str(alter_id)}
-            identity = 'abcdefab-1234-4567-9234-567812345678' if wrong_password else UUID
-            settings = {'vnext': [{'address': '127.0.0.1', 'port': server_port,
-                                  'users': [{'id': identity, 'security': cipher, 'alterId': alter_id,
-                                             'experiments': 'AuthenticatedLength' if authenticated_length else ''}]}]}
-        elif protocol == 'vless':
-            spec['uuids'] = [UUID]
-            configured_flow = flow if server_flow is None else server_flow
-            if configured_flow:
-                spec['options'] = {'flow': configured_flow}
-            if decryption:
-                spec.setdefault('options', {})['decryption'] = decryption
-            settings = {'vnext': [{'address': '127.0.0.1', 'port': server_port,
-                                  'users': [{'id': UUID, 'encryption': encryption or 'none', 'flow': flow}]}]}
-        else:
-            spec['password'] = PASSWORD
-            remote = {'address': '127.0.0.1', 'port': server_port,
-                      'password': PASSWORD + ('-incorrect' if wrong_password else '')}
-            if protocol == 'ss':
-                spec['cipher'], remote['method'] = cipher, cipher
-            settings = {'servers': [remote]}
-        outbound = {'protocol': 'shadowsocks' if protocol == 'ss' else protocol, 'settings': settings}
-        if reality:
-            spec['reality'] = reality
-            private = x25519.X25519PrivateKey.from_private_bytes(base64.urlsafe_b64decode(reality['private_key'] + '=' * (-len(reality['private_key']) % 4)))
-            public = base64.urlsafe_b64encode(private.public_key().public_bytes_raw()).decode().rstrip('=')
-            outbound['streamSettings'] = {'security': 'reality', 'realitySettings': {
-                'serverName': 'localhost', 'fingerprint': fingerprint, 'publicKey': public, 'shortId': 'a1b2c3d4'}}
-        if mux:
-            outbound['mux'] = {'enabled': True, 'concurrency': 8}
-        if (protocol == 'trojan' or secure) and not reality:
-            spec.update(cert_file=str(self.cert), key_file=str(self.key))
-            der = ssl.PEM_cert_to_DER_cert(self.cert.read_text(encoding='utf-8'))
-            pin = hashlib.sha256(der).hexdigest()
-            outbound['streamSettings'] = {'security': 'tls', 'tlsSettings': {
-                'serverName': 'localhost', 'pinnedPeerCertSha256': pin, 'verifyPeerCertByName': 'localhost'}}
-            if legacy:
-                # V2Ray 4 predates Xray's pin fields. Trust only the generated
-                # fixture CA while preserving normal certificate/name checks.
-                outbound['streamSettings']['tlsSettings'] = {'serverName': 'localhost',
-                    'disableSystemRoot': True, 'certificates': [{'certificateFile': str(self.cert), 'usage': 'verify'}]}
-        if transport:
-            spec['transport'] = transport
-            if protocol == 'ss':
-                spec.setdefault('options', {})['udp'] = 'false'
-            stream = outbound.setdefault('streamSettings', {})
-            stream['network'] = 'ws' if transport['type'] == 'websocket' else 'httpupgrade'
-            if transport['type'] == 'websocket':
-                stream['wsSettings'] = {'path': transport['path'], 'headers': {'Host': transport.get('host', 'localhost')}}
+                       alter_id=0, authenticated_length=False, mux=False, legacy=None, flow='', server_flow=None, reality=None, fingerprint='chrome', decryption=None, encryption=None, transport=None, grpc_multi=False, inspect_http=False):
+        http3 = transport and transport.get('type') == 'xhttp' and transport.get('alpn') == ['h3']
+        with reserve_reference_ports(bool(http3)) as (server_reservation, socks_reservation):
+            server_port = server_reservation.getsockname()[1]
+            socks_port = socks_reservation.getsockname()[1]
+            spec = {'protocol': protocol, 'listen': f'127.0.0.1:{server_port}'}
+            if protocol == 'vmess':
+                spec['uuids'] = [UUID]
+                if alter_id:
+                    spec['options'] = {'alter-id': str(alter_id)}
+                identity = 'abcdefab-1234-4567-9234-567812345678' if wrong_password else UUID
+                settings = {'vnext': [{'address': '127.0.0.1', 'port': server_port,
+                                      'users': [{'id': identity, 'security': cipher, 'alterId': alter_id,
+                                                 'experiments': 'AuthenticatedLength' if authenticated_length else ''}]}]}
+            elif protocol == 'vless':
+                spec['uuids'] = [UUID]
+                configured_flow = flow if server_flow is None else server_flow
+                if configured_flow:
+                    spec['options'] = {'flow': configured_flow}
+                if decryption:
+                    spec.setdefault('options', {})['decryption'] = decryption
+                settings = {'vnext': [{'address': '127.0.0.1', 'port': server_port,
+                                      'users': [{'id': UUID, 'encryption': encryption or 'none', 'flow': flow}]}]}
             else:
-                stream['httpupgradeSettings'] = {'path': transport['path'], 'host': transport.get('host', 'localhost')}
-        profile = {'outbounds': [{'tag': 'direct', 'uri': 'direct://'}], 'final': 'direct', 'inbounds': [spec]}
-        reference = {'log': {'loglevel': 'warning'},
-                     'inbounds': [{'listen': '127.0.0.1', 'port': socks_port, 'protocol': 'socks', 'settings': {'udp': True}}],
-                     'outbounds': [outbound]}
-        with tempfile.TemporaryDirectory(dir=self.root) as temp:
-            root = pathlib.Path(temp)
-            project_file, reference_file = root / 'project.json', root / 'reference.json'
-            project_file.write_text(json.dumps(profile), encoding='utf-8')
-            reference_file.write_text(json.dumps(reference), encoding='utf-8')
-            with (root / 'project.log').open('w', encoding='utf-8') as project_log, (root / 'reference.log').open('w', encoding='utf-8') as reference_log:
-                processes = []
-                try:
-                    project = subprocess.Popen([str(BIN), '--config', str(project_file), '--no-socks'], stdout=project_log, stderr=project_log)
-                    processes.append(project)
-                    self.wait_port(project, server_port)
-                    args = [str(legacy), '-config', str(reference_file)] if legacy else [str(self.xray), 'run', '-config', str(reference_file)]
-                    other = subprocess.Popen(args, stdout=reference_log, stderr=reference_log)
-                    processes.append(other)
-                    self.wait_port(other, socks_port)
-                    yield socks_port
-                except BaseException as error:
-                    project_log.flush()
-                    reference_log.flush()
-                    error.add_note((root / 'project.log').read_text(encoding='utf-8', errors='replace')[-4000:])
-                    error.add_note((root / 'reference.log').read_text(encoding='utf-8', errors='replace')[-4000:])
-                    raise
-                finally:
-                    for process in reversed(processes):
-                        if process.poll() is None:
-                            process.terminate()
-                        try:
-                            process.wait(timeout=8)
-                        except subprocess.TimeoutExpired:
-                            process.kill()
-                            process.wait(timeout=3)
+                spec['password'] = PASSWORD
+                remote = {'address': '127.0.0.1', 'port': server_port,
+                          'password': PASSWORD + ('-incorrect' if wrong_password else '')}
+                if protocol == 'ss':
+                    spec['cipher'], remote['method'] = cipher, cipher
+                settings = {'servers': [remote]}
+            outbound = {'protocol': 'shadowsocks' if protocol == 'ss' else protocol, 'settings': settings}
+            if reality:
+                spec['reality'] = reality
+                private = x25519.X25519PrivateKey.from_private_bytes(base64.urlsafe_b64decode(reality['private_key'] + '=' * (-len(reality['private_key']) % 4)))
+                public = base64.urlsafe_b64encode(private.public_key().public_bytes_raw()).decode().rstrip('=')
+                outbound['streamSettings'] = {'security': 'reality', 'realitySettings': {
+                    'serverName': 'localhost', 'fingerprint': fingerprint, 'publicKey': public, 'shortId': 'a1b2c3d4'}}
+            if mux:
+                outbound['mux'] = {'enabled': True, 'concurrency': 8}
+            if (protocol == 'trojan' or secure) and not reality:
+                spec.update(cert_file=str(self.cert), key_file=str(self.key))
+                der = ssl.PEM_cert_to_DER_cert(self.cert.read_text(encoding='utf-8'))
+                pin = hashlib.sha256(der).hexdigest()
+                outbound['streamSettings'] = {'security': 'tls', 'tlsSettings': {
+                    'serverName': 'localhost', 'pinnedPeerCertSha256': pin, 'verifyPeerCertByName': 'localhost'}}
+                if legacy:
+                    # V2Ray 4 predates Xray's pin fields. Trust only the generated
+                    # fixture CA while preserving normal certificate/name checks.
+                    outbound['streamSettings']['tlsSettings'] = {'serverName': 'localhost',
+                        'disableSystemRoot': True, 'certificates': [{'certificateFile': str(self.cert), 'usage': 'verify'}]}
+            if transport:
+                spec['transport'] = {key: value for key, value in transport.items() if key != 'alpn'}
+                if transport['type'] == 'xhttp' and 'extra' in spec['transport']:
+                    client_only = {'scMaxEachPostBytes', 'scMinPostsIntervalMs', 'uplinkChunkSize', 'headers'}
+                    spec['transport']['extra'] = {key: value for key, value in spec['transport']['extra'].items() if key not in client_only}
+                if transport['type'] == 'xhttp' and transport.get('alpn') in [['h2'], ['http/1.1'], ['h3']]:
+                    spec['transport']['http_version'] = 'h3' if transport['alpn'] == ['h3'] else 'h2' if transport['alpn'] == ['h2'] else 'h1'
+                if protocol == 'ss':
+                    spec.setdefault('options', {})['udp'] = 'false'
+                stream = outbound.setdefault('streamSettings', {})
+                stream['network'] = 'ws' if transport['type'] == 'websocket' else transport['type']
+                if transport['type'] == 'websocket':
+                    stream['wsSettings'] = {'path': transport['path'], 'headers': {'Host': transport.get('host', 'localhost')}}
+                elif transport['type'] == 'grpc':
+                    stream['grpcSettings'] = {'serviceName': transport.get('service', 'GunService'), 'multiMode': grpc_multi}
+                elif transport['type'] == 'http2':
+                    stream['network'] = 'http'
+                    stream['httpSettings'] = {'path': transport.get('path', '/'), 'host': [transport.get('host', 'localhost')]}
+                    if transport.get('method'):
+                        stream['httpSettings']['method'] = transport['method']
+                elif transport['type'] == 'xhttp':
+                    stream['xhttpSettings'] = {'path': transport.get('path', '/'), 'host': transport.get('host', 'localhost'), 'mode': transport.get('mode', 'stream-one')}
+                    extra = dict(transport.get('extra', {}))
+                    for server_only in ['responseHeaders', 'cors']:
+                        extra.pop(server_only, None)
+                    if transport.get('method'):
+                        extra['uplinkHTTPMethod'] = transport['method']
+                    if extra:
+                        stream['xhttpSettings']['extra'] = extra
+                    if 'tlsSettings' in stream:
+                        stream['tlsSettings']['alpn'] = transport.get('alpn', ['h2', 'http/1.1'])
+                else:
+                    stream['httpupgradeSettings'] = {'path': transport['path'], 'host': transport.get('host', 'localhost')}
+            profile = {'outbounds': [{'tag': 'direct', 'uri': 'direct://'}], 'final': 'direct', 'inbounds': [spec]}
+            reference = {'log': {'loglevel': 'warning'},
+                         'inbounds': [{'listen': '127.0.0.1', 'port': socks_port, 'protocol': 'socks', 'settings': {'udp': True}}],
+                         'outbounds': [outbound]}
+            with tempfile.TemporaryDirectory(dir=self.root) as temp:
+                root = pathlib.Path(temp)
+                project_file, reference_file = root / 'project.json', root / 'reference.json'
+                project_file.write_text(json.dumps(profile), encoding='utf-8')
+                reference_file.write_text(json.dumps(reference), encoding='utf-8')
+                with (root / 'project.log').open('w', encoding='utf-8') as project_log, (root / 'reference.log').open('w', encoding='utf-8') as reference_log:
+                    processes = []
+                    try:
+                        server_reservation.close()
+                        project = subprocess.Popen([str(BIN), '--config', str(project_file), '--no-socks'], stdout=project_log, stderr=project_log)
+                        processes.append(project)
+                        if http3:
+                            deadline = time.monotonic() + 8
+                            marker = f'Server listening on 127.0.0.1:{server_port}'
+                            while marker not in (root / 'project.log').read_text(encoding='utf-8', errors='replace'):
+                                if project.poll() is not None or time.monotonic() >= deadline:
+                                    raise RuntimeError('HTTP3 project listener did not report ready')
+                                time.sleep(.01)
+                        else:
+                            self.wait_port(project, server_port)
+                        args = [str(legacy), '-config', str(reference_file)] if legacy else [str(self.xray), 'run', '-config', str(reference_file)]
+                        socks_reservation.close()
+                        other = subprocess.Popen(args, stdout=reference_log, stderr=reference_log)
+                        processes.append(other)
+                        self.wait_port(other, socks_port)
+                        yield (socks_port, server_port) if inspect_http else socks_port
+                    except BaseException as error:
+                        project_log.flush()
+                        reference_log.flush()
+                        error.add_note((root / 'project.log').read_text(encoding='utf-8', errors='replace')[-4000:])
+                        error.add_note((root / 'reference.log').read_text(encoding='utf-8', errors='replace')[-4000:])
+                        raise
+                    finally:
+                        for process in reversed(processes):
+                            if process.poll() is None:
+                                process.terminate()
+                            try:
+                                process.wait(timeout=8)
+                            except subprocess.TimeoutExpired:
+                                process.kill()
+                                process.wait(timeout=3)
 
     def test_xray_clients_transfer_real_tcp_payload(self):
         for protocol, cipher in [('vless', ''), ('trojan', ''), ('ss', 'aes-256-gcm'), ('ss', 'chacha20-ietf-poly1305')]:

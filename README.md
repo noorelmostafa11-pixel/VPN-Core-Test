@@ -1,4 +1,4 @@
-# vpn-core 0.5.16-go
+# vpn-core 0.5.25-go
 
 A public, general-purpose Go networking core for VPN and proxy applications,
 available to desktop and mobile users and developers. It provides a standalone
@@ -12,9 +12,11 @@ The executable and SDK use the same engine and protocol implementations.
 
 ## What's new in this source revision
 
-- **Protocol server carriers:** WebSocket/early data and HTTP Upgrade for
+- **Protocol server carriers:** WebSocket/early data, HTTP Upgrade, gRPC
+  Tun/TunMulti, HTTP/2/h2c and all three XHTTP modes for
   VLESS, VMess, Trojan and Shadowsocks TCP, including encrypted Vision;
-  [scope and acceptance](docs/SERVER-CARRIERS.md).
+  [scope and acceptance](docs/SERVER-CARRIERS.md), [gRPC](docs/GRPC-SERVER.md),
+  [HTTP/2](docs/HTTP2-SERVER.md), [XHTTP scope](docs/XHTTP-SERVER.md).
 - **VLESS hybrid encryption servers:** ML-KEM-768/X25519, three wire modes,
   bounded tickets/replay state and optional Vision. Client/server record streams
   reuse lazy buffers and run without extra encryption workers;

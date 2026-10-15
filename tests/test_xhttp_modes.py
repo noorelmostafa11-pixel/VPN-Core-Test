@@ -2,6 +2,7 @@
 import concurrent.futures
 import contextlib
 import hashlib
+import http.client
 import json
 import pathlib
 import random
@@ -10,7 +11,7 @@ import subprocess
 import tempfile
 import time
 import unittest
-from urllib.parse import quote,unquote
+from urllib.parse import quote,unquote,urlsplit
 import test_expanded as old
 from test_core import exact,ROOT
 
@@ -23,7 +24,7 @@ class XHttpTests(unittest.TestCase):
     def peer(self,protocol,cipher,mode,tls=False,h2=False,extra=None,bad=''):
         crypto=old.Peer(protocol,cipher)
         options={'xPaddingBytes':'100-100','scMinPostsIntervalMs':1,**(extra or {})}
-        separate=options.pop('_separate',False);fm=options.pop('_fm',None);h3=options.pop('_h3',False);legacy=options.pop('_legacy',False);target=options.pop('_target',f'127.0.0.1:{crypto.port}');ech=options.pop('_ech',False)
+        separate=options.pop('_separate',False);fm=options.pop('_fm',None);h3=options.pop('_h3',False);legacy=options.pop('_legacy',False);target=options.pop('_target',f'127.0.0.1:{crypto.port}');ech=options.pop('_ech',False);abort_tail=options.pop('_abort_tail',False)
         sp=options.get('sessionIDPlacement',options.get('sessionPlacement','path')) or 'path'
         qp=options.get('seqPlacement','path') or 'path'
         placement=options.get('uplinkDataPlacement','body')
@@ -39,7 +40,9 @@ class XHttpTests(unittest.TestCase):
             PaddingMin=90,PaddingMax=135,Obfs=options.get('xPaddingObfsMode',False),NoGRPC=legacy or options.get('noGRPCHeader',False),
             Table=table,SessionLength=options.get('sessionIDLength',0),Bad=bad)
         with tempfile.TemporaryDirectory(dir=self.directory) as directory:
-            directory=pathlib.Path(directory);cfg=directory/'server.json';cfg.write_text(json.dumps(fixture));log=(directory/'peer.log').open('w')
+            directory=pathlib.Path(directory);cfg=directory/'server.json'
+            if abort_tail:fixture.update(AbortFinalPacket=True,AbortReadyFile=str(directory/'abort-done'))
+            cfg.write_text(json.dumps(fixture));log=(directory/'peer.log').open('w')
             process=subprocess.Popen([str(ROOT/('bin/xhttp-peer.exe' if __import__('os').name=='nt' else 'bin/xhttp-peer')),'-config',str(cfg)],stdout=subprocess.PIPE,stderr=log,text=True)
             try:
                 endpoint=process.stdout.readline().strip();port=endpoint.rsplit(':',1)[1]
@@ -112,6 +115,28 @@ class XHttpTests(unittest.TestCase):
             for fp in ('native','chrome','firefox'):
                 for protocol,cipher in [('vless',''),('vmess','aes-128-gcm'),('trojan',''),('ss','chacha20-ietf-poly1305')]:
                     with self.subTest(mode=mode,fp=fp,protocol=protocol):self.exchange(protocol,cipher,mode,tls=True,extra={'_h3':True},fp=fp,connections=2)
+    def test_http3_vmess_final_packet_remote_close(self):
+        with self.peer('vmess','aes-128-gcm','packet-up',tls=True,extra={'_h3':True,'_abort_tail':True}) as (uri,crypto,peer_log):
+            with self.core(uri+'&fp=chrome') as (port,core_log):
+                with self.socks(port) as sock:
+                    self.assertEqual(exact(sock,len(old.HELLO)),old.HELLO)
+                    payload=random.Random(42).randbytes(100019);sock.sendall(payload)
+                    self.assertEqual(hashlib.sha256(exact(sock,len(payload))).digest(),hashlib.sha256(payload).digest())
+                    sock.shutdown(socket.SHUT_WR)
+                    deadline=time.monotonic()+3
+                    while not (peer_log.parent/'abort-done').exists() and time.monotonic()<deadline:time.sleep(.005)
+                    self.assertTrue((peer_log.parent/'abort-done').exists(),'final-packet cancellation was not observed')
+                self.assertEqual(crypto.errors,[])
+                self.assertEqual(peer_log.read_text(),'')
+    def test_completed_empty_packet_body_is_rejected(self):
+        with self.peer('vless','','packet-up') as (uri,crypto,peer_log):
+            connection=http.client.HTTPConnection('127.0.0.1',urlsplit(uri).port,timeout=2)
+            try:
+                connection.request('POST','/test/empty/0',body=b'',headers={'Referer':'http://localhost/test?x_padding='+'X'*100})
+                response=connection.getresponse();response.read()
+                self.assertEqual(response.status,422)
+                self.assertIn('packet payload: bytes=0 declared=0',peer_log.read_text())
+            finally:connection.close()
     def test_13_legacy_http2(self):
         for protocol,cipher in [('vless',''),('vmess','aes-128-gcm'),('trojan',''),('ss','chacha20-ietf-poly1305')]:
             for fp in ('chrome','firefox','native'):

@@ -123,7 +123,7 @@
     "path": "vendor/golang.zx2c4.com/wireguard/tun/netstack/tun.go",
     "replacement": "wireguard_netstack.go.replacement",
     "original_sha256": "593bfb8df9be328926e2bf245ee8a48290a8a5480100c80002a380ffe7f08453",
-    "patched_sha256": "4c8821cc3931034c6ccaa47a4344ed0b2b082acf07c3ca0d040a22595ee68d3f"
+    "patched_sha256": "dd43c660cb04715b1048861d56a7cbbd0730bde70e5d90103fdd3b0669be6844"
   },
   {
     "path": "vendor/golang.zx2c4.com/wireguard/device/queueconstants_default.go",
@@ -160,5 +160,17 @@
     "replacement": "hysteria_project_datagram.go.replacement",
     "original_sha256": null,
     "patched_sha256": "e4bf4f2cb778d82f6d2d631474babf633e1c4cb957d86747fdcee8dbff029aa0"
+  },
+  {
+    "path": "vendor/gvisor.dev/gvisor/pkg/tcpip/transport/tcp/protocol.go",
+    "original_sha256": "6f9ce8f40e30e0ba5bc494d2e2053314b686c6d2e59000f7009fa6b5591b70a1",
+    "patched_sha256": "0282fe45826627a18ade6e8bbd7b6bfa28ae2ea0a8490366f76265cc5eca9473",
+    "replacement": "gvisor_tcp_protocol.go.replacement"
+  },
+  {
+    "path": "vendor/github.com/quic-go/quic-go/http3/server.go",
+    "original_sha256": "766aadc0a0ce5e598ef684a1f345e0e0c83dee54175ec7f8674077761b9a8066",
+    "replacement": "quic_http3_server.go.replacement",
+    "patched_sha256": "4e748de3d4ceb90abe511f6a0b9bb81a70b631fcef4e19057ff57ac364096545"
   }
 ]

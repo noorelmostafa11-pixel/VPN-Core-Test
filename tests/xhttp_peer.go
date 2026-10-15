@@ -2,11 +2,13 @@
 package main
 
 import (
+	"context"
 	"crypto/ecdh"
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/quic-go/quic-go/http3"
@@ -28,6 +30,8 @@ type config struct {
 	SessionLength, PaddingMin, PaddingMax                                                                                                                                 int
 	ECH, TLS, H2, H3, Legacy, NoGRPC, Obfs, Split                                                                                                                         bool
 	Bad                                                                                                                                                                   string
+	AbortFinalPacket                                                                                                                                                      bool
+	AbortReadyFile                                                                                                                                                        string
 }
 type session struct {
 	conn net.Conn
@@ -42,6 +46,17 @@ var sessionMu sync.Mutex
 func fail(w http.ResponseWriter, message string) {
 	fmt.Fprintln(os.Stderr, "PEER_VALIDATION:", message)
 	http.Error(w, "invalid", 422)
+}
+
+func canceledPacketRead(r *http.Request, err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(r.Context().Err(), context.Canceled) {
+		return true
+	}
+	var transport *http3.Error
+	return errors.As(err, &transport) && transport.Remote && (transport.ErrorCode == http3.ErrCodeRequestCanceled || transport.ErrorCode == http3.ErrCodeNoError || transport.ErrorCode == 0)
 }
 func metadata(r *http.Request, placement, key string, index int) (string, error) {
 	switch placement {
@@ -163,9 +178,21 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		data := []byte{}
+		if cfg.AbortFinalPacket && seq != "0" && r.ContentLength > 0 && r.ContentLength <= 128 {
+			// The application body was echoed already. Close its downstream as
+			// the VMess termination upload arrives, forcing a normal HTTP abort.
+			defer func() { _ = os.WriteFile(cfg.AbortReadyFile, []byte("done"), 0600) }()
+			s.conn.Close()
+			<-r.Context().Done()
+		}
 		switch cfg.DataPlacement {
 		case "body":
 			data, err = io.ReadAll(io.LimitReader(r.Body, 1048577))
+			if canceledPacketRead(r, err) {
+				// Aborted requests never reach the crypto oracle. Stream/owner
+				// cancellation is not a malformed completed packet payload.
+				return
+			}
 		case "header", "cookie":
 			var encoded strings.Builder
 			for i := 0; ; i++ {
@@ -188,7 +215,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 			data, err = base64.RawURLEncoding.DecodeString(encoded.String())
 		}
 		if err != nil || len(data) == 0 {
-			fail(w, "packet payload")
+			fail(w, fmt.Sprintf("packet payload: bytes=%d declared=%d error=%T %v context=%v", len(data), r.ContentLength, err, err, r.Context().Err()))
 			return
 		}
 		sequence, e := strconv.ParseUint(seq, 10, 64)
@@ -258,6 +285,20 @@ func echConfig(key []byte) []byte {
 	return append(out, body...)
 }
 
+func copyPeerServerConfig(server *http.Server) *http.Server {
+	copy := &http.Server{ErrorLog: server.ErrorLog, Handler: server.Handler, MaxHeaderBytes: server.MaxHeaderBytes}
+	if server.TLSConfig != nil {
+		copy.TLSConfig = server.TLSConfig.Clone()
+	}
+	if server.TLSNextProto != nil {
+		copy.TLSNextProto = make(map[string]func(*http.Server, *tls.Conn, http.Handler), len(server.TLSNextProto))
+		for name, handler := range server.TLSNextProto {
+			copy.TLSNextProto[name] = handler
+		}
+	}
+	return copy
+}
+
 func main() {
 	path := flag.String("config", "", "fixture config")
 	flag.Parse()
@@ -320,7 +361,7 @@ func main() {
 				panic(e)
 			}
 			fmt.Println("DOWN " + second.Addr().String())
-			clone := *server
+			clone := copyPeerServerConfig(server)
 			go func() { _ = clone.ServeTLS(second, cfg.Cert, cfg.Key) }()
 		}
 		_ = server.ServeTLS(l, cfg.Cert, cfg.Key)
@@ -331,7 +372,7 @@ func main() {
 				panic(e)
 			}
 			fmt.Println("DOWN " + second.Addr().String())
-			clone := *server
+			clone := copyPeerServerConfig(server)
 			go func() { _ = clone.Serve(second) }()
 		}
 		_ = server.Serve(l)

@@ -14,11 +14,16 @@ import (
 )
 
 type ServerTransportConfig struct {
-	Type        string `json:"type"`
-	Path        string `json:"path,omitempty"`
-	Host        string `json:"host,omitempty"`
-	EarlyData   int    `json:"early_data,omitempty"`
-	EarlyHeader string `json:"early_header,omitempty"`
+	Type        string              `json:"type"`
+	Path        string              `json:"path,omitempty"`
+	Host        string              `json:"host,omitempty"`
+	EarlyData   int                 `json:"early_data,omitempty"`
+	EarlyHeader string              `json:"early_header,omitempty"`
+	Service     string              `json:"service,omitempty"`
+	Method      string              `json:"method,omitempty"`
+	Mode        string              `json:"mode,omitempty"`
+	HTTPVersion string              `json:"http_version,omitempty"`
+	Extra       *XHTTPServerOptions `json:"extra,omitempty"`
 }
 
 func compileServerTransport(c ServerConfig) (*ServerTransportConfig, error) {
@@ -30,13 +35,31 @@ func compileServerTransport(c ServerConfig) (*ServerTransportConfig, error) {
 		return nil, bad
 	}
 	t := *c.Transport
+	if t.HTTPVersion != "" && t.Type != "xhttp" {
+		return nil, bad
+	}
+	if t.Extra != nil && t.Type != "xhttp" {
+		return nil, bad
+	}
 	if t.Type == "raw" {
-		if t.Path != "" || t.Host != "" || t.EarlyData != 0 || t.EarlyHeader != "" {
+		if t.Path != "" || t.Host != "" || t.EarlyData != 0 || t.EarlyHeader != "" || t.Service != "" || t.Method != "" || t.Mode != "" {
 			return nil, bad
 		}
 		return nil, nil
 	}
-	if !contains([]string{"websocket", "httpupgrade"}, t.Type) || c.Reality != nil {
+	if !contains([]string{"websocket", "httpupgrade", "grpc", "http2", "xhttp"}, t.Type) || c.Reality != nil {
+		return nil, bad
+	}
+	if t.Type == "grpc" {
+		if t.Path != "" || t.Method != "" || t.Mode != "" || t.EarlyData != 0 || t.EarlyHeader != "" || len(t.Service) > 256 || strings.ContainsAny(t.Service, "\x00 \t\r\n?#") || len(t.Host) > 253 || strings.ContainsAny(t.Host, "\x00 \t\r\n/@?#") {
+			return nil, bad
+		}
+		if _, _, err := grpcServerPaths(t.Service); err != nil {
+			return nil, bad
+		}
+		return &t, nil
+	}
+	if t.Service != "" {
 		return nil, bad
 	}
 	if t.Path == "" {
@@ -54,6 +77,66 @@ func compileServerTransport(c ServerConfig) (*ServerTransportConfig, error) {
 		return nil, bad
 	}
 	if t.EarlyData < 0 || t.EarlyData > 4096 {
+		return nil, bad
+	}
+	if t.Type == "xhttp" {
+		if t.EarlyData != 0 || t.EarlyHeader != "" {
+			return nil, bad
+		}
+		if t.Mode == "" {
+			t.Mode = "stream-one"
+		}
+		if !contains([]string{"stream-one", "stream-up", "packet-up", "auto"}, t.Mode) {
+			return nil, bad
+		}
+		if t.HTTPVersion == "" {
+			t.HTTPVersion = "auto"
+		}
+		if !contains([]string{"auto", "h1", "h2", "h3"}, t.HTTPVersion) {
+			return nil, bad
+		}
+		if t.Extra != nil {
+			metadata, err := compileXHTTPMetadata(*t.Extra)
+			if err != nil {
+				return nil, bad
+			}
+			t.Extra = &metadata
+		}
+		metadata := t.xhttpMetadata()
+		if metadata.ScStreamUpServerSecs != nil && metadata.ScStreamUpServerSecs.To > 0 && t.Mode != "auto" && t.Mode != "stream-up" {
+			return nil, bad
+		}
+		if metadata.UplinkDataPlacement != "body" && t.Mode != "auto" && t.Mode != "packet-up" {
+			return nil, bad
+		}
+		if metadata.SessionIDPlacement == "path" || metadata.SeqPlacement == "path" {
+			t.Path = strings.TrimSuffix(t.Path, "/") + "/"
+		}
+		if t.Method == "" {
+			t.Method = "POST"
+		}
+		if len(t.Method) > 32 || !httpToken(t.Method) || contains([]string{"CONNECT", "HEAD", "TRACE", "OPTIONS"}, t.Method) ||
+			t.Method == "GET" && metadata.UplinkDataPlacement != "header" && metadata.UplinkDataPlacement != "cookie" {
+			return nil, bad
+		}
+		return &t, nil
+	}
+	if t.Mode != "" {
+		return nil, bad
+	}
+	if t.Type == "http2" {
+		if t.EarlyData != 0 || t.EarlyHeader != "" {
+			return nil, bad
+		}
+		if t.Method == "" {
+			t.Method = "PUT"
+		}
+		if len(t.Method) > 32 || !httpToken(t.Method) || contains([]string{"CONNECT", "GET", "HEAD", "TRACE"}, t.Method) {
+			return nil, bad
+		}
+		return &t, nil
+	}
+	if t.Method != "" {
 		return nil, bad
 	}
 	if t.Type == "httpupgrade" && (t.EarlyData != 0 || t.EarlyHeader != "") {

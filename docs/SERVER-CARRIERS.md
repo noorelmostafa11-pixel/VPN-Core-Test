@@ -82,7 +82,27 @@ first exchange now precedes the unchanged 200,001-byte test and timeout. Initial
 fixture credential and metadata failures are retained separately from passes.
 Combined race/wire results are recorded in the capability register.
 
-gRPC/HTTP2/XHTTP/QUIC/HTTP3/mKCP server carriers, PROXY/trusted forwarding,
+Version 0.5.17 adds gRPC Tun/TunMulti; see [GRPC-SERVER.md](GRPC-SERVER.md).
+Version 0.5.18 adds HTTP2/h2c; see [HTTP2-SERVER.md](HTTP2-SERVER.md).
+Version 0.5.19 adds XHTTP stream-one over HTTP1/HTTP2/h2c;
+see [XHTTP-SERVER.md](XHTTP-SERVER.md).
+Version 0.5.20 adds XHTTP stream-up/packet-up and explicit auto mode with bounded
+session queues, admission and owner lifetime. See [XHTTP-SERVER.md](XHTTP-SERVER.md).
+Version 0.5.21 adds explicitly selected XHTTP HTTP3/TLS 1.3 over UDP with bounded
+request admission, header deadlines and joined parent/control ownership.
+Version 0.5.22 adds independently configured XHTTP session/sequence locations
+and keys in path/query/header/cookie, retaining strict ambiguity rejection.
+Version 0.5.23 adds bounded XHTTP body/header/cookie/auto packet payloads and
+explicit GET header/cookie uploads; decoded backing and encoded scratch share
+the existing listener memory budget. Strict chunk validation and client-side
+pre-I/O header fitting retain the existing HTTP limits.
+Version 0.5.24 adds opt-in XHTTP request-padding validation across four carriers,
+repeat-x/tokenish sizing, bounded response padding carriers and noSSEHeader.
+Unconfigured listeners retain their previous request/response defaults.
+Version 0.5.25 adds bounded owner-joined periodic stream-up response padding,
+safe response-header templates and opt-in allowlisted CORS/preflight handling.
+Disabled features retain previous defaults; CORS does not replace protocol auth.
+Generic QUIC/mKCP server carriers, arbitrary HTTP status/body templates, PROXY/trusted forwarding,
 compression and wider HTTP listener options remain pending. Mobile/C ABI server
 startup remains pending. Final full builds belong to the workflow; local
 payload/race checks do not establish varied public-node Internet or host OS

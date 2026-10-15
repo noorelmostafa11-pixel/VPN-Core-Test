@@ -11,16 +11,21 @@ gobin=os.environ.get('GOBIN') or str(pathlib.Path(subprocess.check_output(['go',
 if a.target.startswith('android'):env['CGO_LDFLAGS']='-Wl,-z,max-page-size=16384'
 call(['python' if os.name=='nt' else 'python3','scripts/Apply-Go-Component-Patches.py']);call(['gomobile','init'],env)
 # gomobile generates a temporary module and requires module mode. Its generated
-# module must still use our exact reviewed TLS/QUIC patches, never upstream code.
+# module must still use our exact reviewed component patches, never upstream code.
 with tempfile.TemporaryDirectory(prefix='vpn-mobile-') as directory:
  stage=pathlib.Path(directory)
  for name in ['core','mobile']:shutil.copytree(ROOT/name,stage/name)
  for name in ['go.mod','go.sum']:shutil.copy2(ROOT/name,stage/name)
- for module in ['github.com/refraction-networking/utls','github.com/quic-go/quic-go','github.com/apernet/hysteria/core/v2','github.com/apernet/hysteria/extras/v2','github.com/apernet/quic-go','golang.zx2c4.com/wireguard']:
+ for module in ['github.com/refraction-networking/utls','github.com/quic-go/quic-go','github.com/apernet/hysteria/core/v2','github.com/apernet/hysteria/extras/v2','github.com/apernet/quic-go','golang.zx2c4.com/wireguard','gvisor.dev/gvisor']:
   info=json.loads(subprocess.check_output(['go','list','-mod=mod','-m','-json',module],cwd=ROOT,text=True))
   destination=stage/'components'/module;shutil.copytree(ROOT/'vendor'/module,destination)
   shutil.copy2(info['GoMod'],destination/'go.mod')
   subprocess.run(['go','mod','edit','-replace='+module+'='+destination.as_posix()],cwd=stage,check=True)
+ # Reject an omitted component before gomobile compiles against upstream code.
+ for item in json.loads((ROOT/'components/patches/manifest.json').read_text()):
+  copied=stage/'components'/item['path'].removeprefix('vendor/')
+  if not copied.is_file() or hashlib.sha256(copied.read_bytes()).hexdigest()!=item['patched_sha256']:
+   raise RuntimeError('Mobile component patch missing or changed: '+item['path'])
  stage_env={**env,'GOFLAGS':'-mod=mod','GOWORK':'off'}
  subprocess.run(['gomobile','bind','-target',a.target,'-androidapi',str(a.android_api),'-ldflags=-s -w','-o',str(a.output.resolve()),'./mobile'],cwd=stage,env=stage_env,check=True)
 provenance={'schema':'vpn-mobile-build-v1','version':(ROOT/'VERSION').read_text().strip(),'source_commit':commit,'source_tree_dirty':dirty,'target':a.target,'android_api':a.android_api,'gomobile':VERSION,'go':subprocess.check_output(['go','version'],text=True).strip(),'component_patch_manifest_sha256':hashlib.sha256((ROOT/'components/patches/manifest.json').read_bytes()).hexdigest()}

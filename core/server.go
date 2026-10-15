@@ -93,8 +93,25 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 	if c.Protocol == "trojan" && s.tls == nil {
 		return s, errors.New("TROJAN_SERVER_TLS_REQUIRED")
 	}
+	if transport != nil && transport.HTTPVersion == "h3" && s.tls == nil {
+		return s, errors.New("XHTTP3_SERVER_TLS_REQUIRED")
+	}
 	if transport != nil && s.tls != nil {
 		s.tls.NextProtos = []string{"http/1.1"}
+		if contains([]string{"grpc", "http2"}, transport.Type) {
+			s.tls.NextProtos = []string{"h2"}
+		}
+		if transport.Type == "xhttp" {
+			s.tls.NextProtos = []string{"h2", "http/1.1"}
+			if transport.HTTPVersion == "h1" {
+				s.tls.NextProtos = []string{"http/1.1"}
+			} else if transport.HTTPVersion == "h2" {
+				s.tls.NextProtos = []string{"h2"}
+			} else if transport.HTTPVersion == "h3" {
+				s.tls.NextProtos = []string{"h3"}
+				s.tls.MinVersion = tls.VersionTLS13
+			}
+		}
 	}
 	if c.Protocol == "vmess" {
 		s.vm, err = newVMServerAuth(c)
@@ -165,6 +182,9 @@ func compileServer(c ServerConfig) (serverSpec, error) {
 		if err != nil {
 			return s, err
 		}
+		if transport != nil && transport.HTTPVersion == "h3" && s.ss.udp {
+			return s, errors.New("XHTTP3_SS_NATIVE_UDP_PORT_CONFLICT")
+		}
 	}
 	return s, nil
 }
@@ -196,6 +216,9 @@ func (e *Engine) StartServer(c ServerConfig) (net.Addr, error) {
 	}
 	if c.Protocol == "tuic" {
 		return e.startTUICServer(s)
+	}
+	if s.transport != nil && s.transport.Type == "xhttp" {
+		return e.startXHTTPServer(s)
 	}
 	var l net.Listener
 	var datagrams *ssUDPServer
@@ -258,6 +281,10 @@ func (e *Engine) StartServer(c ServerConfig) (net.Addr, error) {
 					}
 				}
 				if s.transport != nil {
+					if contains([]string{"grpc", "http2"}, s.transport.Type) {
+						e.serveHTTP2Server(conn, s)
+						return
+					}
 					upgraded, handshakeErr := acceptServerUpgrade(conn, s.transport)
 					if handshakeErr != nil {
 						return
@@ -365,6 +392,9 @@ func serverSSConn(raw net.Conn, c Config) (net.Conn, []byte, error) {
 }
 
 func (e *Engine) serveServer(raw net.Conn, s serverSpec) {
+	e.serveServerContext(e.ctx, raw, s)
+}
+func (e *Engine) serveServerContext(parent context.Context, raw net.Conn, s serverSpec) {
 	client := raw
 	var address []byte
 	var err error
@@ -416,7 +446,7 @@ func (e *Engine) serveServer(raw net.Conn, s serverSpec) {
 	if err != nil {
 		return
 	}
-	ctx := e.flowContext(e.ctx, raw.RemoteAddr(), host)
+	ctx := e.flowContext(parent, raw.RemoteAddr(), host)
 	if udp {
 		if s.config.Protocol == "vless" && writeAll(raw, []byte{0, 0}) != nil {
 			return

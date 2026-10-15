@@ -343,24 +343,25 @@ func (d *dnsRelay) name(ip string) string {
 // StartDNS exposes Windows-compatible local UDP/TCP DNS. Native TUN also
 // intercepts DNS packets directly; both paths use this same HTTPS relay.
 func (e *Engine) StartDNS(address string) (net.Addr, error) {
+	return e.startDNS(address, net.Listen, net.ListenPacket)
+}
+
+func (e *Engine) startDNS(address string, listenTCP func(string, string) (net.Listener, error), listenUDP func(string, string) (net.PacketConn, error)) (net.Addr, error) {
 	if e.dns == nil {
 		return nil, errors.New("NATIVE_DNS_DISABLED")
 	}
-	tcp, err := net.Listen("tcp", address)
+	tcp, udp, err := e.listenTCPUDP(address, listenTCP, listenUDP)
 	if err != nil {
 		return nil, err
 	}
-	udp, err := net.ListenPacket("udp", tcp.Addr().String())
-	if err != nil {
-		tcp.Close()
-		return nil, err
-	}
-	if !e.track(tcp) || !e.track(udp) {
+	rollback := func() {
 		tcp.Close()
 		udp.Close()
-		return nil, net.ErrClosed
+		e.untrack(tcp)
+		e.untrack(udp)
 	}
 	if !e.spawn(func() {
+		defer e.untrack(tcp)
 		defer tcp.Close()
 		for {
 			c, err := tcp.Accept()
@@ -377,16 +378,17 @@ func (e *Engine) StartDNS(address string) (net.Addr, error) {
 			}
 			if !e.spawn(func() { defer e.release(); defer e.untrack(c); defer c.Close(); e.dns.tcp(e.ctx, c) }) {
 				c.Close()
+				e.untrack(c)
 				e.release()
 				return
 			}
 		}
 	}) {
-		tcp.Close()
-		udp.Close()
+		rollback()
 		return nil, net.ErrClosed
 	}
 	if !e.spawn(func() {
+		defer e.untrack(udp)
 		defer udp.Close()
 		b := make([]byte, 4097)
 		for {
@@ -410,8 +412,7 @@ func (e *Engine) StartDNS(address string) (net.Addr, error) {
 			}
 		}
 	}) {
-		tcp.Close()
-		udp.Close()
+		rollback()
 		return nil, net.ErrClosed
 	}
 	return tcp.Addr(), nil

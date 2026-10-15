@@ -65,7 +65,8 @@ Clients are created lazily and reuse at most eight active WireGuard devices
 inside the broader 64-entry protocol cache. Active devices are never evicted
 for a new node. Idle devices retire after 30–45 seconds. Admission failures
 are terminal resource errors and do not consume a roster of alternate nodes.
-Each device uses two workers per crypto stage, 16 staged packets per peer,
+Each device uses two workers per crypto stage and two TCP dispatch workers,
+16 staged packets per peer,
 64-entry data/handshake queues, one-packet portable socket batches, a 64-entry
 virtual link queue and 64 KiB default / 256 KiB maximum TCP socket windows.
 Packet buffers cover the 9000-byte MTU ceiling on Windows, mobile and desktop.
@@ -90,3 +91,28 @@ core server and rejected corrupt MACs, unknown identities and source spoofing.
 It does not import wireguard-go or the project's framing code. These are local
 protocol/ownership results; kernel WireGuard, public nodes and Windows host
 route/DNS behavior require separate Internet/platform acceptance.
+
+## TCP worker correction after 0.5.18
+
+The owner's macOS job at source ce65650 failed the unchanged one-second
+bad-key rejection/cleanup assertion with a context deadline error. The same
+authentication test passed 16 local race repetitions at GOMAXPROCS=128 before
+the correction, so the exact macOS delay is not reproduced locally. A separate
+resource control did expose 128 per-stack TCP dispatcher workers at that setting,
+even though the WireGuard crypto stages already use two workers each.
+
+The netstack factory now explicitly requests two TCP processors through a
+hash-pinned gVisor factory extension. Other TCP factories retain their original
+behavior, and the process runtime is not changed by the core. Setup checks
+cancellation before stack construction and after it, joining a canceled stack
+before returning. The existing authentication/owner-close timing thresholds
+remain unchanged. A new real-stack test requires bounded worker growth and
+joined close through 16 cycles under a 128-processor runtime; it failed against
+the old factory and passed after the correction. All WireGuard race cases passed
+four repetitions under the same runtime setting in 41.025 seconds. Independent
+payload results and post-fix macOS acceptance are recorded separately; this
+resource correction is not a claim that the remote runner has passed.
+
+The synthetic peer fixture also now joins crypto workers before the next test.
+Three independent Noise/encrypted TCP/UDP/auth/source cases passed with the new
+factory in the combined five-case reference run (14.907 seconds).
