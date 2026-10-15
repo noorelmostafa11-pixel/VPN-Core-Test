@@ -52,8 +52,11 @@ def trace_xray(test):
                 output = path.open('w', encoding='utf-8')
                 error = tempfile.TemporaryFile(mode='w+', encoding='utf-8')
                 streams.extend([output, error])
+                extra = stream['xhttpSettings'].get('extra', {})
                 proxy = launch([str(ARGS.trace_proxy), '-target', f'https://127.0.0.1:{server["port"]}',
-                                '-cert', str(test.cert), '-key', str(test.key)], stdout=output, stderr=error)
+                                '-cert', str(test.cert), '-key', str(test.key),
+                                '-session-placement', extra.get('sessionIDPlacement', 'path'),
+                                '-seq-placement', extra.get('seqPlacement', 'path')], stdout=output, stderr=error)
                 processes.append(proxy)
                 deadline = time.monotonic() + 5
                 while True:

@@ -17,6 +17,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -46,21 +47,33 @@ type packetTrace struct {
 	Header  bool   `json:"starts_trojan_header"`
 }
 
-func tracePacket(r *http.Request, body *traceBody) packetTrace {
-	session := r.Header.Get("Meta-Session")
-	if session == "" {
-		session = r.URL.Query().Get("Meta-Session")
+func tracePacket(r *http.Request, body *traceBody, sessionPlacement, seqPlacement string) packetTrace {
+	var parts []string
+	if strings.HasPrefix(r.URL.Path, "/vpn path/") {
+		parts = strings.Split(strings.TrimPrefix(r.URL.Path, "/vpn path/"), "/")
 	}
-	if session == "" {
-		if cookie, err := r.Cookie("Meta-Session"); err == nil {
-			session = cookie.Value
+	metadata := func(placement, key string) string {
+		switch placement {
+		case "path":
+			if len(parts) > 0 {
+				value := parts[0]
+				parts = parts[1:]
+				return value
+			}
+		case "header":
+			return r.Header.Get(key)
+		case "query":
+			return r.URL.Query().Get(key)
+		case "cookie":
+			if cookie, err := r.Cookie(key); err == nil {
+				return cookie.Value
+			}
 		}
+		return ""
 	}
+	session := metadata(sessionPlacement, "Meta-Session")
 	id := sha256.Sum256([]byte(session))
-	seq := r.URL.Query().Get("Meta-Sequence")
-	if seq == "" {
-		seq = r.Header.Get("Meta-Sequence")
-	}
+	seq := metadata(seqPlacement, "Meta-Sequence")
 	key := sha256.Sum224([]byte("synthetic-reference-server-password"))
 	return packetTrace{Session: hex.EncodeToString(id[:]), Seq: seq, Bytes: body.count,
 		SHA256: hex.EncodeToString(body.sum.Sum(nil)), Header: string(body.prefix) == hex.EncodeToString(key[:])}
@@ -71,6 +84,8 @@ func main() {
 	target := flag.String("target", "", "loopback native server URL")
 	cert := flag.String("cert", "", "synthetic test CA/certificate")
 	key := flag.String("key", "", "synthetic test key")
+	sessionPlacement := flag.String("session-placement", "header", "synthetic session carrier")
+	seqPlacement := flag.String("seq-placement", "query", "synthetic sequence carrier")
 	flag.Parse()
 	u, err := url.Parse(*target)
 	if err != nil || u.Scheme != "https" || u.Hostname() != "127.0.0.1" || u.Port() == "" {
@@ -109,7 +124,7 @@ func main() {
 		r.Body = body
 		proxy.ServeHTTP(w, r)
 		output.Lock()
-		json.NewEncoder(os.Stdout).Encode(tracePacket(r, body))
+		json.NewEncoder(os.Stdout).Encode(tracePacket(r, body, *sessionPlacement, *seqPlacement))
 		output.Unlock()
 	})
 	ln, err := net.Listen("tcp", *listen)

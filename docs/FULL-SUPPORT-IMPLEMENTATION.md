@@ -1095,8 +1095,8 @@ will be investigated separately after this batch is published.
 
 ### Owner-supplied Ubuntu failure diagnosis
 
-After publishing the three-feature batch, the owner supplied run 38692058868 /
-job 116280056232 and explicitly authorized a dedicated Ubuntu diagnostic on
+After publishing the three-feature batch, the owner-supplied run 38692058868 /
+job 116280056232 was reviewed. The owner authorized a dedicated Ubuntu diagnostic on
 the feature branch. That run used 0.5.24 source 70de3e1. Ubuntu failed only
 test_xray_metadata_placements_and_keys, Trojan packet-up, header session ID /
 query sequence, HTTP1 (Trojan still uses verified TLS despite the matrix's
@@ -1122,3 +1122,14 @@ four fresh attempts per path (55.913s). Early observer-only SHA-224 selection
 and Windows temporary-log ownership errors were corrected before that pass.
 Remote diagnostic results and the root cause remain pending. Neither a rerun
 nor a passing local suite is evidence that the reported Ubuntu fault is fixed.
+
+The authorized Ubuntu diagnostic 38697103997 at 9980fea succeeded: all three
+methods passed in 39.137s with zero skips, including 128 fresh pressure
+connections split between direct/observed paths and the original matrix.
+Its 128 pressure echo streams contained no synthetic Trojan header. The
+42 hash-only trace files contain 263 packets. The 228 records with complete
+header/query metadata had no repeated sequence/header; 35 path/cookie records
+lacked a complete observer identity and cannot establish replay behavior.
+Observer extraction now follows all five metadata pairs, with a regression
+against merging unrelated path/cookie sessions. Production source is unchanged;
+the original fault has not reproduced and its root cause remains unresolved.
