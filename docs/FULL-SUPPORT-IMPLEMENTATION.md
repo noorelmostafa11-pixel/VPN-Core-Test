@@ -1092,3 +1092,33 @@ Local checks do not establish post-push workflow success, varied public-node
 Internet or live host route/DNS recovery. Full final builds remain delegated
 to workflow without routine waiting or polling. The owner-supplied failed job
 will be investigated separately after this batch is published.
+
+### Owner-supplied Ubuntu failure diagnosis
+
+After publishing the three-feature batch, the owner supplied run 38692058868 /
+job 116280056232 and explicitly authorized a dedicated Ubuntu diagnostic on
+the feature branch. That run used 0.5.24 source 70de3e1. Ubuntu failed only
+test_xray_metadata_placements_and_keys, Trojan packet-up, header session ID /
+query sequence, HTTP1 (Trojan still uses verified TLS despite the matrix's
+tls=False label). Its large echo began with the synthetic Trojan request hash
+instead of the expected payload. This identifies a byte mismatch, not its
+origin. Windows/macOS runtime, portable builds, Android SDK and source-selection
+jobs succeeded in that older run; those results do not validate 0.5.25.
+
+The exact exchange passed 128 local connections in one reference instance
+(11.510s), then 128 connections across 64 fresh instances (43.306s). No runtime
+repair or relaxed equality/retry rule is inferred from these non-reproductions.
+There is no local Linux installation. A separate, bounded Ubuntu workflow now
+builds the current source and official pinned Xray, repeats fresh exchanges
+directly and through an extra verified-TLS HTTP1 observer, and reruns the
+original metadata matrix. The observer records only sequence/session hashes,
+body lengths/hashes and a synthetic-header classification, never credentials,
+raw bodies, profiles or keys. It is test-only and excluded from core/packages.
+The observed path is a diagnostic perturbation, not an identical direct path.
+
+Observer unit/race/vet and Python syntax checks passed; all three diagnostic
+methods, including the unchanged metadata matrix, passed local smoke with
+four fresh attempts per path (55.913s). Early observer-only SHA-224 selection
+and Windows temporary-log ownership errors were corrected before that pass.
+Remote diagnostic results and the root cause remain pending. Neither a rerun
+nor a passing local suite is evidence that the reported Ubuntu fault is fixed.

@@ -1,0 +1,47 @@
+name: XHTTP Packet Diagnostic
+on:
+  push:
+    branches: [feature/go-native-core]
+    paths:
+      - '.github/workflows/xhttp-diagnostic.yml'
+      - 'scripts/Diagnose-XHTTP-Reference.py'
+      - 'tests/xhttp_trace_proxy.go'
+      - 'tests/xhttp_trace_proxy_test.go'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: xhttp-diagnostic-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  diagnostic:
+    name: Synthetic XHTTP diagnosis (Ubuntu)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.27.1', cache: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python -m pip install -r tests/requirements-go.txt
+      - run: python scripts/Get-Xray-Test-Reference.py --github-env
+      - name: Build source and verify diagnostic observer
+        run: |
+          python scripts/Apply-Go-Component-Patches.py
+          go test -race tests/xhttp_trace_proxy.go tests/xhttp_trace_proxy_test.go
+          go build -mod=vendor -o bin/vpn-core ./cmd/vpn-core
+          go build -o bin/xhttp-trace-proxy tests/xhttp_trace_proxy.go
+      - name: Reproduce without changing acceptance checks
+        env:
+          VPN_CORE_TEST_BINARY: ${{ github.workspace }}/bin/vpn-core
+          PYTHONUTF8: '1'
+        run: python scripts/Diagnose-XHTTP-Reference.py --attempts 32 --trace-proxy bin/xhttp-trace-proxy --output diagnostic-output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xhttp-diagnostic-${{ github.run_id }}
+          path: diagnostic-output/
+          retention-days: 3
+          if-no-files-found: warn
