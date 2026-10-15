@@ -92,6 +92,18 @@ class XHTTPServerReferenceTests(unittest.TestCase):
                 with self.subTest(placement=placement, method=method, http3=http3):
                     self.four_protocol_matrix('packet-up', http3=http3, extra=extra, cycles=2, method=method)
 
+    def test_xray_padding_placements_methods_and_modes(self):
+        for i, placement in enumerate(['query', 'header', 'cookie', 'queryInHeader']):
+            for j, method in enumerate(['repeat-x', 'tokenish']):
+                mode = ['stream-one', 'stream-up', 'packet-up'][(i + j) % 3]
+                extra = {'xPaddingObfsMode': True, 'xPaddingPlacement': placement,
+                         'xPaddingMethod': method, 'xPaddingBytes': '64-96',
+                         'xPaddingKey': 'pad_key', 'xPaddingHeader': 'Pad-Header',
+                         'noSSEHeader': j == 1}
+                for http3 in [False, True]:
+                    with self.subTest(placement=placement, method=method, mode=mode, http3=http3):
+                        self.four_protocol_matrix(mode, http3=http3, extra=extra, cycles=2)
+
     def test_xray_stream_one_hybrid_vision_inner_tls_xudp(self):
         private = x25519.X25519PrivateKey.generate()
         secret = base64.urlsafe_b64encode(private.private_bytes_raw()).decode().rstrip('=')

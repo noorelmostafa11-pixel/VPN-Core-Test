@@ -118,10 +118,10 @@ func TestXHTTPServerMetadataConfigurationAndIsolation(t *testing.T) {
 	if _, err := compileServerTransport(ServerConfig{Protocol: "vless", Transport: &ServerTransportConfig{Type: "http2", Extra: &XHTTPServerOptions{}}}); err == nil {
 		t.Fatal("XHTTP metadata accepted on another carrier")
 	}
-	for _, extra := range []string{`{"sessionIDPlacement":"header","seqPlacement":"query"}`, `{"xPaddingBytes":100}`} {
+	for _, extra := range []string{`{"sessionIDPlacement":"header","seqPlacement":"query"}`, `{"responseHeaders":{"X-Test":"unsupported"}}`} {
 		profile := `{"outbounds":[{"tag":"direct","uri":"direct://"}],"final":"direct","inbounds":[{"protocol":"vless","listen":"127.0.0.1:0","uuids":["` + visionServerTestUUID + `"],"transport":{"type":"xhttp","extra":` + extra + `}}]}`
 		_, err := ReadRouterConfig(strings.NewReader(profile))
-		if strings.Contains(extra, "xPaddingBytes") == (err == nil) {
+		if strings.Contains(extra, "responseHeaders") == (err == nil) {
 			t.Fatal("strict profile metadata decoding boundary", extra, err)
 		}
 	}

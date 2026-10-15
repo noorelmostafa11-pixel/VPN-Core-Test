@@ -96,7 +96,10 @@ Version 0.5.23 adds bounded XHTTP body/header/cookie/auto packet payloads and
 explicit GET header/cookie uploads; decoded backing and encoded scratch share
 the existing listener memory budget. Strict chunk validation and client-side
 pre-I/O header fitting retain the existing HTTP limits.
-XHTTP padding/response/CORS options, generic QUIC/mKCP server carriers, PROXY/trusted forwarding,
+Version 0.5.24 adds opt-in XHTTP request-padding validation across four carriers,
+repeat-x/tokenish sizing, bounded response padding carriers and noSSEHeader.
+Unconfigured listeners retain their previous request/response defaults.
+XHTTP periodic padding/arbitrary response templates/CORS, generic QUIC/mKCP server carriers, PROXY/trusted forwarding,
 compression and wider HTTP listener options remain pending. Mobile/C ABI server
 startup remains pending. Final full builds belong to the workflow; local
 payload/race checks do not establish varied public-node Internet or host OS

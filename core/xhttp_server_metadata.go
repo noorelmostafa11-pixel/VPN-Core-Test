@@ -11,12 +11,20 @@ import (
 // XHTTPServerOptions exposes only the server options implemented here.
 // Unknown fields are rejected by the routing profile's strict JSON decoder.
 type XHTTPServerOptions struct {
-	SessionIDPlacement  string `json:"sessionIDPlacement,omitempty"`
-	SessionIDKey        string `json:"sessionIDKey,omitempty"`
-	SeqPlacement        string `json:"seqPlacement,omitempty"`
-	SeqKey              string `json:"seqKey,omitempty"`
-	UplinkDataPlacement string `json:"uplinkDataPlacement,omitempty"`
-	UplinkDataKey       string `json:"uplinkDataKey,omitempty"`
+	SessionIDPlacement  string             `json:"sessionIDPlacement,omitempty"`
+	SessionIDKey        string             `json:"sessionIDKey,omitempty"`
+	SeqPlacement        string             `json:"seqPlacement,omitempty"`
+	SeqKey              string             `json:"seqKey,omitempty"`
+	UplinkDataPlacement string             `json:"uplinkDataPlacement,omitempty"`
+	UplinkDataKey       string             `json:"uplinkDataKey,omitempty"`
+	XPaddingBytes       *XHTTPPaddingRange `json:"xPaddingBytes,omitempty"`
+	XPaddingObfsMode    bool               `json:"xPaddingObfsMode,omitempty"`
+	XPaddingKey         string             `json:"xPaddingKey,omitempty"`
+	XPaddingHeader      string             `json:"xPaddingHeader,omitempty"`
+	XPaddingPlacement   string             `json:"xPaddingPlacement,omitempty"`
+	XPaddingMethod      string             `json:"xPaddingMethod,omitempty"`
+	NoSSEHeader         bool               `json:"noSSEHeader,omitempty"`
+	paddingRequired     bool
 }
 
 func compileXHTTPMetadata(x XHTTPServerOptions) (XHTTPServerOptions, error) {
@@ -97,14 +105,14 @@ func compileXHTTPMetadata(x XHTTPServerOptions) (XHTTPServerOptions, error) {
 			}
 		}
 	}
-	return x, nil
+	return compileXHTTPPadding(x)
 }
 
 func (t *ServerTransportConfig) xhttpMetadata() XHTTPServerOptions {
 	if t.Extra != nil {
 		return *t.Extra
 	}
-	return XHTTPServerOptions{SessionIDPlacement: "path", SeqPlacement: "path", UplinkDataPlacement: "body", UplinkDataKey: "x_data"}
+	return XHTTPServerOptions{SessionIDPlacement: "path", SeqPlacement: "path", UplinkDataPlacement: "body", UplinkDataKey: "x_data", XPaddingKey: "x_padding", XPaddingHeader: "X-Padding", XPaddingPlacement: "queryInHeader", XPaddingMethod: "repeat-x"}
 }
 
 // A configured carrier is authoritative. Repeated/empty metadata and alternate
@@ -134,14 +142,17 @@ func xServerMetadata(r *http.Request, query url.Values, cookies []*http.Cookie, 
 }
 
 func xServerRequest(r *http.Request, t *ServerTransportConfig) (kind, id string, seq uint64, ok bool) {
-	if !serverHostMatches(r.Host, t.Host) || len(r.Header.Values("Content-Encoding")) > 1 || r.Header.Get("Content-Encoding") != "" && r.Header.Get("Content-Encoding") != "identity" {
-		return
-	}
 	query, err := url.ParseQuery(r.URL.RawQuery)
 	if err != nil {
 		return
 	}
-	cookies := r.Cookies()
+	return xServerClassifyRequest(r, t, query, r.Cookies())
+}
+
+func xServerClassifyRequest(r *http.Request, t *ServerTransportConfig, query url.Values, cookies []*http.Cookie) (kind, id string, seq uint64, ok bool) {
+	if !serverHostMatches(r.Host, t.Host) || len(r.Header.Values("Content-Encoding")) > 1 || r.Header.Get("Content-Encoding") != "" && r.Header.Get("Content-Encoding") != "identity" {
+		return
+	}
 	x := t.xhttpMetadata()
 	allowed := func(placement, key string) bool {
 		match := func(p, k string) bool {
@@ -211,6 +222,7 @@ func xServerRequest(r *http.Request, t *ServerTransportConfig) (kind, id string,
 			return "", "", 0, false
 		}
 	}
+	var err error
 	seq, err = strconv.ParseUint(sequence, 10, 64)
 	return "packet", id, seq, err == nil && seq != ^uint64(0)
 }

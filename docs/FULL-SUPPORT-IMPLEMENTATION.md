@@ -35,7 +35,7 @@ states its boundary. "Pending" must not be advertised as supported.
 | SSH, Naive, Tor | SSH TCP client and forwarding server added: password/public keys/host identity, protected sockets, shared channel budget, bounded setup/close and independent Paramiko 5.0.0 payload/auth tests. Server supports one username/listener; reverse forwarding remains pending. Naive and Tor remain pending; see SSH.md |
 | Snell, Tailcat | Pending: establish exact reference version and protocol scope before implementation |
 | Raw TCP, UDP, WS/early data, HTTP Upgrade, gRPC/multi, HTTP2/h2c | Baseline client carriers retained. WS/early-data, HTTP Upgrade, gRPC Tun/TunMulti and HTTP2/h2c server carriers added for VLESS/VMess/Trojan/Shadowsocks TCP; encrypted Vision retains parent carrier layers. All three XHTTP modes are added; further server carriers remain pending; see SERVER-CARRIERS.md, GRPC-SERVER.md and HTTP2-SERVER.md |
-| XHTTP modes, metadata, padding and download settings | Baseline clients retained. All three server modes add native HTTP1/HTTP2/h2c and explicit HTTP3/TLS 1.3, protected streaming and encrypted Vision. Split sessions add bounded reordering, backing-allocation budgets and cancellation/expiry; header admission and joined control ownership also cover HTTP3. Session/sequence metadata supports path/query/header/cookie and custom keys with ambiguity rejection. Packet data supports body/header/cookie/auto with strict chunks and shared scratch/backing budgets, including explicit GET header/cookie uploads. Server padding/response/CORS options remain next; see XHTTP-SERVER.md |
+| XHTTP modes, metadata, padding and download settings | Baseline clients retained. All three server modes add native HTTP1/HTTP2/h2c and explicit HTTP3/TLS 1.3, protected streaming and encrypted Vision. Split sessions add bounded reordering, backing-allocation budgets and cancellation/expiry; header admission and joined control ownership also cover HTTP3. Session/sequence metadata supports path/query/header/cookie and custom keys with ambiguity rejection. Packet data supports body/header/cookie/auto with strict chunks and shared scratch/backing budgets, including explicit GET header/cookie uploads. Opt-in request padding validates four carriers and repeat-x/tokenish sizes; bounded response padding and noSSEHeader are added. Periodic padding, arbitrary response templates and CORS remain next; see XHTTP-SERVER.md |
 | HTTP3, QUIC, mKCP, HTTP disguise, simple-obfs, v2ray-plugin | Baseline carriers, distinct from Hysteria/TUIC protocols |
 | TLS1.2/1.3, uTLS, ECH, REALITY, legacy XTLS, FinalMask | Baseline implemented scope; certificate verification remains enforced |
 | General multiplexing and XUDP/UoT | Partial: VMess/VLESS MUX server framing, concurrent TCP and XUDP destination/Full Cone UDP added with bounded lifetime and independent Xray payload tests. General outbound MUX, cross-parent XUDP migration, smux and additional UOT paths remain pending; see MUX-SERVER.md |
@@ -957,3 +957,64 @@ stream-up response padding, browser CORS and the complete remaining gap
 register stay open. Final platform/package builds remain delegated to workflow,
 without routine waiting or polling. No post-push workflow, varied public-node
 Internet or live host route/DNS recovery result is inferred from local checks.
+
+## 0.5.24 extension
+
+XHTTP adds opt-in request-padding validation in query, header, cookie and
+query-in-header carriers, independently of all three protocol transport modes.
+The six xPadding options match the existing client's names. Repeat-x measures
+raw bytes; tokenish measures HPACK Huffman bytes with a two-byte tolerance.
+Explicit server ranges stay within 1–4,096 target bytes to retain the existing
+8 KiB complete-header limit, including tokenish expansion. Generated response
+padding uses the configured header, URL-in-header or cookie; query placement
+adds no unused response value. noSSEHeader suppresses only the explicit SSE
+Content-Type, retaining identity/no-store/no-buffering behavior.
+
+Padding is enforced only when explicitly configured. Unconfigured listeners
+preserve their existing request behavior, metadata namespaces and exact
+100-byte X-Padding response. Merely setting noSSEHeader does not require
+padding. Compiled ranges copy caller state, and serializing/reloading disabled
+options must not turn policy on. Query/cookie metadata is parsed once per
+request and shared with padding checks. Invalid padding fails before creating
+a split session or forwarding protocol bytes. Duplicate/cross-carrier values,
+malformed URL/query data, raw CR/LF/NUL and out-of-range values are rejected;
+raw cookie counts also detect malformed copies silently discarded by standard
+cookie parsing. Configuration checks reject framing and metadata/payload
+namespace collisions, including the effective legacy Referer/x_padding names.
+No worker, listener, idle pool or maintenance timer is added.
+
+Native tests cover 72 h1/h2/h3, placement, sizing-method and mode combinations,
+with four protocols distributed across the matrix, repeated 100,019-byte TCP
+and supported UDP-over-stream. Separate controls cover required/missing and
+legacy padding, malformed/duplicate/alternate carriers, range JSON roundtrips,
+immutable configuration, disabled-policy serialization, bounded response
+headers/SSE behavior and 32 failures before any session allocation/admission
+retention. The initial native group passed (5.000s); two targeted race
+repetitions passed (14.448s). The final compatibility review added explicit
+disabled-policy roundtrip and discarded-cookie controls, which passed their
+ordinary targeted group (3.060s). Official Xray 26.7.28 passed four protocols
+over cleartext/verified HTTP1/HTTP2 and HTTP3, all placements and both sizing
+methods with modes distributed across that independent matrix (68.348s).
+
+Final full core/mobile/CLI race checks passed on the reviewed source (151.962s),
+including the added roundtrip and discarded-cookie controls. Vet and Python
+syntax checks passed. The rebuilt source CLI reports 0.5.24-go. The earlier
+full race pass (152.807s) preceded those last compatibility controls and is not
+used as the final-source result.
+
+Complete independent wire regression passed: 204 tests run, 202 passed and
+the same two optional external-Trojan cases skipped (455.540s), including the
+new padding matrix and all previous XHTTP client/server suites. The independent
+HTTP3 peer race guard passed (1.670s). No final local platform/package build or
+post-push workflow success is inferred.
+
+Guarded mobile staging verified all 29 patch hashes in seven modules, compiled
+current core/mobile in module mode and passed padding configuration, legacy/
+malformed validation, response bounds and pre-session rejection tests (3.573s).
+This is host module staging, not an Android AAR or Apple framework build.
+
+Periodic stream-up response padding, arbitrary response/header templates,
+browser CORS and the remaining complete gap register stay open. These local
+results do not establish public-node Internet, live host route/DNS recovery or
+final platform/mobile package acceptance. Full final builds remain delegated
+to workflow without routine waiting or polling.

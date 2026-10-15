@@ -1,6 +1,6 @@
 # Native XHTTP stream-one/stream-up/packet-up server carrier
 
-Version 0.5.23-go supports XHTTP `stream-one`, `stream-up`, `packet-up` and
+Version 0.5.24-go supports XHTTP `stream-one`, `stream-up`, `packet-up` and
 explicit `auto` on VLESS, VMess, Trojan and Shadowsocks TCP listeners.
 Native Go HTTP handles HTTP/1.1, HTTP/2 and cleartext prior-knowledge HTTP/2;
 explicit `http_version: "h3"` selects a TLS 1.3 QUIC/HTTP3 UDP listener.
@@ -32,7 +32,7 @@ state only on first use and release it with their download/setup lifetime.
 
 The project client uses `type=xhttp&mode=packet-up` (or another allowed mode)
 with the same path/host. Omitted server mode preserves the `stream-one` default.
-Advanced padding/response options remain separate work; three-mode
+Periodic padding, arbitrary response templates and CORS remain separate work; three-mode
 wire compatibility does not imply all reference listener options.
 
 `http_version` defaults to `auto`, advertising `h2` and `http/1.1` with TLS and
@@ -67,9 +67,9 @@ server's `transport.extra` or the client's XHTTP extra):
 }
 ```
 
-These four fields and `uplinkDataPlacement`/`uplinkDataKey` are currently
-accepted in server `extra`; the strict profile decoder rejects unimplemented
-options. Metadata keys default to `X-Session` and
+These four fields, `uplinkDataPlacement`/`uplinkDataKey`, the six `xPadding*`
+fields below and `noSSEHeader` are currently accepted in server `extra`; the
+strict profile decoder rejects unimplemented options. Metadata keys default to `X-Session` and
 `X-Seq` for headers, or `x_session` and `x_seq` for query/cookie. Path locations
 take no key. Header names compare without case; query/cookie keys retain case.
 Names are HTTP tokens of at most 128 bytes; framing/encoding/cookie header keys,
@@ -136,6 +136,51 @@ without allocating a packet queue. Its finite-body EOF half-closes upload
 while preserving final download response drain. Upload controllers are used
 only while their native HTTP handler is running.
 
+Version 0.5.24 adds explicit request-padding policy and bounded response padding:
+
+```json
+{
+  "xPaddingBytes": "64-96",
+  "xPaddingObfsMode": true,
+  "xPaddingPlacement": "header",
+  "xPaddingHeader": "Pad-Header",
+  "xPaddingKey": "pad_key",
+  "xPaddingMethod": "tokenish",
+  "noSSEHeader": true
+}
+```
+
+Setting `xPaddingBytes`, enabling `xPaddingObfsMode`, or providing a nonempty
+padding key/header/placement/method enables required request validation.
+`noSSEHeader` alone does not. With no padding options, existing request behavior and the
+100-byte `X-Padding` response are retained, including previously configured
+metadata names. `xPaddingBytes` accepts a number or inclusive `"min-max"` range;
+Go callers use `XHTTPPaddingRange{From: 64, To: 96}`. Explicit server targets
+are 1–4,096 bytes, leaving room inside the existing 8 KiB header budget for
+tokenish expansion, keys and fixed response fields. The default target range
+when padding is enabled is 100–1,000. Compiled range values copy caller state.
+
+`repeat-x` validates raw byte length; it does not require every byte to be X.
+`tokenish` validates HPACK Huffman byte length with the reference's two-byte
+tolerance, not the raw string length. Validation is bounded to 8 KiB of raw
+padding. Empty, repeated, conflicting-carrier, out-of-range, malformed URL/query
+and CR/LF/NUL values fail with 400 before allocating a split session or
+forwarding protocol bytes. Padding/header keys are bounded HTTP tokens; framing
+header names and metadata/payload namespace collisions fail during setup.
+
+With `xPaddingObfsMode: true`, requests must use the selected placement:
+`header` reads `xPaddingHeader`; `query` and `cookie` read `xPaddingKey`;
+`queryInHeader` reads that key from the URL in `xPaddingHeader`. Defaults are
+`queryInHeader`, `X-Padding`, `x_padding` and `repeat-x`. Responses use the same
+header, URL-query-in-header or cookie carrier (cookies have Path=/). Query mode
+adds no response padding because a response has no URL query. With obfuscation
+off, requests retain legacy `Referer` URL/`x_padding` handling, falling back to
+the direct query only when Referer is absent; responses use repeat-X `X-Padding`.
+Configured placement/key overrides require obfuscation mode to take effect.
+The selected placement is authoritative rather than silently falling back to
+another carrier. Generation/validation runs in existing request handlers; no
+padding worker, pool, maintenance timer or listener is added.
+
 HTTP/1.1 explicitly enables full duplex before flushing acceptance. The raw
 request body carries protocol bytes, even if the client uses an
 `application/grpc` camouflage header; it is not gRPC protobuf framing.
@@ -144,9 +189,10 @@ no-store, identity encoding, SSE/no-buffering headers and bounded compatibility
 padding. Compression is not enabled. Headers are bounded to 8 KiB, HTTP/2 frames
 to 16 KiB, HPACK tables to 4 KiB, and receive windows to 1 MiB per parent/64 KiB
 per stream. Header/setup deadlines and active owner/idle cancellation remain
-bounded. Advanced request-padding validation, response/header templates,
-periodic stream-up response padding and browser CORS
-remain pending.
+bounded. `noSSEHeader: true` suppresses the explicit SSE Content-Type only;
+identity encoding, no-store and no-buffering invariants remain. Arbitrary
+response/header templates, periodic stream-up response padding and browser CORS
+remain pending; OPTIONS is not a new unauthenticated forwarding path.
 
 Normal request-body EOF retains response drain and parent reuse. Closing an
 incomplete body interrupts its read deadline; a body that already reached EOF
@@ -204,4 +250,5 @@ separate.
 
 Primary sources:
 [pinned XHTTP listener](https://github.com/XTLS/Xray-core/blob/v26.7.28/transport/internet/splithttp/hub.go),
-[pinned XHTTP configuration](https://github.com/XTLS/Xray-core/blob/v26.7.28/transport/internet/splithttp/config.go).
+[pinned XHTTP configuration](https://github.com/XTLS/Xray-core/blob/v26.7.28/transport/internet/splithttp/config.go),
+[pinned padding semantics](https://github.com/XTLS/Xray-core/blob/v26.7.28/transport/internet/splithttp/xpadding.go).

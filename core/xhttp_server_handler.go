@@ -5,16 +5,18 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"strings"
+	"net/url"
 	"time"
 )
 
-func xServerHeaders(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "text/event-stream")
+func xServerHeaders(w http.ResponseWriter, x XHTTPServerOptions) {
+	if !x.NoSSEHeader {
+		w.Header().Set("Content-Type", "text/event-stream")
+	}
 	w.Header().Set("Content-Encoding", "identity")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Accel-Buffering", "no")
-	w.Header().Set("X-Padding", strings.Repeat("X", 100))
+	xServerResponsePadding(w, x)
 }
 
 func (e *Engine) serveXHTTP(w http.ResponseWriter, r *http.Request, spec serverSpec, sessions *xServerSessions) {
@@ -22,7 +24,13 @@ func (e *Engine) serveXHTTP(w http.ResponseWriter, r *http.Request, spec serverS
 		return
 	}
 	defer e.workers.Done()
-	kind, id, seq, valid := xServerRequest(r, spec.transport)
+	query, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	cookies := r.Cookies()
+	kind, id, seq, valid := xServerClassifyRequest(r, spec.transport, query, cookies)
 	if !valid {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -40,7 +48,6 @@ func (e *Engine) serveXHTTP(w http.ResponseWriter, r *http.Request, spec serverS
 		return
 	}
 	var remote net.Addr
-	var err error
 	if r.ProtoMajor == 3 {
 		remote, err = net.ResolveUDPAddr("udp", r.RemoteAddr)
 	} else {
@@ -59,7 +66,12 @@ func (e *Engine) serveXHTTP(w http.ResponseWriter, r *http.Request, spec serverS
 	if c.SetDeadline(time.Now().Add(e.config.ConnectTimeout)) != nil {
 		return
 	}
-	xServerHeaders(w)
+	x := spec.transport.xhttpMetadata()
+	xServerHeaders(w, x)
+	if !xServerValidPadding(r, query, cookies, x) {
+		xServerStatus(c, http.StatusBadRequest)
+		return
+	}
 	if kind == "down" && r.ProtoMajor == 3 {
 		// HTTP3 represents an absent Content-Length as -1, including GETs.
 		// Validate their actual FIN before allocating a split session.
