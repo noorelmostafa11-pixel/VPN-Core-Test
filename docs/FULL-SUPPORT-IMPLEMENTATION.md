@@ -1133,3 +1133,28 @@ lacked a complete observer identity and cannot establish replay behavior.
 Observer extraction now follows all five metadata pairs, with a regression
 against merging unrelated path/cookie sessions. Production source is unchanged;
 the original fault has not reproduced and its root cause remains unresolved.
+
+The next Ubuntu diagnostic, 38697803695 at 47cc8df, passed both pressure paths
+but failed the unchanged metadata matrix at VMess/TLS/HTTP1 cookie metadata,
+before SOCKS negotiation completed (44.590s; one error). This is not the
+original Trojan payload mismatch. Its logs establish a separate fixture bug:
+the native server and Xray SOCKS listener were both assigned 34299; Xray
+reported address already in use, while the readiness probe connected to the
+native TLS endpoint. Two independent released free-port choices can alias.
+
+Injecting that same alias against the old fixture reproduced the identical
+SOCKS timeout and Xray bind failure locally. The fixture now reserves distinct
+TCP/UDP server and TCP SOCKS endpoints simultaneously, holding each socket
+until its own process launches. Reservations close on errors and the UDP/TCP
+number-distinction search is bounded to eight attempts. No application payload
+retry, deadline increase, mismatch suppression or production change is added.
+Three new live-kernel/integration controls cover exclusivity, staged ownership,
+exception cleanup and a forced released-selector alias with real verified
+Xray/VMess large payload. They passed locally (0.829s); the controlled alias
+also passed after correction. The full 206-case wire result above predates
+this fixture-only change; do not relabel it as a final 209-case run.
+After the reservation correction, both local pressure paths and the original
+metadata matrix passed again (three methods, 56.622s). The dedicated Ubuntu
+workflow also runs the three reservation regressions before that diagnostic.
+The original Trojan mismatch remains unconfirmed and must not be described
+as repaired merely because the separate port-alias bug was reproduced/fixed.

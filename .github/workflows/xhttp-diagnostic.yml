@@ -7,6 +7,8 @@ on:
       - 'scripts/Diagnose-XHTTP-Reference.py'
       - 'tests/xhttp_trace_proxy.go'
       - 'tests/xhttp_trace_proxy_test.go'
+      - 'tests/test_server_reference.py'
+      - 'tests/test_reference_ports.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -37,7 +39,9 @@ jobs:
         env:
           VPN_CORE_TEST_BINARY: ${{ github.workspace }}/bin/vpn-core
           PYTHONUTF8: '1'
-        run: python scripts/Diagnose-XHTTP-Reference.py --attempts 32 --trace-proxy bin/xhttp-trace-proxy --output diagnostic-output
+        run: |
+          python -m unittest discover -s tests -p test_reference_ports.py -v
+          python scripts/Diagnose-XHTTP-Reference.py --attempts 32 --trace-proxy bin/xhttp-trace-proxy --output diagnostic-output
       - uses: actions/upload-artifact@v4
         if: always()
         with:
