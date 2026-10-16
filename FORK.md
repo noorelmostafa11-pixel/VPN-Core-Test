@@ -19,15 +19,21 @@ unchanged to keep upstream imports and future merges compatible.
 
 ## Checkpoint
 
-This first checkpoint publishes the pinned upstream foundation. Compatibility
-additions are still under local verification and are not yet included here.
-It is not a claim of complete feature parity, Internet acceptance or stability
-on all platforms. Xray's CLI is not yet a drop-in replacement for the native
-core's application/SDK interfaces.
+The first compatibility addition is explicit Shadowsocks `aes-192-gcm`, including
+client, server and multi-user server configuration, TCP and UDP. The existing
+four classic AEAD methods remain supported. See [verification](fork/VERIFICATION.md)
+for local checks, prerequisites, failures and acceptance boundaries.
+
+This is not complete feature parity, Internet acceptance or stability on all
+platforms. Xray's CLI is not yet a drop-in replacement for the native core's
+application/SDK interfaces. See the [comparison backlog](fork/COMPARISON.md).
 
 Existing upstream workflows are preserved under `.github/upstream-workflows/`,
 outside the active Actions directory. No automatic CI, release, scheduled job
-or monitoring is enabled by this checkpoint.
+or monitoring is enabled by this checkpoint. The custom Go-only policy is also
+recorded in [AGENTS.md](AGENTS.md). GitHub's repository language bar is calculated
+from the default branch; keeping main unchanged does not update that bar to this
+branch's file composition.
 
 ## Build
 

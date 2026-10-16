@@ -23,6 +23,8 @@ enum CipherType {
   AES_256_GCM = 6;
   CHACHA20_POLY1305 = 7;
   XCHACHA20_POLY1305 = 8;
+  // Custom-fork addition. Existing upstream enum numbers are unchanged.
+  AES_192_GCM = 9;
 }
 
 message ServerConfig {
