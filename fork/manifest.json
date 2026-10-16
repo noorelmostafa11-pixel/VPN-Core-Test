@@ -15,6 +15,14 @@
   "implementation_language": "Go",
   "new_executable_tool_language": "Go",
   "automatic_ci_enabled": false,
+  "manual_compatibility_workflow": {
+    "path": ".github/workflows/core-validation.yml",
+    "registered_name": "Build & Test",
+    "trigger": "workflow_dispatch only; owner dispatches",
+    "systems": ["windows-2025", "ubuntu-24.04", "macos-15"],
+    "scope": "All repository Go tests with race detection, whole-tree vet, both-role classic Shadowsocks fork/main wire comparisons",
+    "packages_releases_mobile_jobs": false
+  },
   "checkpoint": "classic-shadowsocks-method-list-complete",
   "verified_custom_additions": [
     "Shadowsocks AES-192-GCM: explicit client/server/multi-user configuration, TCP and UDP",

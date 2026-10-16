@@ -26,6 +26,8 @@ var (
 	mainBinary = flag.String("main-binary", "", "Explicit path to the comparison main CLI")
 	mainCommit = flag.String("main-commit", "", "Comparison main source commit")
 	outputDir  = flag.String("evidence", "", "Optional output directory outside the source checkout")
+	forkSource = flag.String("fork-source", "", "Optional fork checkout for temporary test peers only")
+	mainSource = flag.String("main-source", "", "Optional pinned main checkout for temporary test peers only")
 )
 
 const password = "synthetic-fork-wire-password"
@@ -42,15 +44,25 @@ type counts struct {
 }
 
 func TestMainInteroperability(t *testing.T) {
-	if *forkBinary == "" && *mainBinary == "" {
+	if *forkBinary == "" && *mainBinary == "" && *forkSource == "" && *mainSource == "" {
 		t.Skip("requires independently built CLIs; see fork/wire/README.md")
 	}
-	if *forkBinary == "" || *mainBinary == "" || len(*mainCommit) != 40 {
-		t.Fatal("both binary paths and the full main commit are required")
+	if !validCommit(*mainCommit) {
+		t.Fatal("the full lowercase comparison main commit is required")
+	}
+	binaries := []string{*forkBinary, *mainBinary}
+	if *forkSource != "" || *mainSource != "" {
+		if *forkSource == "" || *mainSource == "" || *forkBinary != "" || *mainBinary != "" {
+			t.Fatal("supply either both source checkouts or both binaries, never a partial or mixed pair")
+		}
+		binaries = sourcePeers(t, *forkSource, *mainSource, *mainCommit)
+	}
+	if binaries[0] == "" || binaries[1] == "" {
+		t.Fatal("both binary paths are required")
 	}
 	paths := make([]string, 2)
 	fingerprints := make([]object, 2)
-	for i, name := range []string{*forkBinary, *mainBinary} {
+	for i, name := range binaries {
 		path, err := filepath.Abs(name)
 		if err != nil {
 			t.Fatal(err)
@@ -108,6 +120,10 @@ func TestMainInteroperability(t *testing.T) {
 				exchange(t, paths, server, method, filepath.Join(folder, role+method), &completed)
 			})
 		}
+	}
+	want := counts{CompletedPairs: 2 * len(methods), TCPEchoes: 4 * len(methods), UDPEchoes: 18 * len(methods), Greetings: 4 * len(methods)}
+	if completed != want {
+		t.Errorf("incomplete wire coverage: completed %+v, expected %+v", completed, want)
 	}
 }
 

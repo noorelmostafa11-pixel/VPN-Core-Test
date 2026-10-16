@@ -19,5 +19,9 @@
 - Do not drop supported protocols to make the binary smaller. Measure size and
   performance claims against equivalent builds.
 - Inherited workflows are intentionally inactive in `.github/upstream-workflows`.
+  The owner-authorized manual-only compatibility workflow is
+  `.github/workflows/core-validation.yml`, reusing the existing registered path
+  without changing main. It runs tests/reports only, with no packaging, mobile,
+  release, push or scheduled jobs. The owner will dispatch it personally.
   Do not enable CI, dispatch runs, publish releases, monitor runs or open a PR
   without a user request covering that action.

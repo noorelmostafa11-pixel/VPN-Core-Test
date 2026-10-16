@@ -1,5 +1,17 @@
 # Go-only fork/main wire check
 
+For the owner-run GitHub compatibility check, follow
+[COMPATIBILITY-CHECK.md](../COMPATIBILITY-CHECK.md). No distributable program
+packages are produced. The manual job supplies absolute `-fork-source` and
+`-main-source` paths plus `-main-commit`; test peers are temporary fixtures
+inside `testing.T.TempDir`, never uploaded, and removed after the test. The main
+checkout must match the exact commit and contain its pinned vendor tree.
+Only logs, JSON and Markdown test evidence are retained.
+
+The existing explicit-binary mode below remains available for developers.
+Source and binary input modes cannot be mixed. Incomplete wire counters make
+the test fail, including a filtered run; they are not reported as full coverage.
+
 Build the fork CLI from this checkout and the comparison CLI from the exact
 main commit in `../manifest.json`, separately. Then, from the fork root:
 

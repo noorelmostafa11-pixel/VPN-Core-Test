@@ -49,8 +49,12 @@ platforms. Xray's CLI is not yet a drop-in replacement for the native core's
 application/SDK interfaces. See the [comparison backlog](fork/COMPARISON.md).
 
 Existing upstream workflows are preserved under `.github/upstream-workflows/`,
-outside the active Actions directory. No automatic CI, release, scheduled job
-or monitoring is enabled by this checkpoint. The custom Go-only policy is also
+outside the active Actions directory. A separate manually requested
+[compatibility-only workflow](fork/COMPATIBILITY-CHECK.md) is available through
+the existing **Build & Test** page: select `feature/xray-custom-core` before Run
+workflow. It runs the repository tests and fork/main comparisons on three OSes;
+there are no package, mobile, release, push, scheduled or monitoring jobs.
+The custom Go-only policy is also
 recorded in [AGENTS.md](AGENTS.md). GitHub's repository language bar is calculated
 from the default branch; keeping main unchanged does not update that bar to this
 branch's file composition.
