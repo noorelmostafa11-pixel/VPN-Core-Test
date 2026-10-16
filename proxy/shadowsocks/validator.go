@@ -30,7 +30,7 @@ func (v *Validator) Add(u *protocol.MemoryUser) error {
 	defer v.Unlock()
 
 	account := u.Account.(*MemoryAccount)
-	if !account.Cipher.IsAEAD() && len(v.users) > 0 {
+	if len(v.users) > 0 && (!account.Cipher.IsAEAD() || !v.users[0].Account.(*MemoryAccount).Cipher.IsAEAD()) {
 		return errors.New("The cipher is not support Single-port Multi-user")
 	}
 	v.users = append(v.users, u)
@@ -115,18 +115,23 @@ func (v *Validator) Get(bs []byte, command protocol.RequestCommand) (u *protocol
 
 	for _, user := range v.users {
 		if account := user.Account.(*MemoryAccount); account.Cipher.IsAEAD() {
-			// AEAD payload decoding requires the payload to be over 32 bytes
-			if len(bs) < 32 {
-				continue
-			}
-
 			aeadCipher := account.Cipher.(*AEADCipher)
 			ivLen = aeadCipher.IVSize()
+			if len(bs) < int(ivLen) {
+				continue
+			}
 			iv := bs[:ivLen]
 			subkey := make([]byte, 32)
 			subkey = subkey[:aeadCipher.KeyBytes]
 			hkdfSHA1(account.Key, iv, subkey)
 			aead = aeadCipher.AEADAuthCreator(subkey)
+			minimum := int(ivLen) + aead.Overhead()
+			if command == protocol.RequestCommandTCP {
+				minimum += 2 // Authenticated chunk-length field.
+			}
+			if len(bs) < minimum {
+				continue
+			}
 
 			var matchErr error
 			switch command {
@@ -143,13 +148,31 @@ func (v *Validator) Get(bs []byte, command protocol.RequestCommand) (u *protocol
 				return
 			}
 		} else {
-			u = user
 			ivLen = user.Account.(*MemoryAccount).Cipher.IVSize()
+			if len(bs) < int(ivLen) || (command == protocol.RequestCommandUDP && len(bs) == int(ivLen)) {
+				continue
+			}
+			u = user
 			return
 		}
 	}
 
 	return nil, nil, nil, 0, ErrNotFound
+}
+
+// A legacy client may send only IV + target address and then wait for a server
+// greeting. Requiring an AEAD-sized 50-byte prefix would deadlock that exchange.
+// AEAD framing and its existing prelude/draining policy are unchanged.
+func (v *Validator) tcpPreludeSize() int32 {
+	v.RLock()
+	defer v.RUnlock()
+	if len(v.users) == 1 {
+		account := v.users[0].Account.(*MemoryAccount)
+		if !account.Cipher.IsAEAD() {
+			return account.Cipher.IVSize()
+		}
+	}
+	return 50
 }
 
 func (v *Validator) GetBehaviorSeed() uint64 {

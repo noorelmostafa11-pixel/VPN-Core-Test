@@ -31,7 +31,7 @@ var ErrIVNotUnique = errors.New("IV is not unique")
 // Equals implements protocol.Account.Equals().
 func (a *MemoryAccount) Equals(another protocol.Account) bool {
 	if account, ok := another.(*MemoryAccount); ok {
-		return bytes.Equal(a.Key, account.Key)
+		return a.CipherType == account.CipherType && bytes.Equal(a.Key, account.Key)
 	}
 	return false
 }
@@ -61,6 +61,12 @@ func createXChaCha20Poly1305(key []byte) cipher.AEAD {
 
 func (a *Account) getCipher() (Cipher, error) {
 	switch a.CipherType {
+	case CipherType_AES_128_CFB, CipherType_AES_128_CTR, CipherType_AES_128_OFB:
+		return &legacyAESCipher{keyBytes: 16, method: a.CipherType}, nil
+	case CipherType_AES_192_CFB, CipherType_AES_192_CTR, CipherType_AES_192_OFB:
+		return &legacyAESCipher{keyBytes: 24, method: a.CipherType}, nil
+	case CipherType_AES_256_CFB, CipherType_AES_256_CTR, CipherType_AES_256_OFB:
+		return &legacyAESCipher{keyBytes: 32, method: a.CipherType}, nil
 	case CipherType_AES_128_GCM:
 		return &AEADCipher{
 			KeyBytes:        16,

@@ -9,9 +9,11 @@ go test -race ./fork/wire -run TestMainInteroperability -count=1 -timeout=3m -v 
 
 This explicitly requested integration test is skipped if neither executable
 path is supplied. It uses only Go's standard library and synthetic loopback
-credentials, tests both endpoint roles for five classic AEAD methods, and
-requires exact equality for twenty 200001-byte TCP echoes and ninety UDP
-echoes (32, 1400 and 3800 bytes). Protocol exchanges are not retried.
+credentials, tests both endpoint roles for five classic AEAD methods and nine
+legacy AES stream methods. It requires exact equality for 56 server-first
+greetings, 56 200001-byte TCP echoes and 252 UDP echoes (32, 1400 and 3800
+bytes). The client waits for the greeting before sending application bytes.
+Protocol exchanges are not retried.
 
 The upstream Freedom private-address policy is left unchanged. The server test
 configuration allows only 127.0.0.1 and the two ephemeral echo target ports.

@@ -66,9 +66,10 @@ func ReadTCPSession(validator *Validator, reader io.Reader) (*protocol.RequestHe
 	buffer := buf.New()
 	defer buffer.Release()
 
-	if _, err := buffer.ReadFullFrom(reader, 50); err != nil {
+	preludeSize := validator.tcpPreludeSize()
+	if _, err := buffer.ReadFullFrom(reader, preludeSize); err != nil {
 		drainer.AcknowledgeReceive(int(buffer.Len()))
-		return nil, nil, drain.WithError(drainer, reader, errors.New("failed to read 50 bytes").Base(err))
+		return nil, nil, drain.WithError(drainer, reader, errors.New("failed to read ", preludeSize, " bytes").Base(err))
 	}
 
 	bs := buffer.Bytes()
@@ -252,10 +253,6 @@ func DecodeUDPPacket(validator *Validator, payload *buf.Buffer) (*protocol.Reque
 		payload.Clear()
 		payload.Write(d)
 	} else {
-		if account.Cipher.IVSize() > 0 {
-			iv := make([]byte, account.Cipher.IVSize())
-			copy(iv, payload.BytesTo(account.Cipher.IVSize()))
-		}
 		if err = account.Cipher.DecodePacket(account.Key, payload); err != nil {
 			return nil, nil, errors.New("failed to decrypt UDP payload").Base(err)
 		}

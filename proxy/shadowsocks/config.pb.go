@@ -33,17 +33,35 @@ const (
 	CipherType_XCHACHA20_POLY1305 CipherType = 8
 	// Custom-fork addition. Existing upstream enum numbers are unchanged.
 	CipherType_AES_192_GCM CipherType = 9
+	CipherType_AES_128_CFB CipherType = 10
+	CipherType_AES_192_CFB CipherType = 11
+	CipherType_AES_256_CFB CipherType = 12
+	CipherType_AES_128_CTR CipherType = 13
+	CipherType_AES_192_CTR CipherType = 14
+	CipherType_AES_256_CTR CipherType = 15
+	CipherType_AES_128_OFB CipherType = 16
+	CipherType_AES_192_OFB CipherType = 17
+	CipherType_AES_256_OFB CipherType = 18
 )
 
 // Enum value maps for CipherType.
 var (
 	CipherType_name = map[int32]string{
-		0: "UNKNOWN",
-		5: "AES_128_GCM",
-		6: "AES_256_GCM",
-		7: "CHACHA20_POLY1305",
-		8: "XCHACHA20_POLY1305",
-		9: "AES_192_GCM",
+		0:  "UNKNOWN",
+		5:  "AES_128_GCM",
+		6:  "AES_256_GCM",
+		7:  "CHACHA20_POLY1305",
+		8:  "XCHACHA20_POLY1305",
+		9:  "AES_192_GCM",
+		10: "AES_128_CFB",
+		11: "AES_192_CFB",
+		12: "AES_256_CFB",
+		13: "AES_128_CTR",
+		14: "AES_192_CTR",
+		15: "AES_256_CTR",
+		16: "AES_128_OFB",
+		17: "AES_192_OFB",
+		18: "AES_256_OFB",
 	}
 	CipherType_value = map[string]int32{
 		"UNKNOWN":            0,
@@ -52,6 +70,15 @@ var (
 		"CHACHA20_POLY1305":  7,
 		"XCHACHA20_POLY1305": 8,
 		"AES_192_GCM":        9,
+		"AES_128_CFB":        10,
+		"AES_192_CFB":        11,
+		"AES_256_CFB":        12,
+		"AES_128_CTR":        13,
+		"AES_192_CTR":        14,
+		"AES_256_CTR":        15,
+		"AES_128_OFB":        16,
+		"AES_192_OFB":        17,
+		"AES_256_OFB":        18,
 	}
 )
 
@@ -252,7 +279,7 @@ const file_proxy_shadowsocks_config_proto_rawDesc = "" +
 	"\x05users\x18\x01 \x03(\v2\x1a.xray.common.protocol.UserR\x05users\x122\n" +
 	"\anetwork\x18\x02 \x03(\x0e2\x18.xray.common.net.NetworkR\anetwork\"L\n" +
 	"\fClientConfig\x12<\n" +
-	"\x06server\x18\x01 \x01(\v2$.xray.common.protocol.ServerEndpointR\x06server*{\n" +
+	"\x06server\x18\x01 \x01(\v2$.xray.common.protocol.ServerEndpointR\x06server*\x94\x02\n" +
 	"\n" +
 	"CipherType\x12\v\n" +
 	"\aUNKNOWN\x10\x00\x12\x0f\n" +
@@ -260,7 +287,17 @@ const file_proxy_shadowsocks_config_proto_rawDesc = "" +
 	"\vAES_256_GCM\x10\x06\x12\x15\n" +
 	"\x11CHACHA20_POLY1305\x10\a\x12\x16\n" +
 	"\x12XCHACHA20_POLY1305\x10\b\x12\x0f\n" +
-	"\vAES_192_GCM\x10\tBd\n" +
+	"\vAES_192_GCM\x10\t\x12\x0f\n" +
+	"\vAES_128_CFB\x10\n" +
+	"\x12\x0f\n" +
+	"\vAES_192_CFB\x10\v\x12\x0f\n" +
+	"\vAES_256_CFB\x10\f\x12\x0f\n" +
+	"\vAES_128_CTR\x10\r\x12\x0f\n" +
+	"\vAES_192_CTR\x10\x0e\x12\x0f\n" +
+	"\vAES_256_CTR\x10\x0f\x12\x0f\n" +
+	"\vAES_128_OFB\x10\x10\x12\x0f\n" +
+	"\vAES_192_OFB\x10\x11\x12\x0f\n" +
+	"\vAES_256_OFB\x10\x12Bd\n" +
 	"\x1acom.xray.proxy.shadowsocksP\x01Z+github.com/xtls/xray-core/proxy/shadowsocks\xaa\x02\x16Xray.Proxy.Shadowsocksb\x06proto3"
 
 var (

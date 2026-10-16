@@ -24,6 +24,12 @@ client, server and multi-user server configuration, TCP and UDP. The existing
 four classic AEAD methods remain supported. See [verification](fork/VERIFICATION.md)
 for local checks, prerequisites, failures and acceptance boundaries.
 
+The next batch adds the nine explicit historical AES stream methods: CFB, CTR
+and OFB, each with 128/192/256-bit keys, for single-user TCP/UDP endpoints.
+These methods lack authentication and are for compatibility, not a recommended
+security choice. They do not change defaults and cannot share a listener with
+other accounts. [Details and checks](fork/VERIFICATION-LEGACY-AES.md).
+
 This is not complete feature parity, Internet acceptance or stability on all
 platforms. Xray's CLI is not yet a drop-in replacement for the native core's
 application/SDK interfaces. See the [comparison backlog](fork/COMPARISON.md).

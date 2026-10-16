@@ -30,12 +30,15 @@ var (
 
 const password = "synthetic-fork-wire-password"
 
+const greeting = "server-first\n"
+
 type object = map[string]any
 
 type counts struct {
 	CompletedPairs int `json:"completed_pairs"`
 	TCPEchoes      int `json:"completed_tcp_echoes"`
 	UDPEchoes      int `json:"completed_udp_echoes"`
+	Greetings      int `json:"completed_server_first_greetings"`
 }
 
 func TestMainInteroperability(t *testing.T) {
@@ -73,13 +76,19 @@ func TestMainInteroperability(t *testing.T) {
 		t.Fatal(err)
 	}
 	methods := []string{"aes-128-gcm", "aes-192-gcm", "aes-256-gcm", "chacha20-ietf-poly1305", "xchacha20-ietf-poly1305"}
+	for _, mode := range []string{"cfb", "ctr", "ofb"} {
+		for _, bits := range []int{128, 192, 256} {
+			methods = append(methods, fmt.Sprintf("aes-%d-%s", bits, mode))
+		}
+	}
 	var completed counts
 	defer func() {
 		report := object{
 			"main_commit": *mainCommit, "binaries": fingerprints,
 			"methods": methods, "roles": []string{"client", "server"},
-			"expected_pairs": 10, "expected_tcp_echoes": 20, "expected_udp_echoes": 90,
-			"completed": completed, "passed": !t.Failed(),
+			"expected_pairs": 2 * len(methods), "expected_tcp_echoes": 4 * len(methods), "expected_udp_echoes": 18 * len(methods),
+			"expected_server_first_greetings": 4 * len(methods),
+			"completed":                       completed, "passed": !t.Failed(),
 			"tcp_bytes_each": 200001, "udp_sizes": []int{32, 1400, 3800},
 			"platform": runtime.GOOS + "/" + runtime.GOARCH,
 			"scope":    "Synthetic loopback; not Internet, application ABI or all-platform acceptance",
@@ -162,6 +171,9 @@ func echoes(t *testing.T) (net.Addr, net.Addr) {
 				defer c.Close()
 				defer func() { mu.Lock(); delete(connections, c); mu.Unlock() }()
 				_ = c.SetDeadline(time.Now().Add(8 * time.Second))
+				if _, err := io.WriteString(c, greeting); err != nil {
+					return
+				}
 				_, _ = io.Copy(c, c) // Client deadlines and byte equality are authoritative.
 			})
 		}
@@ -331,6 +343,10 @@ func exchange(t *testing.T, binaries []string, forkServer bool, method, folder s
 	}
 	for cycle := range 2 {
 		c, _ := socks(t, socksPort, 1, tcpTarget.String())
+		if string(exact(t, c, len(greeting))) != greeting {
+			t.Fatal("server-first greeting changed")
+		}
+		completed.Greetings++
 		body := bytes.Repeat([]byte{byte(91 + cycle)}, 200001)
 		if _, err := io.Copy(c, bytes.NewReader(body)); err != nil {
 			t.Fatal(err)

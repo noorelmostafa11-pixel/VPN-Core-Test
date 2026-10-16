@@ -26,6 +26,19 @@ type Client struct {
 	policyManager policy.Manager
 }
 
+// An inbound may expose an already-consumed, empty handshake buffer as its
+// initial payload. For AEAD an empty write encodes an end marker, not a no-op.
+// Do not close a server-first session before any application bytes are sent.
+type initialPayloadWriter struct{ buf.Writer }
+
+func (w initialPayloadWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
+	if mb.IsEmpty() {
+		buf.ReleaseMulti(mb)
+		return nil
+	}
+	return w.Writer.WriteMultiBuffer(mb)
+}
+
 // NewClient create a new Shadowsocks client.
 func NewClient(ctx context.Context, config *ClientConfig) (*Client, error) {
 	if config.Server == nil {
@@ -123,7 +136,7 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 				return errors.New("failed to write request").Base(err)
 			}
 
-			if err = buf.CopyOnceTimeout(link.Reader, bodyWriter, time.Millisecond*100); err != nil && err != buf.ErrNotTimeoutReader && err != buf.ErrReadTimeout {
+			if err = buf.CopyOnceTimeout(link.Reader, initialPayloadWriter{bodyWriter}, time.Millisecond*100); err != nil && err != buf.ErrNotTimeoutReader && err != buf.ErrReadTimeout {
 				return errors.New("failed to write A request payload").Base(err)
 			}
 

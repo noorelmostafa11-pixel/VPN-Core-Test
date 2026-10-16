@@ -12,6 +12,12 @@ without changing existing cipher enum numbers or default method selection.
 Its 24-byte key must be truncated from the full MD5 derivation block output;
 otherwise an accidental 32-byte AES-256 implementation would be wire-incompatible.
 
+The second batch restores all nine AES-CFB/CTR/OFB method names, with exact
+128/192/256-bit keys and 16-byte IVs. Client and single-user server TCP/UDP are
+supported. No default is changed and no algorithm is substituted. Multi-user
+lists remain restricted to authenticated AEAD methods. The runtime validator
+also prevents either order of mixing a legacy account with another account.
+
 ## Already present upstream
 
 Do not reimplement VLESS/REALITY/Vision, modern VMess, Trojan, Shadowsocks AEAD
@@ -21,7 +27,7 @@ support and exact settings still require compatibility checks where used.
 
 ## Still to port or resolve
 
-- Remaining historical Shadowsocks methods/aliases in main. The 35 method names
+- Remaining non-AES historical Shadowsocks methods/aliases in main. The 35 method names
   in main are not 35 distinct algorithms. Legacy cipher security policy must be
   explicit; do not silently replace a requested cipher with another method.
 - Legacy VMess alter-ID/AES-CFB and none/zero semantics. Mapping unsupported
