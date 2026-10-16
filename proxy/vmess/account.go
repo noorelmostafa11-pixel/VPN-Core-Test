@@ -14,6 +14,8 @@ import (
 type MemoryAccount struct {
 	// ID is the main ID of the account.
 	ID *protocol.ID
+	// AlterIDs explicitly selects legacy timestamp/HMAC headers when nonempty.
+	AlterIDs []*protocol.ID
 	// Security type of the account. Used for client connections.
 	Security        protocol.SecurityType
 	AllowLegacyBody bool
@@ -41,6 +43,7 @@ func (a *MemoryAccount) ToProto() proto.Message {
 	}
 	return &Account{
 		Id:               a.ID.String(),
+		AlterId:          uint32(len(a.AlterIDs)),
 		TestsEnabled:     test,
 		SecuritySettings: &protocol.SecurityConfig{Type: a.Security},
 		AllowLegacyBody:  a.AllowLegacyBody,
@@ -49,8 +52,8 @@ func (a *MemoryAccount) ToProto() proto.Message {
 
 // AsAccount implements protocol.Account.
 func (a *Account) AsAccount() (protocol.Account, error) {
-	if a.AlterId != 0 {
-		return nil, errors.New("legacy VMess alterId headers are not implemented")
+	if a.AlterId > MaxLegacyAlterIDs {
+		return nil, errors.New("legacy VMess alterId exceeds 64")
 	}
 	security := a.SecuritySettings.GetSecurityType()
 	switch security {
@@ -76,6 +79,7 @@ func (a *Account) AsAccount() (protocol.Account, error) {
 	}
 	return &MemoryAccount{
 		ID:                            protoID,
+		AlterIDs:                      newLegacyAlterIDs(protoID, a.AlterId),
 		Security:                      security,
 		AllowLegacyBody:               a.AllowLegacyBody,
 		AuthenticatedLengthExperiment: AuthenticatedLength,

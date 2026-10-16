@@ -2,6 +2,7 @@ package encoding
 
 import (
 	"bytes"
+	"crypto/md5"
 	"crypto/sha256"
 	"encoding/binary"
 	"hash/fnv"
@@ -92,6 +93,7 @@ func (h *SessionHistory) removeExpiredEntries() error {
 
 // ServerSession keeps information for a session in VMess server.
 type ServerSession struct {
+	legacyHeader    bool
 	userValidator   *vmess.TimedUserValidator
 	sessionHistory  *SessionHistory
 	requestBodyKey  [16]byte
@@ -172,6 +174,16 @@ func (s *ServerSession) DecodeRequestHeader(reader io.Reader, isDrain bool) (*pr
 			}
 		}
 		decryptor = bytes.NewReader(aeadData)
+	case errorAEAD == vmessaead.ErrNotFound:
+		var stamp int64
+		user, stamp, err = s.userValidator.GetLegacy(fixedSizeAuthID)
+		if err != nil {
+			return nil, drainConnection(errors.New("invalid user").Base(err))
+		}
+		vmessAccount = user.Account.(*vmess.MemoryAccount)
+		iv := vmess.LegacyHeaderIV(stamp)
+		decryptor = crypto.NewCryptionReader(crypto.NewAesDecryptionStream(vmessAccount.ID.CmdKey(), iv[:]), reader)
+		s.legacyHeader = true
 	default:
 		return nil, drainConnection(errors.New("invalid user").Base(errorAEAD))
 	}
@@ -193,7 +205,7 @@ func (s *ServerSession) DecodeRequestHeader(reader io.Reader, isDrain bool) (*pr
 	copy(sid.user[:], vmessAccount.ID.Bytes())
 	sid.key = s.requestBodyKey
 	sid.nonce = s.requestBodyIV
-	if !s.sessionHistory.addIfNotExits(sid) {
+	if !s.legacyHeader && !s.sessionHistory.addIfNotExits(sid) {
 		return nil, errors.New("duplicated session id, possibly under replay attack, but this is a AEAD request")
 	}
 
@@ -203,6 +215,14 @@ func (s *ServerSession) DecodeRequestHeader(reader io.Reader, isDrain bool) (*pr
 	request.Security = parseSecurityType(buffer.Byte(35) & 0x0F)
 	// 1 bytes reserved
 	request.Command = protocol.RequestCommand(buffer.Byte(37))
+	if s.legacyHeader {
+		allowed := protocol.RequestOptionChunkStream | protocol.RequestOptionChunkMasking | protocol.RequestOptionGlobalPadding | protocol.RequestOptionAuthenticatedLength
+		if request.Version != Version || buffer.Byte(36) != 0 || request.Option & ^allowed != 0 ||
+			(request.Option.Has(protocol.RequestOptionGlobalPadding) && !request.Option.Has(protocol.RequestOptionChunkMasking)) ||
+			(!request.Option.Has(protocol.RequestOptionChunkStream) && (request.Security != protocol.SecurityType_NONE || request.Command != protocol.RequestCommandTCP || request.Option != 0)) {
+			return nil, errors.New("invalid legacy VMess header fields")
+		}
+	}
 
 	switch request.Command {
 	case protocol.RequestCommandMux:
@@ -250,6 +270,11 @@ func (s *ServerSession) DecodeRequestHeader(reader io.Reader, isDrain bool) (*pr
 			return nil, errors.New("legacy VMess body modes require explicit per-user allowLegacyBody")
 		}
 		if err := validateLegacyBodyOptions(request); err != nil {
+			return nil, err
+		}
+	}
+	if s.legacyHeader {
+		if err := s.userValidator.AcceptLegacySession(user, s.requestBodyKey, s.requestBodyIV); err != nil {
 			return nil, err
 		}
 	}
@@ -325,6 +350,16 @@ func (s *ServerSession) DecodeRequestBody(request *protocol.RequestHeader, reade
 
 // EncodeResponseHeader writes encoded response header into the given writer.
 func (s *ServerSession) EncodeResponseHeader(header *protocol.ResponseHeader, writer io.Writer) {
+	if s.legacyHeader {
+		s.responseBodyKey = md5.Sum(s.requestBodyKey[:])
+		s.responseBodyIV = md5.Sum(s.requestBodyIV[:])
+		s.responseWriter = crypto.NewCryptionWriter(crypto.NewAesEncryptionStream(s.responseBodyKey[:], s.responseBodyIV[:]), writer)
+		common.Must2(s.responseWriter.Write([]byte{s.responseHeader, byte(header.Option)}))
+		if err := MarshalCommand(header.Command, s.responseWriter); err != nil {
+			common.Must2(s.responseWriter.Write([]byte{0, 0}))
+		}
+		return
+	}
 	var encryptionWriter io.Writer
 	BodyKey := sha256.Sum256(s.requestBodyKey[:])
 	copy(s.responseBodyKey[:], BodyKey[:16])
@@ -370,6 +405,12 @@ func (s *ServerSession) EncodeResponseHeader(header *protocol.ResponseHeader, wr
 // EncodeResponseBody returns a Writer that auto-encrypt content written by caller.
 func (s *ServerSession) EncodeResponseBody(request *protocol.RequestHeader, writer io.Writer) (buf.Writer, error) {
 	if legacyBodySecurity(request.Security) {
+		if s.legacyHeader && request.Security == protocol.SecurityType_AES128_CFB {
+			if s.responseWriter == nil {
+				return nil, errors.New("legacy VMess response header must be written before body")
+			}
+			return legacyBodyWriter(request, s.responseBodyKey[:], s.responseBodyIV[:], s.responseWriter, true)
+		}
 		return newLegacyBodyWriter(request, s.responseBodyKey[:], s.responseBodyIV[:], writer)
 	}
 	var sizeParser crypto.ChunkSizeEncoder = crypto.PlainChunkSizeParser{}

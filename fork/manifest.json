@@ -36,7 +36,8 @@
     "Original ChaCha20 64-bit counter carry, Salsa20 counter exhaustion, per-account immutable table permutations",
     "Shadowsocks camellia-128/192/256-cfb, idea-cfb, rc2-cfb (128 effective bits), seed-cfb (SEED-128): explicit single-user TCP/UDP",
     "SOCKS4 and SOCKS4a outbound TCP CONNECT: explicit versions, user ID, local IPv4 versus remote domain resolution; SOCKS5 default unchanged",
-    "VMess aes-128-cfb and none framed bodies, TCP-only zero raw NONE with modern AEAD headers; inbound requires per-user allowLegacyBody; nonzero alterId remains explicitly unsupported"
+    "VMess aes-128-cfb and none framed bodies, TCP-only zero raw NONE; inbound weak bodies require per-user allowLegacyBody",
+    "VMess explicit alterId1..64 timestamp/HMAC headers and MD5 response keys; default0 remains modern AEAD; bounded per-validator legacy index and session replay cache"
   ],
   "classic_wire_method_names": 32,
   "classic_wire_endpoint_pairs": 32,

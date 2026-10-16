@@ -32,7 +32,7 @@ func validateLegacyBodyOptions(request *protocol.RequestHeader) error {
 }
 
 // Legacy FNV is an unkeyed checksum, not cryptographic authentication. These
-// explicit compatibility body modes do not change AEAD header authentication.
+// explicit compatibility body modes do not select the header authentication mode.
 type legacyBodyAuth struct{ checksum bool }
 
 func (a legacyBodyAuth) NonceSize() int { return 0 }
@@ -103,6 +103,10 @@ func (s checkedLegacySize) Decode(wire []byte) (uint16, error) {
 }
 
 func newLegacyBodyReader(request *protocol.RequestHeader, key, iv []byte, reader io.Reader) (buf.Reader, error) {
+	return legacyBodyReader(request, key, iv, reader, false)
+}
+
+func legacyBodyReader(request *protocol.RequestHeader, key, iv []byte, reader io.Reader, cipherReady bool) (buf.Reader, error) {
 	if err := validateLegacyBodyOptions(request); err != nil {
 		return nil, err
 	}
@@ -122,7 +126,7 @@ func newLegacyBodyReader(request *protocol.RequestHeader, key, iv []byte, reader
 		return crypto.NewChunkStreamReader(size, reader), nil
 	}
 	auth := legacyBodyAuth{checksum: request.Security == protocol.SecurityType_AES128_CFB}
-	if auth.checksum {
+	if auth.checksum && !cipherReady {
 		reader = crypto.NewCryptionReader(crypto.NewAesDecryptionStream(key, iv), reader)
 	}
 	var generator crypto.PaddingLengthGenerator
@@ -133,6 +137,10 @@ func newLegacyBodyReader(request *protocol.RequestHeader, key, iv []byte, reader
 }
 
 func newLegacyBodyWriter(request *protocol.RequestHeader, key, iv []byte, writer io.Writer) (buf.Writer, error) {
+	return legacyBodyWriter(request, key, iv, writer, false)
+}
+
+func legacyBodyWriter(request *protocol.RequestHeader, key, iv []byte, writer io.Writer, cipherReady bool) (buf.Writer, error) {
 	if err := validateLegacyBodyOptions(request); err != nil {
 		return nil, err
 	}
@@ -152,7 +160,7 @@ func newLegacyBodyWriter(request *protocol.RequestHeader, key, iv []byte, writer
 		return crypto.NewChunkStreamWriter(size, writer), nil
 	}
 	auth := legacyBodyAuth{checksum: request.Security == protocol.SecurityType_AES128_CFB}
-	if auth.checksum {
+	if auth.checksum && !cipherReady {
 		writer = crypto.NewCryptionWriter(crypto.NewAesEncryptionStream(key, iv), writer)
 	}
 	output := crypto.NewAuthenticationWriter(auth, size, writer, request.Command.TransferType(), padding)

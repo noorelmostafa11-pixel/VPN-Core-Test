@@ -1,5 +1,10 @@
 # VMess body modes with modern AEAD headers
 
+Historical body-only checkpoint. Its alterId rejection notes describe that
+revision, not current behavior. Explicit legacy headers were subsequently added
+in [the next checkpoint](VERIFICATION-VMESS-LEGACY-HEADER.md); alterId0 and the
+body-mode security policy below remain unchanged.
+
 Date: 2026-10-16. Source base `6c349a025f2144bf22f04995261ab2cd0d0ebe72`
 plus this patch. This restores three explicit body choices, not legacy VMess
 header authentication. No workflow/check/wire runner or owner's fixes are changed.

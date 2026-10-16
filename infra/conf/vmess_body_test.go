@@ -25,19 +25,19 @@ func TestForkVMessExplicitBodySecurity(t *testing.T) {
 func TestForkVMessBodyConfigurationGuards(t *testing.T) {
 	const id = "00000000-0000-4000-8000-000000000001"
 	for _, security := range []string{"", "auto", "aes-128-gcm", "chacha20-poly1305", "aes-128-cfb", "none", "zero", "typo"} {
-		for _, alter := range []uint32{0, 16} {
+		for _, alter := range []uint32{0, 1, 16, 64, 65, ^uint32(0)} {
 			config := conf.VMessOutboundConfig{Address: &conf.Address{Address: net.LocalHostIP}, Port: 443, ID: id, Security: security, AlterID: alter}
 			_, err := config.Build()
-			if (err == nil) != (security != "typo" && alter == 0) {
+			if (err == nil) != (security != "typo" && alter <= 64) {
 				t.Fatal("unexpected config acceptance", security, alter, err)
 			}
 			user, _ := json.Marshal(map[string]any{"id": id, "security": security, "alterId": alter, "allowLegacyBody": true})
 			_, nestedErr := (&conf.VMessOutboundConfig{Receivers: []*conf.VMessOutboundTarget{{Address: &conf.Address{Address: net.LocalHostIP}, Port: 443, Users: []json.RawMessage{user}}}}).Build()
-			if (nestedErr == nil) != (security != "typo" && alter == 0) {
+			if (nestedErr == nil) != (security != "typo" && alter <= 64) {
 				t.Fatal("vnext user security or alterId silently substituted", security, alter, nestedErr)
 			}
 			server, err := (&conf.VMessInboundConfig{Clients: []json.RawMessage{user}}).Build()
-			if (err == nil) != (security != "typo" && alter == 0) {
+			if (err == nil) != (security != "typo" && alter <= 64) {
 				t.Fatal("inbound config silently substituted", security, alter, err)
 			}
 			if err == nil {
@@ -45,8 +45,8 @@ func TestForkVMessBodyConfigurationGuards(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if !value.(*vmess.Account).AllowLegacyBody {
-					t.Fatal("legacy inbound opt-in lost")
+				if !value.(*vmess.Account).AllowLegacyBody || value.(*vmess.Account).AlterId != alter {
+					t.Fatal("legacy inbound opt-in or alter ID lost")
 				}
 			}
 		}

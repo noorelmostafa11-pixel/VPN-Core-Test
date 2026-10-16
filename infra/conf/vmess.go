@@ -54,8 +54,8 @@ func (a *VMessAccount) Build() *vmess.Account {
 }
 
 func (a *VMessAccount) validate() error {
-	if a.AlterID != 0 {
-		return errors.New("legacy VMess alterId headers are not implemented; use alterId 0")
+	if a.AlterID > vmess.MaxLegacyAlterIDs {
+		return errors.New("legacy VMess alterId exceeds 64")
 	}
 	if a.Build().SecuritySettings.Type == protocol.SecurityType_UNKNOWN {
 		return errors.New("unsupported VMess security: ", a.Security)

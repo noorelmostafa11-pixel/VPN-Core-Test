@@ -122,7 +122,7 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 		newCtx, newCancel = context.WithCancel(context.Background())
 	}
 
-	session := encoding.NewClientSession(ctx, int64(behaviorSeed))
+	session := encoding.NewClientSessionWithAccount(ctx, int64(behaviorSeed), account)
 	sessionPolicy := h.policyManager.ForLevel(request.User.Level)
 
 	ctx, cancel := context.WithCancel(ctx)

@@ -51,8 +51,14 @@ instead of substituted. [Settings and local checks](fork/VERIFICATION-SOCKS4.md)
 
 VMess `aes-128-cfb`, `none` and TCP-only `zero` body modes are now explicit
 choices with modern AEAD headers. Inbound use requires a per-user opt-in;
-modern defaults are retained. Legacy nonzero `alterId` headers remain pending
-and are rejected rather than silently ignored. [Details](fork/VERIFICATION-VMESS-BODY.md).
+modern defaults are retained. [Body details](fork/VERIFICATION-VMESS-BODY.md).
+
+Explicit `alterId: 1..64` now selects historical VMess timestamp/HMAC headers
+on outbounds and opts an inbound user into accepting them. Zero remains modern
+AEAD, with no automatic downgrade. Legacy header/body permission is separate;
+CFB/none bodies still need `allowLegacyBody: true` on the inbound user. This is
+an old, weaker protocol for compatibility, not a security recommendation.
+[Settings, bounds and local checks](fork/VERIFICATION-VMESS-LEGACY-HEADER.md).
 
 This is not complete feature parity, Internet acceptance or stability on all
 platforms. Xray's CLI is not yet a drop-in replacement for the native core's

@@ -3,11 +3,13 @@ package encoding
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
 	"hash/fnv"
 	"io"
+	"time"
 
 	"github.com/xtls/xray-core/common"
 	"github.com/xtls/xray-core/common/bitmask"
@@ -24,6 +26,7 @@ import (
 
 // ClientSession stores connection session info for VMess client.
 type ClientSession struct {
+	legacyHeader    bool
 	requestBodyKey  [16]byte
 	requestBodyIV   [16]byte
 	responseBodyKey [16]byte
@@ -36,7 +39,17 @@ type ClientSession struct {
 
 // NewClientSession creates a new ClientSession.
 func NewClientSession(ctx context.Context, behaviorSeed int64) *ClientSession {
-	session := &ClientSession{}
+	return newClientSession(ctx, behaviorSeed, false)
+}
+
+// NewClientSessionWithAccount freezes the header mode and both direction keys
+// before the outbound starts its concurrent request and response tasks.
+func NewClientSessionWithAccount(ctx context.Context, behaviorSeed int64, account *vmess.MemoryAccount) *ClientSession {
+	return newClientSession(ctx, behaviorSeed, len(account.AlterIDs) != 0)
+}
+
+func newClientSession(ctx context.Context, behaviorSeed int64, legacyHeader bool) *ClientSession {
+	session := &ClientSession{legacyHeader: legacyHeader}
 
 	randomBytes := make([]byte, 33) // 16 + 16 + 1
 	common.Must2(rand.Read(randomBytes))
@@ -44,10 +57,15 @@ func NewClientSession(ctx context.Context, behaviorSeed int64) *ClientSession {
 	copy(session.requestBodyIV[:], randomBytes[16:32])
 	session.responseHeader = randomBytes[32]
 
-	BodyKey := sha256.Sum256(session.requestBodyKey[:])
-	copy(session.responseBodyKey[:], BodyKey[:16])
-	BodyIV := sha256.Sum256(session.requestBodyIV[:])
-	copy(session.responseBodyIV[:], BodyIV[:16])
+	if legacyHeader {
+		session.responseBodyKey = md5.Sum(session.requestBodyKey[:])
+		session.responseBodyIV = md5.Sum(session.requestBodyIV[:])
+	} else {
+		BodyKey := sha256.Sum256(session.requestBodyKey[:])
+		copy(session.responseBodyKey[:], BodyKey[:16])
+		BodyIV := sha256.Sum256(session.requestBodyIV[:])
+		copy(session.responseBodyIV[:], BodyIV[:16])
+	}
 	{
 		var err error
 		session.readDrainer, err = drain.NewBehaviorSeedLimitedDrainer(behaviorSeed, 18, 3266, 64)
@@ -70,6 +88,9 @@ func (c *ClientSession) EncodeRequestHeader(header *protocol.RequestHeader, writ
 		}
 	}
 	account := header.User.Account.(*vmess.MemoryAccount)
+	if c.legacyHeader != (len(account.AlterIDs) != 0) {
+		return errors.New("VMess session header mode does not match its account")
+	}
 
 	buffer := buf.New()
 	defer buffer.Release()
@@ -99,6 +120,16 @@ func (c *ClientSession) EncodeRequestHeader(header *protocol.RequestHeader, writ
 		common.Must2(fnv1a.Write(buffer.Bytes()))
 		hashBytes := buffer.Extend(int32(fnv1a.Size()))
 		fnv1a.Sum(hashBytes[:0])
+	}
+
+	if c.legacyHeader {
+		stamp := time.Now().Unix()
+		id := account.AlterIDs[dice.Roll(len(account.AlterIDs))]
+		auth := vmess.LegacyAuthID(id.Bytes(), stamp)
+		iv := vmess.LegacyHeaderIV(stamp)
+		crypto.NewAesEncryptionStream(account.ID.CmdKey(), iv[:]).XORKeyStream(buffer.Bytes(), buffer.Bytes())
+		wire := append(auth[:], buffer.Bytes()...)
+		return buf.WriteAllBytes(writer, wire, nil)
 	}
 
 	var fixedLengthCmdKey [16]byte
@@ -174,6 +205,10 @@ func (c *ClientSession) EncodeRequestBody(request *protocol.RequestHeader, write
 }
 
 func (c *ClientSession) DecodeResponseHeader(reader io.Reader) (*protocol.ResponseHeader, error) {
+	if c.legacyHeader {
+		c.responseReader = crypto.NewCryptionReader(crypto.NewAesDecryptionStream(c.responseBodyKey[:], c.responseBodyIV[:]), reader)
+		return c.readResponseHeader()
+	}
 	aeadResponseHeaderLengthEncryptionKey := vmessaead.KDF16(c.responseBodyKey[:], vmessaead.KDFSaltConstAEADRespHeaderLenKey)
 	aeadResponseHeaderLengthEncryptionIV := vmessaead.KDF(c.responseBodyIV[:], vmessaead.KDFSaltConstAEADRespHeaderLenIV)[:12]
 
@@ -216,6 +251,16 @@ func (c *ClientSession) DecodeResponseHeader(reader io.Reader) (*protocol.Respon
 		c.responseReader = bytes.NewReader(decryptedResponseHeaderBuffer)
 	}
 
+	header, err := c.readResponseHeader()
+	if err != nil {
+		return nil, err
+	}
+	aesStream := crypto.NewAesDecryptionStream(c.responseBodyKey[:], c.responseBodyIV[:])
+	c.responseReader = crypto.NewCryptionReader(aesStream, reader)
+	return header, nil
+}
+
+func (c *ClientSession) readResponseHeader() (*protocol.ResponseHeader, error) {
 	buffer := buf.StackNew()
 	defer buffer.Release()
 
@@ -244,13 +289,17 @@ func (c *ClientSession) DecodeResponseHeader(reader io.Reader) (*protocol.Respon
 			header.Command = command
 		}
 	}
-	aesStream := crypto.NewAesDecryptionStream(c.responseBodyKey[:], c.responseBodyIV[:])
-	c.responseReader = crypto.NewCryptionReader(aesStream, reader)
 	return header, nil
 }
 
 func (c *ClientSession) DecodeResponseBody(request *protocol.RequestHeader, reader io.Reader) (buf.Reader, error) {
 	if legacyBodySecurity(request.Security) {
+		if c.legacyHeader && request.Security == protocol.SecurityType_AES128_CFB {
+			if c.responseReader == nil {
+				return nil, errors.New("legacy VMess response header must be read before body")
+			}
+			return legacyBodyReader(request, c.responseBodyKey[:], c.responseBodyIV[:], c.responseReader, true)
+		}
 		return newLegacyBodyReader(request, c.responseBodyKey[:], c.responseBodyIV[:], reader)
 	}
 	var sizeParser crypto.ChunkSizeDecoder = crypto.PlainChunkSizeParser{}

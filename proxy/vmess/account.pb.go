@@ -27,7 +27,7 @@ type Account struct {
 	// ID of the account, in the form of a UUID, e.g.,
 	// "66ad4540-b58c-4ad2-9926-ea63445a9b57".
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	// Nonzero legacy-header alter IDs are not implemented in this fork.
+	// Explicit legacy timestamp/HMAC header opt-in, 1..64; zero keeps AEAD.
 	AlterId uint32 `protobuf:"varint,2,opt,name=alter_id,json=alterId,proto3" json:"alter_id,omitempty"`
 	// Security settings. Only applies to client side.
 	SecuritySettings *protocol.SecurityConfig `protobuf:"bytes,3,opt,name=security_settings,json=securitySettings,proto3" json:"security_settings,omitempty"`

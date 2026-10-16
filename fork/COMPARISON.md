@@ -52,8 +52,23 @@ instead of becoming AUTO. CFB uses continuous AES-CFB and the historical FNV
 checksum framing; none uses unencrypted chunks; zero is unframed NONE for TCP
 only, never wire security code6. Outbound defaults remain modern AEAD modes.
 Inbound weak body modes require per-user `allowLegacyBody: true`; default
-inbounds still reject them. Nonzero `alterId` headers remain unimplemented and
-are rejected rather than ignored. [Settings and local checks](VERIFICATION-VMESS-BODY.md).
+inbounds still reject them. [Body checkpoint](VERIFICATION-VMESS-BODY.md).
+
+## Explicit legacy VMess headers
+
+`alterId: 1..64` now restores timestamp/HMAC-MD5 request headers, the exact
+derived-ID chain, primary-ID command key, timestamp-derived CFB IV and MD5
+response keys. Response CFB body state continues after the encrypted header;
+AEAD and NONE bodies do not use that CFB stream. Default `alterId: 0` remains
+modern AEAD. Positive inbound alterId permits legacy headers for that user;
+it does not permit weak body modes without `allowLegacyBody: true`.
+
+The inbound has at most 256 legacy identities (primary plus alter IDs), a lazy
+10-second lookup index with strict +/-120-second acceptance, and an 8192-entry
+fail-closed replay cache. Replay identity includes primary user, body key and
+IV, so legitimate same-second connections are not mistaken for replays.
+These bounds deliberately do not promise unbounded historical configurations.
+[Verification and acceptance boundaries](VERIFICATION-VMESS-LEGACY-HEADER.md).
 
 ## Already present upstream
 
@@ -67,8 +82,6 @@ support and exact settings still require compatibility checks where used.
 - SS2022 fork/main interoperability requires a separate key/configuration-aware
   fixture. The existing upstream package race suite passes; that is not proof
   of compatibility with main, private nodes or every application setting.
-- Legacy VMess alter-ID authenticated headers. The body-mode addition above
-  does not restore legacy timestamp/HMAC headers or alter-ID derivation.
 - Legacy standalone HTTP/2/h2c and QUIC transports removed from upstream. XHTTP
   is not an interchangeable wire-level alias for these protocols.
 - Hysteria 1, TUIC v5, AnyTLS, ShadowTLS v2/v3 and SSH proxy endpoints absent from

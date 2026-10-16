@@ -22,8 +22,8 @@ func TestForkVMessAccountPreservesBodyPolicy(t *testing.T) {
 			t.Fatal("protobuf bypassed experiment guard")
 		}
 	}
-	if _, err := (&vmess.Account{Id: id, AlterId: 16}).AsAccount(); err == nil {
-		t.Fatal("legacy alter ID silently ignored")
+	if _, err := (&vmess.Account{Id: id, AlterId: 65}).AsAccount(); err == nil {
+		t.Fatal("legacy alter ID limit bypassed")
 	}
 	if _, err := (&vmess.Account{Id: id, SecuritySettings: &protocol.SecurityConfig{Type: protocol.SecurityType(99)}}).AsAccount(); err == nil {
 		t.Fatal("unknown protobuf security accepted")

@@ -6,6 +6,7 @@ import (
 	"hash/crc64"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/xtls/xray-core/common/dice"
 	"github.com/xtls/xray-core/common/errors"
@@ -22,6 +23,11 @@ type TimedUserValidator struct {
 	behaviorFused bool
 
 	aeadDecoderHolder *aead.AuthIDDecoderHolder
+	legacyIDs         int
+	legacyIndex       map[[16]byte]legacyTicket
+	legacyEpoch       int64
+	legacySessions    map[[48]byte]time.Time
+	legacyNow         func() time.Time
 }
 
 // NewTimedUserValidator creates a new TimedUserValidator.
@@ -29,6 +35,7 @@ func NewTimedUserValidator() *TimedUserValidator {
 	tuv := &TimedUserValidator{
 		users:             make([]*protocol.MemoryUser, 0, 16),
 		aeadDecoderHolder: aead.NewAuthIDDecoderHolder(),
+		legacyNow:         time.Now,
 	}
 	return tuv
 }
@@ -37,12 +44,47 @@ func (v *TimedUserValidator) Add(u *protocol.MemoryUser) error {
 	v.Lock()
 	defer v.Unlock()
 
-	v.users = append(v.users, u)
-
+	if u == nil {
+		return errors.New("user is nil")
+	}
 	account, ok := u.Account.(*MemoryAccount)
-	if !ok {
+	if !ok || account == nil || account.ID == nil {
 		return errors.New("account type is incorrect")
 	}
+	if len(account.AlterIDs) > MaxLegacyAlterIDs {
+		return errors.New("legacy VMess alterId exceeds 64")
+	}
+	ids := 0
+	if len(account.AlterIDs) != 0 {
+		ids = len(account.AlterIDs) + 1
+	}
+	if v.legacyIDs+ids > maxLegacyValidatorIDs {
+		return errors.New("legacy VMess validator exceeds 256 IDs")
+	}
+	// Reject ambiguous legacy identities rather than choosing a user by map order.
+	if ids != 0 || v.legacyIDs != 0 {
+		for _, existing := range v.users {
+			other := existing.Account.(*MemoryAccount)
+			if ids == 0 && len(other.AlterIDs) == 0 {
+				continue
+			}
+			for _, left := range append([]*protocol.ID{account.ID}, account.AlterIDs...) {
+				for _, right := range append([]*protocol.ID{other.ID}, other.AlterIDs...) {
+					if left == nil || right == nil || left.Equals(right) {
+						return errors.New("overlapping legacy VMess identities")
+					}
+				}
+			}
+		}
+	}
+	for _, id := range account.AlterIDs {
+		if id == nil {
+			return errors.New("invalid legacy VMess ID")
+		}
+	}
+	v.users = append(v.users, u)
+	v.legacyIDs += ids
+	v.legacyIndex = nil
 	if !v.behaviorFused {
 		hashkdf := hmac.New(sha256.New, []byte("VMESSBSKDF"))
 		hashkdf.Write(account.ID.Bytes())
@@ -96,6 +138,11 @@ func (v *TimedUserValidator) Remove(email string) bool {
 			var cmdkeyfl [16]byte
 			copy(cmdkeyfl[:], u.Account.(*MemoryAccount).ID.CmdKey())
 			v.aeadDecoderHolder.RemoveUser(cmdkeyfl)
+			account := u.Account.(*MemoryAccount)
+			if len(account.AlterIDs) != 0 {
+				v.legacyIDs -= len(account.AlterIDs) + 1
+			}
+			v.legacyIndex = nil
 			break
 		}
 	}
