@@ -61,13 +61,13 @@ func createXChaCha20Poly1305(key []byte) cipher.AEAD {
 
 func (a *Account) getCipher() (Cipher, error) {
 	switch a.CipherType {
-	case CipherType_AES_128_CFB, CipherType_AES_128_CTR, CipherType_AES_128_OFB:
+	case CipherType_AES_128_CFB, CipherType_AES_128_CTR, CipherType_AES_128_OFB, CipherType_CAMELLIA_128_CFB, CipherType_SEED_CFB:
 		return newLegacyStreamCipher(a.CipherType, 16, 16, a.Password), nil
-	case CipherType_AES_192_CFB, CipherType_AES_192_CTR, CipherType_AES_192_OFB:
+	case CipherType_AES_192_CFB, CipherType_AES_192_CTR, CipherType_AES_192_OFB, CipherType_CAMELLIA_192_CFB:
 		return newLegacyStreamCipher(a.CipherType, 24, 16, a.Password), nil
-	case CipherType_AES_256_CFB, CipherType_AES_256_CTR, CipherType_AES_256_OFB:
+	case CipherType_AES_256_CFB, CipherType_AES_256_CTR, CipherType_AES_256_OFB, CipherType_CAMELLIA_256_CFB:
 		return newLegacyStreamCipher(a.CipherType, 32, 16, a.Password), nil
-	case CipherType_BLOWFISH_CFB, CipherType_CAST5_CFB:
+	case CipherType_BLOWFISH_CFB, CipherType_CAST5_CFB, CipherType_IDEA_CFB, CipherType_RC2_CFB:
 		return newLegacyStreamCipher(a.CipherType, 16, 8, a.Password), nil
 	case CipherType_DES_CFB:
 		return newLegacyStreamCipher(a.CipherType, 8, 8, a.Password), nil

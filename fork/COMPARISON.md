@@ -25,6 +25,16 @@ Original ChaCha retains its 8-byte nonce and full 64-bit block counter; it is
 not an alias for the IETF 12-byte nonce construction. Plaintext remains explicit
 and all unauthenticated methods remain single-user only.
 
+The fourth batch adds the remaining six names: `camellia-128-cfb`,
+`camellia-192-cfb`, `camellia-256-cfb`, `idea-cfb`, `rc2-cfb` and `seed-cfb`.
+RC2 uses 128 effective key bits; seed-cfb uses SEED-128. Four narrowly vendored
+Go primitive packages, their tests, an alias helper and license/source notices
+are retained; no native engine or new module dependency is imported.
+All 32 classic names in pinned main's `core/protocol.go` now pass local
+Windows client/server TCP/UDP interoperability. Aliases are included in this
+count; the other three names are SS2022, already present upstream but not
+covered by this classic wire harness. See [checks](VERIFICATION-BLOCK-CFB.md).
+
 ## Already present upstream
 
 Do not reimplement VLESS/REALITY/Vision, modern VMess, Trojan, Shadowsocks AEAD
@@ -34,10 +44,9 @@ support and exact settings still require compatibility checks where used.
 
 ## Still to port or resolve
 
-- Six historical Shadowsocks method names in main still need ports:
-  `camellia-128-cfb`, `camellia-192-cfb`, `camellia-256-cfb`, `idea-cfb`,
-  `rc2-cfb` and `seed-cfb`. The 35 names in main include aliases; they are not
-  35 distinct algorithms. No requested method may be silently substituted.
+- SS2022 fork/main interoperability requires a separate key/configuration-aware
+  fixture. The existing upstream package race suite passes; that is not proof
+  of compatibility with main, private nodes or every application setting.
 - Legacy VMess alter-ID/AES-CFB and none/zero semantics. Mapping unsupported
   strings to AUTO is not implementation of the requested wire behavior.
 - Legacy standalone HTTP/2/h2c and QUIC transports removed from upstream. XHTTP

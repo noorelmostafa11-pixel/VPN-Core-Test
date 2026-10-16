@@ -12,6 +12,10 @@ import (
 	"github.com/xtls/xray-core/common/buf"
 	"github.com/xtls/xray-core/common/crypto"
 	"github.com/xtls/xray-core/common/errors"
+	"github.com/xtls/xray-core/proxy/shadowsocks/internal/cryptobin/cipher/camellia"
+	"github.com/xtls/xray-core/proxy/shadowsocks/internal/cryptobin/cipher/idea"
+	"github.com/xtls/xray-core/proxy/shadowsocks/internal/cryptobin/cipher/rc2"
+	"github.com/xtls/xray-core/proxy/shadowsocks/internal/cryptobin/cipher/seed"
 	"golang.org/x/crypto/blowfish"
 	"golang.org/x/crypto/cast5"
 	"golang.org/x/crypto/chacha20"
@@ -82,6 +86,14 @@ func (c *legacyStreamCipher) stream(key, iv []byte, decrypt bool) (cipher.Stream
 		block, err = cast5.NewCipher(key)
 	case CipherType_DES_CFB:
 		block, err = des.NewCipher(key)
+	case CipherType_CAMELLIA_128_CFB, CipherType_CAMELLIA_192_CFB, CipherType_CAMELLIA_256_CFB:
+		block, err = camellia.NewCipher(key)
+	case CipherType_IDEA_CFB:
+		block, err = idea.NewCipher(key)
+	case CipherType_RC2_CFB:
+		block, err = rc2.NewCipher(key, len(key)*8)
+	case CipherType_SEED_CFB:
+		block, err = seed.NewCipher(key)
 	case CipherType_AES_128_CFB, CipherType_AES_192_CFB, CipherType_AES_256_CFB,
 		CipherType_AES_128_CTR, CipherType_AES_192_CTR, CipherType_AES_256_CTR,
 		CipherType_AES_128_OFB, CipherType_AES_192_OFB, CipherType_AES_256_OFB:

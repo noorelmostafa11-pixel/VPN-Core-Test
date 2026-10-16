@@ -82,6 +82,7 @@ func TestMainInteroperability(t *testing.T) {
 		}
 	}
 	methods = append(methods, "bf-cfb", "cast5-cfb", "des-cfb", "rc4", "rc4-md5", "salsa20", "chacha20", "chacha20-ietf", "table", "none", "plain")
+	methods = append(methods, "camellia-128-cfb", "camellia-192-cfb", "camellia-256-cfb", "idea-cfb", "rc2-cfb", "seed-cfb", "chacha20-poly1305")
 	var completed counts
 	defer func() {
 		report := object{

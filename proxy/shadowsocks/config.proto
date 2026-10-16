@@ -44,6 +44,12 @@ enum CipherType {
   CHACHA20_IETF = 26;
   TABLE = 27;
   NONE = 28;
+  CAMELLIA_128_CFB = 29;
+  CAMELLIA_192_CFB = 30;
+  CAMELLIA_256_CFB = 31;
+  IDEA_CFB = 32;
+  RC2_CFB = 33;
+  SEED_CFB = 34;
 }
 
 message ServerConfig {

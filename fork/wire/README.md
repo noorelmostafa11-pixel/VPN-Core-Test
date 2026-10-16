@@ -9,10 +9,13 @@ go test -race ./fork/wire -run TestMainInteroperability -count=1 -timeout=3m -v 
 
 This explicitly requested integration test is skipped if neither executable
 path is supplied. It uses only Go's standard library and synthetic loopback
-credentials, tests both endpoint roles for 25 method names: five classic AEAD,
-nine legacy AES and eleven other classic names (including the none/plain alias).
-It requires exact equality for 100 server-first greetings, 100 200001-byte TCP
-echoes and 450 UDP echoes (32, 1400 and 3800 bytes). The client waits for the
+credentials, tests both endpoint roles for all 32 classic method names in pinned
+main: five classic AEAD methods plus the chacha20-poly1305 alias, nine legacy
+AES names and seventeen other classic names (including the none/plain alias).
+These are names, not 32 distinct algorithms. The three separate SS2022 methods
+are not covered by this fixture.
+It requires exact equality for 128 server-first greetings, 128 200001-byte TCP
+echoes and 576 UDP echoes (32, 1400 and 3800 bytes). The client waits for the
 greeting before sending application bytes.
 Protocol exchanges are not retried.
 

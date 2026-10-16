@@ -15,14 +15,19 @@
   "implementation_language": "Go",
   "new_executable_tool_language": "Go",
   "automatic_ci_enabled": false,
-  "checkpoint": "classic-stream-compatibility",
+  "checkpoint": "classic-shadowsocks-method-list-complete",
   "verified_custom_additions": [
     "Shadowsocks AES-192-GCM: explicit client/server/multi-user configuration, TCP and UDP",
     "Shadowsocks AES-128/192/256-CFB, CTR and OFB: explicit single-user client/server, TCP and UDP",
     "Shadowsocks AEAD server-first: ignore an empty initial inbound buffer instead of encoding an end marker",
     "Shadowsocks bf-cfb, cast5-cfb, des-cfb, rc4, rc4-md5, salsa20, chacha20, chacha20-ietf, table, none/plain: explicit single-user TCP/UDP",
-    "Original ChaCha20 64-bit counter carry, Salsa20 counter exhaustion, per-account immutable table permutations"
+    "Original ChaCha20 64-bit counter carry, Salsa20 counter exhaustion, per-account immutable table permutations",
+    "Shadowsocks camellia-128/192/256-cfb, idea-cfb, rc2-cfb (128 effective bits), seed-cfb (SEED-128): explicit single-user TCP/UDP"
   ],
+  "classic_wire_method_names": 32,
+  "classic_wire_endpoint_pairs": 64,
+  "ss2022_main_wire_acceptance": "not tested by the classic wire fixture",
+  "vendored_primitives": "proxy/shadowsocks/internal/cryptobin/SOURCES.json",
   "runtime_validation_platform": "windows/amd64",
   "build_validation_platforms": ["windows/amd64", "linux/amd64", "darwin/arm64"],
   "internet_acceptance": "not tested",

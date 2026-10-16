@@ -36,6 +36,14 @@ They are explicit compatibility choices only, not recommended security settings;
 `table` is obfuscation and `none/plain` is entirely unencrypted. No implicit
 plaintext fallback exists. [Checks and limits](fork/VERIFICATION-CLASSIC.md).
 
+The fourth batch completes the six remaining classic names in main:
+`camellia-128-cfb`, `camellia-192-cfb`, `camellia-256-cfb`, `idea-cfb`,
+`rc2-cfb` and `seed-cfb`. Only scoped Go primitive packages are vendored, with
+their Apache-2.0 license, source pin and modification notices. The full 32-name
+classic list, including aliases, passed local interoperability in both roles.
+This is not 32 distinct algorithms or acceptance of the separate SS2022 wire
+protocol. [Verification and source attribution](fork/VERIFICATION-BLOCK-CFB.md).
+
 This is not complete feature parity, Internet acceptance or stability on all
 platforms. Xray's CLI is not yet a drop-in replacement for the native core's
 application/SDK interfaces. See the [comparison backlog](fork/COMPARISON.md).

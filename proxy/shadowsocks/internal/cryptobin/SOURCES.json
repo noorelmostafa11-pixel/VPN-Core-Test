@@ -1,0 +1,13 @@
+{
+  "repository": "https://github.com/deatil/go-cryptobin",
+  "commit": "fa6b1b0cd56abfe1eb4a2e7bf0617b03d86e82fe",
+  "license": "Apache-2.0; see LICENSE (including upstream attribution)",
+  "packages": ["cipher/camellia", "cipher/idea", "cipher/rc2", "cipher/seed", "tool/alias"],
+  "verification": "All 17 initial files matched pinned upstream after gofmt and alias import relocation; the upstream root contains LICENSE and no NOTICE file.",
+  "changes": [
+    "Go formatting, per-file provenance notices and module-local alias imports",
+    "RC2 constructor validates key length 1..128 bytes and effective bits 1..1024 before expanding the key",
+    "Additional constructor/block-contract and standard-vector tests are separate from retained upstream tests"
+  ],
+  "scope": "Only primitive packages and tests, not the cryptobin module or native engine. Shadowsocks seed-cfb always uses SEED-128; the retained upstream SEED-256 implementation is not exposed as another Shadowsocks method."
+}

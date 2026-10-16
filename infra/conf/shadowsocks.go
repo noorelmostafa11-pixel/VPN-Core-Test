@@ -44,6 +44,18 @@ func cipherFromString(c string) shadowsocks.CipherType {
 		return shadowsocks.CipherType_AES_256_OFB
 	case "bf-cfb":
 		return shadowsocks.CipherType_BLOWFISH_CFB
+	case "camellia-128-cfb":
+		return shadowsocks.CipherType_CAMELLIA_128_CFB
+	case "camellia-192-cfb":
+		return shadowsocks.CipherType_CAMELLIA_192_CFB
+	case "camellia-256-cfb":
+		return shadowsocks.CipherType_CAMELLIA_256_CFB
+	case "idea-cfb":
+		return shadowsocks.CipherType_IDEA_CFB
+	case "rc2-cfb":
+		return shadowsocks.CipherType_RC2_CFB
+	case "seed-cfb":
+		return shadowsocks.CipherType_SEED_CFB
 	case "cast5-cfb":
 		return shadowsocks.CipherType_CAST5_CFB
 	case "des-cfb":

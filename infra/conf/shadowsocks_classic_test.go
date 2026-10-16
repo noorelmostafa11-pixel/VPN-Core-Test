@@ -24,6 +24,12 @@ var classicMethods = []struct {
 	{"table", 16, 0},
 	{"none", 0, 0},
 	{"plain", 0, 0},
+	{"camellia-128-cfb", 16, 16},
+	{"camellia-192-cfb", 24, 16},
+	{"camellia-256-cfb", 32, 16},
+	{"idea-cfb", 16, 8},
+	{"rc2-cfb", 16, 8},
+	{"seed-cfb", 16, 16},
 }
 
 func TestForkClassicConfiguration(t *testing.T) {
