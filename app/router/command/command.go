@@ -98,8 +98,9 @@ func (s *routingServer) TestRoute(ctx context.Context, request *TestRouteRequest
 		return nil, err
 	}
 	if request.PublishResult && s.routingStats != nil {
-		ctx, _ := context.WithTimeout(context.Background(), 4*time.Second)
-		s.routingStats.Publish(ctx, route)
+		publishCtx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+		defer cancel()
+		s.routingStats.Publish(publishCtx, route)
 	}
 	return AsProtobufMessage(request.FieldSelectors)(route), nil
 }

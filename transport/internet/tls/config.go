@@ -24,6 +24,10 @@ import (
 
 var globalSessionCache = tls.NewLRUClientSessionCache(128)
 
+// A reload publishes a new certificate pointer; concurrent handshakes keep
+// using the immutable snapshot they already obtained.
+var certificateSlotsAccess sync.RWMutex
+
 // ParseCertificate converts a cert.Certificate to Certificate.
 func ParseCertificate(c *cert.Certificate) *Certificate {
 	if c != nil {
@@ -49,6 +53,8 @@ func (c *Config) loadSelfCertPool() (*x509.CertPool, error) {
 // BuildCertificates builds a list of TLS certificates from proto definition.
 func (c *Config) BuildCertificates() []*tls.Certificate {
 	certs := make([]*tls.Certificate, 0, len(c.Certificate))
+	var startReloaders []func()
+	// Start reload goroutines only after all certificate slots exist.
 	for _, entry := range c.Certificate {
 		if entry.Usage != Certificate_ENCIPHERMENT {
 			continue
@@ -72,24 +78,37 @@ func (c *Config) BuildCertificates() []*tls.Certificate {
 			continue
 		}
 		index := len(certs) - 1
-		setupOcspTicker(entry, func(isReloaded, isOcspstapling bool) {
-			cert := certs[index]
-			if isReloaded {
-				if newKeyPair := getX509KeyPair(); newKeyPair != nil {
-					cert = newKeyPair
+		startReloaders = append(startReloaders, func() {
+			setupOcspTicker(entry, func(isReloaded, isOcspstapling bool) {
+				var updated *tls.Certificate
+				if isReloaded {
+					updated = getX509KeyPair()
+					if updated == nil {
+						return
+					}
 				} else {
-					return
+					certificateSlotsAccess.RLock()
+					updated = certs[index]
+					certificateSlotsAccess.RUnlock()
 				}
-			}
-			if isOcspstapling {
-				if newOCSPData, err := ocsp.GetOCSPForCert(cert.Certificate); err != nil {
-					errors.LogWarningInner(context.Background(), err, "ignoring invalid OCSP")
-				} else if string(newOCSPData) != string(cert.OCSPStaple) {
-					cert.OCSPStaple = newOCSPData
+				if isOcspstapling {
+					if newOCSPData, err := ocsp.GetOCSPForCert(updated.Certificate); err != nil {
+						errors.LogWarningInner(context.Background(), err, "ignoring invalid OCSP")
+					} else if string(newOCSPData) != string(updated.OCSPStaple) {
+						// TLS may still read the old certificate. Never mutate it.
+						copyCert := *updated
+						copyCert.OCSPStaple = newOCSPData
+						updated = &copyCert
+					}
 				}
-			}
-			certs[index] = cert
+				certificateSlotsAccess.Lock()
+				certs[index] = updated
+				certificateSlotsAccess.Unlock()
+			})
 		})
+	}
+	for _, start := range startReloaders {
+		start()
 	}
 	return certs
 }
@@ -246,6 +265,8 @@ func getGetCertificateFunc(c *tls.Config, ca []*Certificate) func(hello *tls.Cli
 
 func getNewGetCertificateFunc(certs []*tls.Certificate, rejectUnknownSNI bool) func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	return func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+		certificateSlotsAccess.RLock()
+		defer certificateSlotsAccess.RUnlock()
 		if len(certs) == 0 {
 			return nil, errNoCertificates
 		}

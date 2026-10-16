@@ -32,6 +32,7 @@ import (
 	"github.com/xtls/xray-core/transport/internet/tls"
 	"github.com/xtls/xray-core/transport/pipe"
 	"golang.org/x/net/http2"
+	"google.golang.org/protobuf/proto"
 )
 
 type dialerConf struct {
@@ -64,9 +65,11 @@ func getHTTPClient(ctx context.Context, dest net.Destination, streamSettings *in
 
 	if !found {
 		transportConfig := streamSettings.ProtocolSettings.(*Config)
-		var xmuxConfig XmuxConfig
+		xmuxConfig := &XmuxConfig{}
 		if transportConfig.Xmux != nil {
-			xmuxConfig = *transportConfig.Xmux
+			// Preserve the original snapshot semantics without copying protobuf
+			// internal mutex state by value.
+			xmuxConfig = proto.Clone(transportConfig.Xmux).(*XmuxConfig)
 		}
 
 		xmuxManager = NewXmuxManager(xmuxConfig, func() XmuxConn {

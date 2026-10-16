@@ -162,13 +162,13 @@ func (m *Manager) ListHandlers(ctx context.Context) []outbound.Handler {
 
 // Select implements outbound.HandlerSelector.
 func (m *Manager) Select(selectors []string) []string {
-	key := strings.Join(selectors, ",")
-	if cache, ok := m.tagsCache.Load(key); ok {
-		return cache.([]string)
-	}
-
 	m.access.RLock()
 	defer m.access.RUnlock()
+
+	key := strings.Join(selectors, ",")
+	if cache, ok := m.tagsCache.Load(key); ok {
+		return append([]string(nil), cache.([]string)...)
+	}
 
 	tags := make([]string, 0, len(selectors))
 
@@ -184,7 +184,7 @@ func (m *Manager) Select(selectors []string) []string {
 	sort.Strings(tags)
 	m.tagsCache.Store(key, tags)
 
-	return tags
+	return append([]string(nil), tags...)
 }
 
 func init() {

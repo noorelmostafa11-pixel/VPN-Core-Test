@@ -140,7 +140,7 @@ func TestSummaryDoesNotInventResults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, expected := range []string{"| prepare | PASS", "| suite | FAIL", "| wire | NOT RUN / incomplete", "no Internet", "SS2022", "1 passed packages, 1 failed packages, 1 skipped tests", "NeedsExternalPeer"} {
+	for _, expected := range []string{"| prepare | PASS", "| suite | FAIL", "| wire | NOT RUN / incomplete", "not external interoperability", "SS2022", "1 passed packages, 1 failed packages, 1 skipped tests", "NeedsExternalPeer"} {
 		if !strings.Contains(string(data), expected) {
 			t.Fatal("missing result/boundary", expected)
 		}
