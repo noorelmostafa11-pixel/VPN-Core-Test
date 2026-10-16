@@ -20,14 +20,18 @@ import (
 	"github.com/xtls/xray-core/transport/internet/stat"
 )
 
-// Client is a Socks5 client.
+// Client is a SOCKS client. SOCKS5 remains the default.
 type Client struct {
+	version       ClientVersion
 	server        *protocol.ServerSpec
 	policyManager policy.Manager
 }
 
-// NewClient create a new Socks5 client based on the given config.
+// NewClient creates a SOCKS client based on the given config.
 func NewClient(ctx context.Context, config *ClientConfig) (*Client, error) {
+	if config.Version != ClientVersion_SOCKS5 && config.Version != ClientVersion_SOCKS4 && config.Version != ClientVersion_SOCKS4A {
+		return nil, errors.New("unsupported SOCKS client version")
+	}
 	if config.Server == nil {
 		return nil, errors.New(`no target server found`)
 	}
@@ -35,9 +39,15 @@ func NewClient(ctx context.Context, config *ClientConfig) (*Client, error) {
 	if err != nil {
 		return nil, errors.New("failed to get server spec").Base(err)
 	}
+	if config.Version != ClientVersion_SOCKS5 {
+		if err := validateLegacyUser(server.User); err != nil {
+			return nil, err
+		}
+	}
 
 	v := core.MustFromContext(ctx)
 	c := &Client{
+		version:       config.Version,
 		server:        server,
 		policyManager: v.GetFeature(policy.ManagerType()).(policy.Manager),
 	}
@@ -56,6 +66,14 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 	ob.CanSpliceCopy = 2
 	// Destination of the inner request.
 	destination := ob.Target
+	if c.version != ClientVersion_SOCKS5 {
+		if destination.Network != net.Network_TCP {
+			return errors.New("SOCKS4/4a supports TCP CONNECT only")
+		}
+		if destination.Address.Family().IsIPv6() {
+			return errors.New("SOCKS4/4a cannot encode an IPv6 destination")
+		}
+	}
 
 	// Outbound server.
 	server := c.server
@@ -102,6 +120,18 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 
 	if err := conn.SetDeadline(time.Now().Add(p.Timeouts.Handshake)); err != nil {
 		errors.LogInfoInner(ctx, err, "failed to set deadline for handshake")
+	}
+	if c.version != ClientVersion_SOCKS5 {
+		request.Version = socks4Version
+		if c.version == ClientVersion_SOCKS4 && request.Address.Family().IsDomain() {
+			lookupCtx, cancel := context.WithTimeout(ctx, p.Timeouts.Handshake)
+			address, err := resolveLegacyIPv4(lookupCtx, request.Address.Domain(), net.DefaultResolver.LookupIPAddr)
+			cancel()
+			if err != nil {
+				return errors.New("SOCKS4 IPv4 resolution failed").Base(err)
+			}
+			request.Address = address
+		}
 	}
 	udpRequest, err := ClientHandshake(request, conn, conn)
 	if err != nil {

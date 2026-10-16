@@ -72,6 +72,57 @@ func (AuthType) EnumDescriptor() ([]byte, []int) {
 	return file_proxy_socks_config_proto_rawDescGZIP(), []int{0}
 }
 
+// ClientVersion selects the outbound protocol without changing the old default.
+type ClientVersion int32
+
+const (
+	// Preserve the existing SOCKS5 default for omitted fields.
+	ClientVersion_SOCKS5  ClientVersion = 0
+	ClientVersion_SOCKS4  ClientVersion = 1
+	ClientVersion_SOCKS4A ClientVersion = 2
+)
+
+// Enum value maps for ClientVersion.
+var (
+	ClientVersion_name = map[int32]string{
+		0: "SOCKS5",
+		1: "SOCKS4",
+		2: "SOCKS4A",
+	}
+	ClientVersion_value = map[string]int32{
+		"SOCKS5":  0,
+		"SOCKS4":  1,
+		"SOCKS4A": 2,
+	}
+)
+
+func (x ClientVersion) Enum() *ClientVersion {
+	p := new(ClientVersion)
+	*p = x
+	return p
+}
+
+func (x ClientVersion) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ClientVersion) Descriptor() protoreflect.EnumDescriptor {
+	return file_proxy_socks_config_proto_enumTypes[1].Descriptor()
+}
+
+func (ClientVersion) Type() protoreflect.EnumType {
+	return &file_proxy_socks_config_proto_enumTypes[1]
+}
+
+func (x ClientVersion) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ClientVersion.Descriptor instead.
+func (ClientVersion) EnumDescriptor() ([]byte, []int) {
+	return file_proxy_socks_config_proto_rawDescGZIP(), []int{1}
+}
+
 // Account represents a Socks account.
 type Account struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -207,6 +258,7 @@ type ClientConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Sever is a list of Socks server addresses.
 	Server        *protocol.ServerEndpoint `protobuf:"bytes,1,opt,name=server,proto3" json:"server,omitempty"`
+	Version       ClientVersion            `protobuf:"varint,2,opt,name=version,proto3,enum=xray.proxy.socks.ClientVersion" json:"version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -248,6 +300,13 @@ func (x *ClientConfig) GetServer() *protocol.ServerEndpoint {
 	return nil
 }
 
+func (x *ClientConfig) GetVersion() ClientVersion {
+	if x != nil {
+		return x.Version
+	}
+	return ClientVersion_SOCKS5
+}
+
 var File_proxy_socks_config_proto protoreflect.FileDescriptor
 
 const file_proxy_socks_config_proto_rawDesc = "" +
@@ -266,12 +325,19 @@ const file_proxy_socks_config_proto_rawDesc = "" +
 	"user_level\x18\x06 \x01(\rR\tuserLevel\x1a;\n" +
 	"\rAccountsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"L\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x87\x01\n" +
 	"\fClientConfig\x12<\n" +
-	"\x06server\x18\x01 \x01(\v2$.xray.common.protocol.ServerEndpointR\x06server*%\n" +
+	"\x06server\x18\x01 \x01(\v2$.xray.common.protocol.ServerEndpointR\x06server\x129\n" +
+	"\aversion\x18\x02 \x01(\x0e2\x1f.xray.proxy.socks.ClientVersionR\aversion*%\n" +
 	"\bAuthType\x12\v\n" +
 	"\aNO_AUTH\x10\x00\x12\f\n" +
-	"\bPASSWORD\x10\x01BR\n" +
+	"\bPASSWORD\x10\x01*4\n" +
+	"\rClientVersion\x12\n" +
+	"\n" +
+	"\x06SOCKS5\x10\x00\x12\n" +
+	"\n" +
+	"\x06SOCKS4\x10\x01\x12\v\n" +
+	"\aSOCKS4A\x10\x02BR\n" +
 	"\x14com.xray.proxy.socksP\x01Z%github.com/xtls/xray-core/proxy/socks\xaa\x02\x10Xray.Proxy.Socksb\x06proto3"
 
 var (
@@ -286,27 +352,29 @@ func file_proxy_socks_config_proto_rawDescGZIP() []byte {
 	return file_proxy_socks_config_proto_rawDescData
 }
 
-var file_proxy_socks_config_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_proxy_socks_config_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_proxy_socks_config_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_proxy_socks_config_proto_goTypes = []any{
 	(AuthType)(0),                   // 0: xray.proxy.socks.AuthType
-	(*Account)(nil),                 // 1: xray.proxy.socks.Account
-	(*ServerConfig)(nil),            // 2: xray.proxy.socks.ServerConfig
-	(*ClientConfig)(nil),            // 3: xray.proxy.socks.ClientConfig
-	nil,                             // 4: xray.proxy.socks.ServerConfig.AccountsEntry
-	(*net.IPOrDomain)(nil),          // 5: xray.common.net.IPOrDomain
-	(*protocol.ServerEndpoint)(nil), // 6: xray.common.protocol.ServerEndpoint
+	(ClientVersion)(0),              // 1: xray.proxy.socks.ClientVersion
+	(*Account)(nil),                 // 2: xray.proxy.socks.Account
+	(*ServerConfig)(nil),            // 3: xray.proxy.socks.ServerConfig
+	(*ClientConfig)(nil),            // 4: xray.proxy.socks.ClientConfig
+	nil,                             // 5: xray.proxy.socks.ServerConfig.AccountsEntry
+	(*net.IPOrDomain)(nil),          // 6: xray.common.net.IPOrDomain
+	(*protocol.ServerEndpoint)(nil), // 7: xray.common.protocol.ServerEndpoint
 }
 var file_proxy_socks_config_proto_depIdxs = []int32{
 	0, // 0: xray.proxy.socks.ServerConfig.auth_type:type_name -> xray.proxy.socks.AuthType
-	4, // 1: xray.proxy.socks.ServerConfig.accounts:type_name -> xray.proxy.socks.ServerConfig.AccountsEntry
-	5, // 2: xray.proxy.socks.ServerConfig.address:type_name -> xray.common.net.IPOrDomain
-	6, // 3: xray.proxy.socks.ClientConfig.server:type_name -> xray.common.protocol.ServerEndpoint
-	4, // [4:4] is the sub-list for method output_type
-	4, // [4:4] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	5, // 1: xray.proxy.socks.ServerConfig.accounts:type_name -> xray.proxy.socks.ServerConfig.AccountsEntry
+	6, // 2: xray.proxy.socks.ServerConfig.address:type_name -> xray.common.net.IPOrDomain
+	7, // 3: xray.proxy.socks.ClientConfig.server:type_name -> xray.common.protocol.ServerEndpoint
+	1, // 4: xray.proxy.socks.ClientConfig.version:type_name -> xray.proxy.socks.ClientVersion
+	5, // [5:5] is the sub-list for method output_type
+	5, // [5:5] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_proxy_socks_config_proto_init() }
@@ -319,7 +387,7 @@ func file_proxy_socks_config_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proxy_socks_config_proto_rawDesc), len(file_proxy_socks_config_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      2,
 			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   0,

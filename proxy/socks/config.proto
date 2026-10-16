@@ -32,8 +32,17 @@ message ServerConfig {
   uint32 user_level = 6;
 }
 
+// ClientVersion selects the outbound protocol without changing the old default.
+enum ClientVersion {
+  // Preserve the existing SOCKS5 default for omitted fields.
+  SOCKS5 = 0;
+  SOCKS4 = 1;
+  SOCKS4A = 2;
+}
+
 // ClientConfig is the protobuf config for Socks client.
 message ClientConfig {
   // Sever is a list of Socks server addresses.
   xray.common.protocol.ServerEndpoint server = 1;
+  ClientVersion version = 2;
 }

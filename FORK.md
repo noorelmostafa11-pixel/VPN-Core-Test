@@ -44,6 +44,11 @@ classic list, including aliases, passed local interoperability in both roles.
 This is not 32 distinct algorithms or acceptance of the separate SS2022 wire
 protocol. [Verification and source attribution](fork/VERIFICATION-BLOCK-CFB.md).
 
+SOCKS4 and SOCKS4a TCP CONNECT outbounds are now available explicitly, including
+local IPv4 resolution for SOCKS4 and remote domain resolution for SOCKS4a.
+SOCKS5 stays the default; unsupported UDP/IPv6/password semantics are rejected
+instead of substituted. [Settings and local checks](fork/VERIFICATION-SOCKS4.md).
+
 This is not complete feature parity, Internet acceptance or stability on all
 platforms. Xray's CLI is not yet a drop-in replacement for the native core's
 application/SDK interfaces. See the [comparison backlog](fork/COMPARISON.md).

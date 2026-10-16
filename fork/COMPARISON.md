@@ -35,6 +35,16 @@ Windows client/server TCP/UDP interoperability. Aliases are included in this
 count; the other three names are SS2022, already present upstream but not
 covered by this classic wire harness. See [checks](VERIFICATION-BLOCK-CFB.md).
 
+## SOCKS4 and SOCKS4a outbound
+
+Explicit `socks4`/`socks4a` protocol selectors and the existing `socks` settings
+with `version: "4"`/`"4a"` now implement TCP CONNECT. SOCKS4 resolves domain
+targets locally to IPv4 under the handshake deadline; SOCKS4a forwards domains
+to the proxy without a local lookup. User IDs are supported, not password
+authentication. IPv6 destinations, UDP and BIND are not represented as supported.
+SOCKS5 remains the default and its existing TCP/UDP behavior is unchanged.
+See [scope and verification](VERIFICATION-SOCKS4.md).
+
 ## Already present upstream
 
 Do not reimplement VLESS/REALITY/Vision, modern VMess, Trojan, Shadowsocks AEAD
@@ -53,8 +63,6 @@ support and exact settings still require compatibility checks where used.
   is not an interchangeable wire-level alias for these protocols.
 - Hysteria 1, TUIC v5, AnyTLS, ShadowTLS v2/v3 and SSH proxy endpoints absent from
   the pinned upstream proxy registrations.
-- SOCKS4/4a outbound compatibility; distinguish it from existing SOCKS5 and
-  inbound version support.
 - SIP003 wrapper/plugin semantics and custom health/body validation need a
   deeper comparison before declaring what upstream lacks.
 - Application configuration import and SDK interfaces need a Go-first integration

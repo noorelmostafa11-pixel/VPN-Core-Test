@@ -46,6 +46,8 @@ var (
 		"http":        func() interface{} { return new(HTTPClientConfig) },
 		"shadowsocks": func() interface{} { return new(ShadowsocksClientConfig) },
 		"socks":       func() interface{} { return new(SocksClientConfig) },
+		"socks4":      func() interface{} { return &SocksClientConfig{forcedVersion: "4"} },
+		"socks4a":     func() interface{} { return &SocksClientConfig{forcedVersion: "4a"} },
 		"vless":       func() interface{} { return new(VLessOutboundConfig) },
 		"vmess":       func() interface{} { return new(VMessOutboundConfig) },
 		"trojan":      func() interface{} { return new(TrojanClientConfig) },
