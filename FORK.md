@@ -60,6 +60,14 @@ CFB/none bodies still need `allowLegacyBody: true` on the inbound user. This is
 an old, weaker protocol for compatibility, not a security recommendation.
 [Settings, bounds and local checks](fork/VERIFICATION-VMESS-LEGACY-HEADER.md).
 
+Standalone legacy HTTP/2 is restored as `http`/`h2`/`http2`, with explicit
+cleartext prior-knowledge `h2c` as well as TLS. It uses its own `httpSettings`
+and raw HTTP/2 request/response bodies, not an XHTTP alias. Host/path/method
+validation, server-first streaming, upload half-close and cancellation are
+implemented. The HTTP/2 + REALITY pairing is still pending and rejected
+explicitly; existing REALITY transports are unchanged.
+[Settings, local results and known ECH test failure](fork/VERIFICATION-HTTP2.md).
+
 This is not complete feature parity, Internet acceptance or stability on all
 platforms. Xray's CLI is not yet a drop-in replacement for the native core's
 application/SDK interfaces. See the [comparison backlog](fork/COMPARISON.md).

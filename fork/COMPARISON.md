@@ -70,6 +70,25 @@ IV, so legitimate same-second connections are not mistaken for replays.
 These bounds deliberately do not promise unbounded historical configurations.
 [Verification and acceptance boundaries](VERIFICATION-VMESS-LEGACY-HEADER.md).
 
+## Restored standalone HTTP/2 and h2c
+
+Explicit `http`, `h2`, `http2` and `h2c` selectors register the separate `http`
+transport. HTTP/2 carries the unmodified proxy bytes in a full-duplex PUT (or
+explicit configured body-capable method), without gRPC/XHTTP framing or padding.
+TLS uses existing certificate verification and fingerprints, requiring negotiated
+`h2`; cleartext uses the HTTP/2 client preface, not HTTP/1.1 Upgrade.
+`httpSettings` supports hosts, path/query, method, multi-value headers and the
+historical read-idle/health-check fields. The schema retains its old field IDs.
+
+Both endpoint roles passed local independent HTTP/2 peers, including server-first
+and exact120003-byte streams. A configured VLESS core-to-core h2c case passes too.
+These are not independent main/private-node or foreign-platform acceptance.
+Host/method/path matching is exact (not the old upstream prefix-path listener),
+reserved transport headers are rejected, and no global client pool is introduced.
+HTTP/2 + REALITY is explicitly pending, not silently changed to TLS or cleartext.
+The broad TLS suite still fails its unchanged external ECH test; offline checks
+pass, not the whole TLS suite. [Full evidence and limits](VERIFICATION-HTTP2.md).
+
 ## Already present upstream
 
 Do not reimplement VLESS/REALITY/Vision, modern VMess, Trojan, Shadowsocks AEAD
@@ -82,8 +101,10 @@ support and exact settings still require compatibility checks where used.
 - SS2022 fork/main interoperability requires a separate key/configuration-aware
   fixture. The existing upstream package race suite passes; that is not proof
   of compatibility with main, private nodes or every application setting.
-- Legacy standalone HTTP/2/h2c and QUIC transports removed from upstream. XHTTP
-  is not an interchangeable wire-level alias for these protocols.
+- Complete and verify the standalone HTTP/2 + REALITY pairing. This batch restores
+  TLS and h2c only; the existing REALITY/TCP/XHTTP implementations are retained.
+- Legacy standalone QUIC removed from upstream. XHTTP is not an interchangeable
+  wire-level alias for that protocol.
 - Hysteria 1, TUIC v5, AnyTLS, ShadowTLS v2/v3 and SSH proxy endpoints absent from
   the pinned upstream proxy registrations.
 - SIP003 wrapper/plugin semantics and custom health/body validation need a

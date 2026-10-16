@@ -30,7 +30,9 @@ func (p TransportProtocol) Build() (string, error) {
 	case "httpupgrade":
 		errors.PrintNonRemovalDeprecatedFeatureWarning("HTTPUpgrade transport (with ALPN http/1.1, etc.)", "XHTTP H2 & H3")
 		return "httpupgrade", nil
-	case "h2", "h3", "http":
+	case "http", "h2", "http2", "h2c":
+		return "http", nil
+	case "h3":
 		return "", errors.PrintRemovedFeatureError("HTTP transport (without header padding, etc.)", "XHTTP stream-one H2 & H3")
 	case "quic":
 		return "", errors.PrintRemovedFeatureError("QUIC transport (without web service, etc.)", "XHTTP stream-one H3")
@@ -56,6 +58,7 @@ type StreamConfig struct {
 	REALITYSettings     *REALITYConfig     `json:"realitySettings"`
 	RAWSettings         *TCPConfig         `json:"rawSettings"`
 	TCPSettings         *TCPConfig         `json:"tcpSettings"`
+	HTTPSettings        *HTTPConfig        `json:"httpSettings"`
 	XHTTPSettings       *SplitHTTPConfig   `json:"xhttpSettings"`
 	SplitHTTPSettings   *SplitHTTPConfig   `json:"splithttpSettings"`
 	KCPSettings         *KCPConfig         `json:"kcpSettings"`
@@ -86,6 +89,15 @@ func (c *StreamConfig) Build() (*internet.StreamConfig, error) {
 			return nil, err
 		}
 		config.ProtocolName = protocol
+	}
+	if config.ProtocolName == "http" {
+		security := strings.ToLower(c.Security)
+		if security != "" && security != "none" && security != "tls" {
+			return nil, errors.New("legacy HTTP/2 currently supports TLS or cleartext h2c only")
+		}
+		if c.Network != nil && strings.EqualFold(string(*c.Network), "h2c") && security != "" && security != "none" {
+			return nil, errors.New("h2c requires cleartext security none")
+		}
 	}
 
 	switch strings.ToLower(c.Security) {
@@ -124,6 +136,17 @@ func (c *StreamConfig) Build() (*internet.StreamConfig, error) {
 
 	if c.RAWSettings != nil {
 		c.TCPSettings = c.RAWSettings
+	}
+	if c.HTTPSettings != nil || config.ProtocolName == "http" {
+		httpSettings := c.HTTPSettings
+		if httpSettings == nil {
+			httpSettings = &HTTPConfig{}
+		}
+		hs, err := httpSettings.Build()
+		if err != nil {
+			return nil, errors.New("Failed to build legacy HTTP/2 config").Base(err)
+		}
+		config.TransportSettings = append(config.TransportSettings, &internet.TransportConfig{ProtocolName: "http", Settings: serial.ToTypedMessage(hs)})
 	}
 	if c.TCPSettings != nil {
 		ts, err := c.TCPSettings.Build()
