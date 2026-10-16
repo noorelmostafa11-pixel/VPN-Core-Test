@@ -1,3 +1,4 @@
+# Preserved upstream workflow; inactive in this custom fork until explicitly enabled.
 name: Scheduled assets update
 
 # NOTE: This Github Actions is required by other actions, for preparing other packaging assets in a

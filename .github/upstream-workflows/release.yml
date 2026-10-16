@@ -1,3 +1,4 @@
+# Preserved upstream workflow; inactive in this custom fork until explicitly enabled.
 name: Build and Release
 
 on:

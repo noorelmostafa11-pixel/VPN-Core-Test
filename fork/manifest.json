@@ -1,0 +1,20 @@
+{
+  "branch": "feature/xray-custom-core",
+  "upstream": {
+    "repository": "https://github.com/XTLS/Xray-core",
+    "tag": "v26.10.10",
+    "prerelease": true,
+    "commit": "701af60772cda123492f86e383e1fdba066614a9"
+  },
+  "comparison": {
+    "repository": "https://github.com/noorelmostafa11-pixel/VPN-Core-Test",
+    "branch": "main",
+    "commit": "b066df12e6e9030a937a3c1313e85cdf62d7bb8f",
+    "version": "0.5.25-go"
+  },
+  "implementation_language": "Go",
+  "new_executable_tool_language": "Go",
+  "automatic_ci_enabled": false,
+  "checkpoint": "pinned-upstream-foundation",
+  "verified_custom_additions": []
+}
