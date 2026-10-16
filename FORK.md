@@ -49,6 +49,11 @@ local IPv4 resolution for SOCKS4 and remote domain resolution for SOCKS4a.
 SOCKS5 stays the default; unsupported UDP/IPv6/password semantics are rejected
 instead of substituted. [Settings and local checks](fork/VERIFICATION-SOCKS4.md).
 
+VMess `aes-128-cfb`, `none` and TCP-only `zero` body modes are now explicit
+choices with modern AEAD headers. Inbound use requires a per-user opt-in;
+modern defaults are retained. Legacy nonzero `alterId` headers remain pending
+and are rejected rather than silently ignored. [Details](fork/VERIFICATION-VMESS-BODY.md).
+
 This is not complete feature parity, Internet acceptance or stability on all
 platforms. Xray's CLI is not yet a drop-in replacement for the native core's
 application/SDK interfaces. See the [comparison backlog](fork/COMPARISON.md).

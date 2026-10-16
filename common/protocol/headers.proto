@@ -8,9 +8,13 @@ option java_multiple_files = true;
 
 enum SecurityType {
   UNKNOWN = 0;
+  AES128_CFB = 1;
   AUTO = 2;
   AES128_GCM = 3;
   CHACHA20_POLY1305 = 4;
+  NONE = 5;
+  // Configuration-only: unframed NONE for TCP. Never a wire security code.
+  ZERO = 6;
 }
 
 message SecurityConfig {

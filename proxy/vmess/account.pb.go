@@ -27,12 +27,16 @@ type Account struct {
 	// ID of the account, in the form of a UUID, e.g.,
 	// "66ad4540-b58c-4ad2-9926-ea63445a9b57".
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// Nonzero legacy-header alter IDs are not implemented in this fork.
+	AlterId uint32 `protobuf:"varint,2,opt,name=alter_id,json=alterId,proto3" json:"alter_id,omitempty"`
 	// Security settings. Only applies to client side.
 	SecuritySettings *protocol.SecurityConfig `protobuf:"bytes,3,opt,name=security_settings,json=securitySettings,proto3" json:"security_settings,omitempty"`
 	// Define tests enabled for this account
-	TestsEnabled  string `protobuf:"bytes,4,opt,name=tests_enabled,json=testsEnabled,proto3" json:"tests_enabled,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	TestsEnabled string `protobuf:"bytes,4,opt,name=tests_enabled,json=testsEnabled,proto3" json:"tests_enabled,omitempty"`
+	// Explicit per-user inbound opt-in; defaults remain authenticated body modes.
+	AllowLegacyBody bool `protobuf:"varint,5,opt,name=allow_legacy_body,json=allowLegacyBody,proto3" json:"allow_legacy_body,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *Account) Reset() {
@@ -72,6 +76,13 @@ func (x *Account) GetId() string {
 	return ""
 }
 
+func (x *Account) GetAlterId() uint32 {
+	if x != nil {
+		return x.AlterId
+	}
+	return 0
+}
+
 func (x *Account) GetSecuritySettings() *protocol.SecurityConfig {
 	if x != nil {
 		return x.SecuritySettings
@@ -86,15 +97,24 @@ func (x *Account) GetTestsEnabled() string {
 	return ""
 }
 
+func (x *Account) GetAllowLegacyBody() bool {
+	if x != nil {
+		return x.AllowLegacyBody
+	}
+	return false
+}
+
 var File_proxy_vmess_account_proto protoreflect.FileDescriptor
 
 const file_proxy_vmess_account_proto_rawDesc = "" +
 	"\n" +
-	"\x19proxy/vmess/account.proto\x12\x10xray.proxy.vmess\x1a\x1dcommon/protocol/headers.proto\"\x91\x01\n" +
+	"\x19proxy/vmess/account.proto\x12\x10xray.proxy.vmess\x1a\x1dcommon/protocol/headers.proto\"\xd8\x01\n" +
 	"\aAccount\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12Q\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
+	"\balter_id\x18\x02 \x01(\rR\aalterId\x12Q\n" +
 	"\x11security_settings\x18\x03 \x01(\v2$.xray.common.protocol.SecurityConfigR\x10securitySettings\x12#\n" +
-	"\rtests_enabled\x18\x04 \x01(\tR\ftestsEnabledBR\n" +
+	"\rtests_enabled\x18\x04 \x01(\tR\ftestsEnabled\x12*\n" +
+	"\x11allow_legacy_body\x18\x05 \x01(\bR\x0fallowLegacyBodyBR\n" +
 	"\x14com.xray.proxy.vmessP\x01Z%github.com/xtls/xray-core/proxy/vmess\xaa\x02\x10Xray.Proxy.Vmessb\x06proto3"
 
 var (

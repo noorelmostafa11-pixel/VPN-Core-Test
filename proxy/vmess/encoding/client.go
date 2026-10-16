@@ -61,6 +61,14 @@ func NewClientSession(ctx context.Context, behaviorSeed int64) *ClientSession {
 }
 
 func (c *ClientSession) EncodeRequestHeader(header *protocol.RequestHeader, writer io.Writer) error {
+	if header.Security == protocol.SecurityType_ZERO {
+		return errors.New("VMess zero is a configuration selector, not a wire security code")
+	}
+	if legacyBodySecurity(header.Security) {
+		if err := validateLegacyBodyOptions(header); err != nil {
+			return err
+		}
+	}
 	account := header.User.Account.(*vmess.MemoryAccount)
 
 	buffer := buf.New()
@@ -102,6 +110,9 @@ func (c *ClientSession) EncodeRequestHeader(header *protocol.RequestHeader, writ
 }
 
 func (c *ClientSession) EncodeRequestBody(request *protocol.RequestHeader, writer io.Writer) (buf.Writer, error) {
+	if legacyBodySecurity(request.Security) {
+		return newLegacyBodyWriter(request, c.requestBodyKey[:], c.requestBodyIV[:], writer)
+	}
 	var sizeParser crypto.ChunkSizeEncoder = crypto.PlainChunkSizeParser{}
 	if request.Option.Has(protocol.RequestOptionChunkMasking) {
 		sizeParser = NewShakeSizeParser(c.requestBodyIV[:])
@@ -239,6 +250,9 @@ func (c *ClientSession) DecodeResponseHeader(reader io.Reader) (*protocol.Respon
 }
 
 func (c *ClientSession) DecodeResponseBody(request *protocol.RequestHeader, reader io.Reader) (buf.Reader, error) {
+	if legacyBodySecurity(request.Security) {
+		return newLegacyBodyReader(request, c.responseBodyKey[:], c.responseBodyIV[:], reader)
+	}
 	var sizeParser crypto.ChunkSizeDecoder = crypto.PlainChunkSizeParser{}
 	if request.Option.Has(protocol.RequestOptionChunkMasking) {
 		sizeParser = NewShakeSizeParser(c.responseBodyIV[:])

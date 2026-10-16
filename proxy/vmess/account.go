@@ -15,7 +15,8 @@ type MemoryAccount struct {
 	// ID is the main ID of the account.
 	ID *protocol.ID
 	// Security type of the account. Used for client connections.
-	Security protocol.SecurityType
+	Security        protocol.SecurityType
+	AllowLegacyBody bool
 
 	AuthenticatedLengthExperiment bool
 	NoTerminationSignal           bool
@@ -42,11 +43,25 @@ func (a *MemoryAccount) ToProto() proto.Message {
 		Id:               a.ID.String(),
 		TestsEnabled:     test,
 		SecuritySettings: &protocol.SecurityConfig{Type: a.Security},
+		AllowLegacyBody:  a.AllowLegacyBody,
 	}
 }
 
 // AsAccount implements protocol.Account.
 func (a *Account) AsAccount() (protocol.Account, error) {
+	if a.AlterId != 0 {
+		return nil, errors.New("legacy VMess alterId headers are not implemented")
+	}
+	security := a.SecuritySettings.GetSecurityType()
+	switch security {
+	case protocol.SecurityType_AES128_CFB, protocol.SecurityType_NONE, protocol.SecurityType_ZERO:
+		if strings.Contains(a.TestsEnabled, "AuthenticatedLength") {
+			return nil, errors.New("AuthenticatedLength requires an AEAD body mode")
+		}
+	case protocol.SecurityType_AES128_GCM, protocol.SecurityType_CHACHA20_POLY1305:
+	default:
+		return nil, errors.New("unsupported VMess security type")
+	}
 	id, err := uuid.ParseString(a.Id)
 	if err != nil {
 		return nil, errors.New("failed to parse ID").Base(err)
@@ -61,7 +76,8 @@ func (a *Account) AsAccount() (protocol.Account, error) {
 	}
 	return &MemoryAccount{
 		ID:                            protoID,
-		Security:                      a.SecuritySettings.GetSecurityType(),
+		Security:                      security,
+		AllowLegacyBody:               a.AllowLegacyBody,
 		AuthenticatedLengthExperiment: AuthenticatedLength,
 		NoTerminationSignal:           NoTerminationSignal,
 	}, nil

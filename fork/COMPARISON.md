@@ -45,6 +45,16 @@ authentication. IPv6 destinations, UDP and BIND are not represented as supported
 SOCKS5 remains the default and its existing TCP/UDP behavior is unchanged.
 See [scope and verification](VERIFICATION-SOCKS4.md).
 
+## VMess body compatibility with modern AEAD headers
+
+Explicit `aes-128-cfb`, `none` and `zero` now retain their actual body semantics
+instead of becoming AUTO. CFB uses continuous AES-CFB and the historical FNV
+checksum framing; none uses unencrypted chunks; zero is unframed NONE for TCP
+only, never wire security code6. Outbound defaults remain modern AEAD modes.
+Inbound weak body modes require per-user `allowLegacyBody: true`; default
+inbounds still reject them. Nonzero `alterId` headers remain unimplemented and
+are rejected rather than ignored. [Settings and local checks](VERIFICATION-VMESS-BODY.md).
+
 ## Already present upstream
 
 Do not reimplement VLESS/REALITY/Vision, modern VMess, Trojan, Shadowsocks AEAD
@@ -57,8 +67,8 @@ support and exact settings still require compatibility checks where used.
 - SS2022 fork/main interoperability requires a separate key/configuration-aware
   fixture. The existing upstream package race suite passes; that is not proof
   of compatibility with main, private nodes or every application setting.
-- Legacy VMess alter-ID/AES-CFB and none/zero semantics. Mapping unsupported
-  strings to AUTO is not implementation of the requested wire behavior.
+- Legacy VMess alter-ID authenticated headers. The body-mode addition above
+  does not restore legacy timestamp/HMAC headers or alter-ID derivation.
 - Legacy standalone HTTP/2/h2c and QUIC transports removed from upstream. XHTTP
   is not an interchangeable wire-level alias for these protocols.
 - Hysteria 1, TUIC v5, AnyTLS, ShadowTLS v2/v3 and SSH proxy endpoints absent from

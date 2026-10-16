@@ -16,31 +16,54 @@ import (
 )
 
 type VMessAccount struct {
-	ID          string `json:"id"`
-	Security    string `json:"security"`
-	Experiments string `json:"experiments"`
+	AlterID         uint32 `json:"alterId"`
+	AllowLegacyBody bool   `json:"allowLegacyBody"`
+	ID              string `json:"id"`
+	Security        string `json:"security"`
+	Experiments     string `json:"experiments"`
 }
 
 // Build implements Buildable
 func (a *VMessAccount) Build() *vmess.Account {
 	var st protocol.SecurityType
 	switch strings.ToLower(a.Security) {
+	case "aes-128-cfb":
+		st = protocol.SecurityType_AES128_CFB
+	case "none":
+		st = protocol.SecurityType_NONE
+	case "zero":
+		st = protocol.SecurityType_ZERO
 	case "aes-128-gcm":
 		st = protocol.SecurityType_AES128_GCM
 	case "chacha20-poly1305":
 		st = protocol.SecurityType_CHACHA20_POLY1305
-	case "auto":
+	case "", "auto":
 		st = protocol.SecurityType_AUTO
 	default:
-		st = protocol.SecurityType_AUTO
+		st = protocol.SecurityType_UNKNOWN
 	}
 	return &vmess.Account{
-		Id: a.ID,
+		AlterId:         a.AlterID,
+		AllowLegacyBody: a.AllowLegacyBody,
+		Id:              a.ID,
 		SecuritySettings: &protocol.SecurityConfig{
 			Type: st,
 		},
 		TestsEnabled: a.Experiments,
 	}
+}
+
+func (a *VMessAccount) validate() error {
+	if a.AlterID != 0 {
+		return errors.New("legacy VMess alterId headers are not implemented; use alterId 0")
+	}
+	if a.Build().SecuritySettings.Type == protocol.SecurityType_UNKNOWN {
+		return errors.New("unsupported VMess security: ", a.Security)
+	}
+	if (strings.EqualFold(a.Security, "none") || strings.EqualFold(a.Security, "zero") || strings.EqualFold(a.Security, "aes-128-cfb")) && strings.Contains(a.Experiments, "AuthenticatedLength") {
+		return errors.New("AuthenticatedLength requires an AEAD body mode")
+	}
+	return nil
 }
 
 type VMessDefaultConfig struct {
@@ -90,6 +113,9 @@ func (c *VMessInboundConfig) Build() (proto.Message, error) {
 			return err
 		}
 		account.ID = u.String()
+		if err := account.validate(); err != nil {
+			return err
+		}
 
 		user.Account = serial.ToTypedMessage(account.Build())
 		config.User[idx] = user
@@ -109,6 +135,7 @@ type VMessOutboundTarget struct {
 }
 
 type VMessOutboundConfig struct {
+	AlterID     uint32                 `json:"alterId"`
 	Address     *Address               `json:"address"`
 	Port        uint16                 `json:"port"`
 	Level       uint32                 `json:"level"`
@@ -160,6 +187,7 @@ func (c *VMessOutboundConfig) Build() (proto.Message, error) {
 			account := new(VMessAccount)
 			if c.Address != nil {
 				account.ID = c.ID
+				account.AlterID = c.AlterID
 				account.Security = c.Security
 				account.Experiments = c.Experiments
 			} else {
@@ -173,6 +201,9 @@ func (c *VMessOutboundConfig) Build() (proto.Message, error) {
 				return nil, err
 			}
 			account.ID = u.String()
+			if err := account.validate(); err != nil {
+				return nil, err
+			}
 
 			user.Account = serial.ToTypedMessage(account.Build())
 			spec.User = user

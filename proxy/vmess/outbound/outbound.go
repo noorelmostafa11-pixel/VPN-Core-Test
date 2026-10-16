@@ -104,18 +104,8 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 	}
 
 	account := request.User.Account.(*vmess.MemoryAccount)
-	request.Security = account.Security
-
-	if request.Security == protocol.SecurityType_AES128_GCM || request.Security == protocol.SecurityType_CHACHA20_POLY1305 {
-		request.Option.Set(protocol.RequestOptionChunkMasking)
-	}
-
-	if shouldEnablePadding(request.Security) && request.Option.Has(protocol.RequestOptionChunkMasking) {
-		request.Option.Set(protocol.RequestOptionGlobalPadding)
-	}
-
-	if account.AuthenticatedLengthExperiment {
-		request.Option.Set(protocol.RequestOptionAuthenticatedLength)
+	if err := configureRequestSecurity(request, account); err != nil {
+		return err
 	}
 
 	input := link.Reader
@@ -220,6 +210,31 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 }
 
 var enablePadding atomic.Bool
+
+func configureRequestSecurity(request *protocol.RequestHeader, account *vmess.MemoryAccount) error {
+	request.Security = account.Security
+	if request.Security == protocol.SecurityType_ZERO {
+		if request.Command != protocol.RequestCommandTCP {
+			return errors.New("VMess zero is an unframed TCP-only mode")
+		}
+		request.Security = protocol.SecurityType_NONE
+		request.Option = 0
+	}
+	legacy := request.Security == protocol.SecurityType_NONE || request.Security == protocol.SecurityType_AES128_CFB
+	if legacy && account.AuthenticatedLengthExperiment {
+		return errors.New("AuthenticatedLength requires an AEAD body mode")
+	}
+	if request.Security == protocol.SecurityType_AES128_GCM || request.Security == protocol.SecurityType_CHACHA20_POLY1305 {
+		request.Option.Set(protocol.RequestOptionChunkMasking)
+	}
+	if shouldEnablePadding(request.Security) && request.Option.Has(protocol.RequestOptionChunkMasking) {
+		request.Option.Set(protocol.RequestOptionGlobalPadding)
+	}
+	if account.AuthenticatedLengthExperiment {
+		request.Option.Set(protocol.RequestOptionAuthenticatedLength)
+	}
+	return nil
+}
 
 func shouldEnablePadding(s protocol.SecurityType) bool {
 	return enablePadding.Load() || s == protocol.SecurityType_AES128_GCM || s == protocol.SecurityType_CHACHA20_POLY1305 || s == protocol.SecurityType_AUTO

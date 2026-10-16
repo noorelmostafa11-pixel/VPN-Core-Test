@@ -242,12 +242,26 @@ func (s *ServerSession) DecodeRequestHeader(reader io.Reader, isDrain bool) (*pr
 	if request.Security == protocol.SecurityType_UNKNOWN || request.Security == protocol.SecurityType_AUTO {
 		return nil, errors.New("unknown security type: ", request.Security)
 	}
+	if request.Security == protocol.SecurityType_ZERO {
+		return nil, errors.New("VMess zero is not a wire security code")
+	}
+	if legacyBodySecurity(request.Security) {
+		if !vmessAccount.AllowLegacyBody {
+			return nil, errors.New("legacy VMess body modes require explicit per-user allowLegacyBody")
+		}
+		if err := validateLegacyBodyOptions(request); err != nil {
+			return nil, err
+		}
+	}
 
 	return request, nil
 }
 
 // DecodeRequestBody returns Reader from which caller can fetch decrypted body.
 func (s *ServerSession) DecodeRequestBody(request *protocol.RequestHeader, reader io.Reader) (buf.Reader, error) {
+	if legacyBodySecurity(request.Security) {
+		return newLegacyBodyReader(request, s.requestBodyKey[:], s.requestBodyIV[:], reader)
+	}
 	var sizeParser crypto.ChunkSizeDecoder = crypto.PlainChunkSizeParser{}
 	if request.Option.Has(protocol.RequestOptionChunkMasking) {
 		sizeParser = NewShakeSizeParser(s.requestBodyIV[:])
@@ -355,6 +369,9 @@ func (s *ServerSession) EncodeResponseHeader(header *protocol.ResponseHeader, wr
 
 // EncodeResponseBody returns a Writer that auto-encrypt content written by caller.
 func (s *ServerSession) EncodeResponseBody(request *protocol.RequestHeader, writer io.Writer) (buf.Writer, error) {
+	if legacyBodySecurity(request.Security) {
+		return newLegacyBodyWriter(request, s.responseBodyKey[:], s.responseBodyIV[:], writer)
+	}
 	var sizeParser crypto.ChunkSizeEncoder = crypto.PlainChunkSizeParser{}
 	if request.Option.Has(protocol.RequestOptionChunkMasking) {
 		sizeParser = NewShakeSizeParser(s.responseBodyIV[:])
