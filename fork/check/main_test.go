@@ -26,8 +26,8 @@ func TestPhaseArguments(t *testing.T) {
 				t.Fatal("test phase contains packaging", joined)
 			}
 		}
-		if phase == "suite" && (!strings.Contains(joined, "-race") || !strings.Contains(joined, "./...")) {
-			t.Fatal("suite does not cover the entire repository")
+		if phase == "suite" && (!strings.Contains(joined, "-race") || !strings.Contains(joined, "./...") || !strings.Contains(joined, "-timeout=25m")) {
+			t.Fatal("suite must test every package with the race detector and a bounded timeout")
 		}
 		if phase == "wire" && (!strings.Contains(joined, "^TestXraySelfCompatibility$") || !strings.Contains(joined, "-binary=")) {
 			t.Fatal("wire does not use the fork's compiled binary")

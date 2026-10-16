@@ -152,7 +152,9 @@ func testBinaryPath() string {
 func phaseArgs(phase, root, folder string) ([]string, time.Duration, error) {
 	switch phase {
 	case "suite":
-		return []string{"test", "-race", "-count=1", "-timeout=15m", "-json", "./..."}, 30 * time.Minute, nil
+		// Scenario packages need more than 15 minutes on macOS ARM64 with -race.
+		// Keep a hard per-package limit below the 30-minute suite phase limit.
+		return []string{"test", "-race", "-count=1", "-timeout=25m", "-json", "./..."}, 30 * time.Minute, nil
 	case "vet":
 		return []string{"vet", "./..."}, 5 * time.Minute, nil
 	case "build":

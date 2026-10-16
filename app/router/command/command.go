@@ -98,8 +98,11 @@ func (s *routingServer) TestRoute(ctx context.Context, request *TestRouteRequest
 		return nil, err
 	}
 	if request.PublishResult && s.routingStats != nil {
-		publishCtx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-		defer cancel()
+		// The statistics channel broadcasts asynchronously, so cancelling on
+		// return would discard a queued route before subscribers receive it.
+		// Bound delivery without tying it to the RPC's lifetime.
+		publishCtx, cancel := context.WithCancel(context.Background())
+		time.AfterFunc(4*time.Second, cancel)
 		s.routingStats.Publish(publishCtx, route)
 	}
 	return AsProtobufMessage(request.FieldSelectors)(route), nil
