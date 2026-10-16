@@ -15,11 +15,13 @@
   "implementation_language": "Go",
   "new_executable_tool_language": "Go",
   "automatic_ci_enabled": false,
-  "checkpoint": "legacy-aes-compatibility",
+  "checkpoint": "classic-stream-compatibility",
   "verified_custom_additions": [
     "Shadowsocks AES-192-GCM: explicit client/server/multi-user configuration, TCP and UDP",
     "Shadowsocks AES-128/192/256-CFB, CTR and OFB: explicit single-user client/server, TCP and UDP",
-    "Shadowsocks AEAD server-first: ignore an empty initial inbound buffer instead of encoding an end marker"
+    "Shadowsocks AEAD server-first: ignore an empty initial inbound buffer instead of encoding an end marker",
+    "Shadowsocks bf-cfb, cast5-cfb, des-cfb, rc4, rc4-md5, salsa20, chacha20, chacha20-ietf, table, none/plain: explicit single-user TCP/UDP",
+    "Original ChaCha20 64-bit counter carry, Salsa20 counter exhaustion, per-account immutable table permutations"
   ],
   "runtime_validation_platform": "windows/amd64",
   "build_validation_platforms": ["windows/amd64", "linux/amd64", "darwin/arm64"],

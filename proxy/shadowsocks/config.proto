@@ -34,6 +34,16 @@ enum CipherType {
   AES_128_OFB = 16;
   AES_192_OFB = 17;
   AES_256_OFB = 18;
+  BLOWFISH_CFB = 19;
+  CAST5_CFB = 20;
+  DES_CFB = 21;
+  RC4 = 22;
+  RC4_MD5 = 23;
+  SALSA20 = 24;
+  CHACHA20 = 25;
+  CHACHA20_IETF = 26;
+  TABLE = 27;
+  NONE = 28;
 }
 
 message ServerConfig {

@@ -9,11 +9,17 @@ go test -race ./fork/wire -run TestMainInteroperability -count=1 -timeout=3m -v 
 
 This explicitly requested integration test is skipped if neither executable
 path is supplied. It uses only Go's standard library and synthetic loopback
-credentials, tests both endpoint roles for five classic AEAD methods and nine
-legacy AES stream methods. It requires exact equality for 56 server-first
-greetings, 56 200001-byte TCP echoes and 252 UDP echoes (32, 1400 and 3800
-bytes). The client waits for the greeting before sending application bytes.
+credentials, tests both endpoint roles for 25 method names: five classic AEAD,
+nine legacy AES and eleven other classic names (including the none/plain alias).
+It requires exact equality for 100 server-first greetings, 100 200001-byte TCP
+echoes and 450 UDP echoes (32, 1400 and 3800 bytes). The client waits for the
+greeting before sending application bytes.
 Protocol exchanges are not retried.
+
+For none/plain the fork uses an empty password. Pinned main requires a nonempty
+placeholder even for plaintext, so only that peer receives an unused synthetic
+password. Neither endpoint encrypts or authenticates these two names; the
+placeholder is not a security feature. All other methods use matching secrets.
 
 The upstream Freedom private-address policy is left unchanged. The server test
 configuration allows only 127.0.0.1 and the two ephemeral echo target ports.

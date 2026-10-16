@@ -62,11 +62,25 @@ func createXChaCha20Poly1305(key []byte) cipher.AEAD {
 func (a *Account) getCipher() (Cipher, error) {
 	switch a.CipherType {
 	case CipherType_AES_128_CFB, CipherType_AES_128_CTR, CipherType_AES_128_OFB:
-		return &legacyAESCipher{keyBytes: 16, method: a.CipherType}, nil
+		return newLegacyStreamCipher(a.CipherType, 16, 16, a.Password), nil
 	case CipherType_AES_192_CFB, CipherType_AES_192_CTR, CipherType_AES_192_OFB:
-		return &legacyAESCipher{keyBytes: 24, method: a.CipherType}, nil
+		return newLegacyStreamCipher(a.CipherType, 24, 16, a.Password), nil
 	case CipherType_AES_256_CFB, CipherType_AES_256_CTR, CipherType_AES_256_OFB:
-		return &legacyAESCipher{keyBytes: 32, method: a.CipherType}, nil
+		return newLegacyStreamCipher(a.CipherType, 32, 16, a.Password), nil
+	case CipherType_BLOWFISH_CFB, CipherType_CAST5_CFB:
+		return newLegacyStreamCipher(a.CipherType, 16, 8, a.Password), nil
+	case CipherType_DES_CFB:
+		return newLegacyStreamCipher(a.CipherType, 8, 8, a.Password), nil
+	case CipherType_RC4, CipherType_TABLE:
+		return newLegacyStreamCipher(a.CipherType, 16, 0, a.Password), nil
+	case CipherType_RC4_MD5:
+		return newLegacyStreamCipher(a.CipherType, 16, 16, a.Password), nil
+	case CipherType_SALSA20, CipherType_CHACHA20:
+		return newLegacyStreamCipher(a.CipherType, 32, 8, a.Password), nil
+	case CipherType_CHACHA20_IETF:
+		return newLegacyStreamCipher(a.CipherType, 32, 12, a.Password), nil
+	case CipherType_NONE:
+		return newLegacyStreamCipher(a.CipherType, 0, 0, a.Password), nil
 	case CipherType_AES_128_GCM:
 		return &AEADCipher{
 			KeyBytes:        16,
@@ -197,6 +211,9 @@ func (c *AEADCipher) DecodePacket(key []byte, b *buf.Buffer) error {
 }
 
 func passwordToCipherKey(password []byte, keySize int32) []byte {
+	if keySize == 0 {
+		return nil
+	}
 	key := make([]byte, 0, keySize)
 
 	md5Sum := md5.Sum(password)

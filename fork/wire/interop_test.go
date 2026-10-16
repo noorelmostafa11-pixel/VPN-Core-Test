@@ -81,6 +81,7 @@ func TestMainInteroperability(t *testing.T) {
 			methods = append(methods, fmt.Sprintf("aes-%d-%s", bits, mode))
 		}
 	}
+	methods = append(methods, "bf-cfb", "cast5-cfb", "des-cfb", "rc4", "rc4-md5", "salsa20", "chacha20", "chacha20-ietf", "table", "none", "plain")
 	var completed counts
 	defer func() {
 		report := object{
@@ -90,8 +91,9 @@ func TestMainInteroperability(t *testing.T) {
 			"expected_server_first_greetings": 4 * len(methods),
 			"completed":                       completed, "passed": !t.Failed(),
 			"tcp_bytes_each": 200001, "udp_sizes": []int{32, 1400, 3800},
-			"platform": runtime.GOOS + "/" + runtime.GOARCH,
-			"scope":    "Synthetic loopback; not Internet, application ABI or all-platform acceptance",
+			"platform":         runtime.GOOS + "/" + runtime.GOARCH,
+			"scope":            "Synthetic loopback; not Internet, application ABI or all-platform acceptance",
+			"plaintext_config": "Fork uses an empty password; pinned main requires an unused synthetic placeholder for none/plain. Neither endpoint encrypts or authenticates these methods.",
 		}
 		writeJSON(t, filepath.Join(folder, "summary.json"), report)
 	}()
@@ -291,6 +293,13 @@ func socks(t *testing.T, port int, command byte, target string) (net.Conn, strin
 
 func exchange(t *testing.T, binaries []string, forkServer bool, method, folder string, completed *counts) {
 	t.Helper()
+	secret := password
+	if method == "none" || method == "plain" {
+		secret = ""
+	}
+	// Pinned main rejects empty passwords even for plaintext. Use its required
+	// unused placeholder only on that peer; the fork's empty-password case stays.
+	referenceSecret := password
 	if err := os.MkdirAll(folder, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -302,17 +311,17 @@ func exchange(t *testing.T, binaries []string, forkServer bool, method, folder s
 	forkRelease, mainRelease := releaseSocks, releaseServer
 	mainArgs := []string{"--no-socks"}
 	if forkServer {
-		config["inbounds"] = []object{{"listen": "127.0.0.1", "port": serverPort, "protocol": "shadowsocks", "settings": object{"method": method, "password": password, "network": "tcp,udp"}}}
+		config["inbounds"] = []object{{"listen": "127.0.0.1", "port": serverPort, "protocol": "shadowsocks", "settings": object{"method": method, "password": secret, "network": "tcp,udp"}}}
 		// Upstream blocks private destinations for proxy inbounds by default.
 		// Allow only this fixture's loopback echo ports, never change production defaults.
 		config["outbounds"] = []object{{"protocol": "freedom", "settings": object{"finalRules": []object{{"action": "allow", "ip": []string{"127.0.0.1/32"}, "port": fmt.Sprintf("%d,%d", tcpTarget.(*net.TCPAddr).Port, udpTarget.(*net.UDPAddr).Port)}}}}}
-		mainConfig = object{"listen_port": socksPort, "outbounds": []object{{"tag": "peer", "uri": fmt.Sprintf("ss://%s:%s@127.0.0.1:%d", method, password, serverPort)}}, "final": "peer"}
+		mainConfig = object{"listen_port": socksPort, "outbounds": []object{{"tag": "peer", "uri": fmt.Sprintf("ss://%s:%s@127.0.0.1:%d", method, referenceSecret, serverPort)}}, "final": "peer"}
 		forkRelease, mainRelease = releaseServer, releaseSocks
 		mainArgs = nil
 	} else {
 		config["inbounds"] = []object{{"listen": "127.0.0.1", "port": socksPort, "protocol": "socks", "settings": object{"udp": true}}}
-		config["outbounds"] = []object{{"protocol": "shadowsocks", "settings": object{"servers": []object{{"address": "127.0.0.1", "port": serverPort, "method": method, "password": password}}}}}
-		mainConfig = object{"outbounds": []object{{"tag": "direct", "uri": "direct://"}}, "final": "direct", "inbounds": []object{{"protocol": "ss", "listen": fmt.Sprintf("127.0.0.1:%d", serverPort), "cipher": method, "password": password}}}
+		config["outbounds"] = []object{{"protocol": "shadowsocks", "settings": object{"servers": []object{{"address": "127.0.0.1", "port": serverPort, "method": method, "password": secret}}}}}
+		mainConfig = object{"outbounds": []object{{"tag": "direct", "uri": "direct://"}}, "final": "direct", "inbounds": []object{{"protocol": "ss", "listen": fmt.Sprintf("127.0.0.1:%d", serverPort), "cipher": method, "password": referenceSecret}}}
 	}
 	temp := t.TempDir()
 	forkFile, mainFile := filepath.Join(temp, "fork.json"), filepath.Join(temp, "main.json")

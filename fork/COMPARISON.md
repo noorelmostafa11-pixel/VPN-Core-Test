@@ -18,6 +18,13 @@ supported. No default is changed and no algorithm is substituted. Multi-user
 lists remain restricted to authenticated AEAD methods. The runtime validator
 also prevents either order of mixing a legacy account with another account.
 
+The third batch adds eleven other classic method names: `bf-cfb`, `cast5-cfb`,
+`des-cfb`, `rc4`, `rc4-md5`, `salsa20`, `chacha20`, `chacha20-ietf`, `table`,
+`none` and `plain`. The last two names are aliases, not separate algorithms.
+Original ChaCha retains its 8-byte nonce and full 64-bit block counter; it is
+not an alias for the IETF 12-byte nonce construction. Plaintext remains explicit
+and all unauthenticated methods remain single-user only.
+
 ## Already present upstream
 
 Do not reimplement VLESS/REALITY/Vision, modern VMess, Trojan, Shadowsocks AEAD
@@ -27,9 +34,10 @@ support and exact settings still require compatibility checks where used.
 
 ## Still to port or resolve
 
-- Remaining non-AES historical Shadowsocks methods/aliases in main. The 35 method names
-  in main are not 35 distinct algorithms. Legacy cipher security policy must be
-  explicit; do not silently replace a requested cipher with another method.
+- Six historical Shadowsocks method names in main still need ports:
+  `camellia-128-cfb`, `camellia-192-cfb`, `camellia-256-cfb`, `idea-cfb`,
+  `rc2-cfb` and `seed-cfb`. The 35 names in main include aliases; they are not
+  35 distinct algorithms. No requested method may be silently substituted.
 - Legacy VMess alter-ID/AES-CFB and none/zero semantics. Mapping unsupported
   strings to AUTO is not implementation of the requested wire behavior.
 - Legacy standalone HTTP/2/h2c and QUIC transports removed from upstream. XHTTP

@@ -30,6 +30,12 @@ These methods lack authentication and are for compatibility, not a recommended
 security choice. They do not change defaults and cannot share a listener with
 other accounts. [Details and checks](fork/VERIFICATION-LEGACY-AES.md).
 
+The third batch adds `bf-cfb`, `cast5-cfb`, `des-cfb`, `rc4`, `rc4-md5`,
+`salsa20`, original `chacha20`, `chacha20-ietf`, `table`, `none` and `plain`.
+They are explicit compatibility choices only, not recommended security settings;
+`table` is obfuscation and `none/plain` is entirely unencrypted. No implicit
+plaintext fallback exists. [Checks and limits](fork/VERIFICATION-CLASSIC.md).
+
 This is not complete feature parity, Internet acceptance or stability on all
 platforms. Xray's CLI is not yet a drop-in replacement for the native core's
 application/SDK interfaces. See the [comparison backlog](fork/COMPARISON.md).

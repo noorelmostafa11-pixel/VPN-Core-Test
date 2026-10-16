@@ -42,6 +42,26 @@ func cipherFromString(c string) shadowsocks.CipherType {
 		return shadowsocks.CipherType_AES_192_OFB
 	case "aes-256-ofb":
 		return shadowsocks.CipherType_AES_256_OFB
+	case "bf-cfb":
+		return shadowsocks.CipherType_BLOWFISH_CFB
+	case "cast5-cfb":
+		return shadowsocks.CipherType_CAST5_CFB
+	case "des-cfb":
+		return shadowsocks.CipherType_DES_CFB
+	case "rc4":
+		return shadowsocks.CipherType_RC4
+	case "rc4-md5":
+		return shadowsocks.CipherType_RC4_MD5
+	case "salsa20":
+		return shadowsocks.CipherType_SALSA20
+	case "chacha20":
+		return shadowsocks.CipherType_CHACHA20
+	case "chacha20-ietf":
+		return shadowsocks.CipherType_CHACHA20_IETF
+	case "table":
+		return shadowsocks.CipherType_TABLE
+	case "none", "plain":
+		return shadowsocks.CipherType_NONE
 	default:
 		return shadowsocks.CipherType_UNKNOWN
 	}
@@ -112,7 +132,7 @@ func (v *ShadowsocksServerConfig) Build() (proto.Message, error) {
 			Password:   v.Password,
 			CipherType: cipherFromString(v.Cipher),
 		}
-		if account.Password == "" {
+		if account.Password == "" && account.CipherType != shadowsocks.CipherType_NONE {
 			return nil, errors.New("Shadowsocks password is not specified.")
 		}
 		if account.CipherType == shadowsocks.CipherType_UNKNOWN {
@@ -242,7 +262,7 @@ func (v *ShadowsocksClientConfig) Build() (proto.Message, error) {
 	if server.Port == 0 {
 		return nil, errors.New("Invalid Shadowsocks port.")
 	}
-	if server.Password == "" {
+	if server.Password == "" && cipherFromString(server.Cipher) != shadowsocks.CipherType_NONE {
 		return nil, errors.New("Shadowsocks password is not specified.")
 	}
 

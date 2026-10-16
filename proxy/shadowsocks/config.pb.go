@@ -32,16 +32,26 @@ const (
 	CipherType_CHACHA20_POLY1305  CipherType = 7
 	CipherType_XCHACHA20_POLY1305 CipherType = 8
 	// Custom-fork addition. Existing upstream enum numbers are unchanged.
-	CipherType_AES_192_GCM CipherType = 9
-	CipherType_AES_128_CFB CipherType = 10
-	CipherType_AES_192_CFB CipherType = 11
-	CipherType_AES_256_CFB CipherType = 12
-	CipherType_AES_128_CTR CipherType = 13
-	CipherType_AES_192_CTR CipherType = 14
-	CipherType_AES_256_CTR CipherType = 15
-	CipherType_AES_128_OFB CipherType = 16
-	CipherType_AES_192_OFB CipherType = 17
-	CipherType_AES_256_OFB CipherType = 18
+	CipherType_AES_192_GCM   CipherType = 9
+	CipherType_AES_128_CFB   CipherType = 10
+	CipherType_AES_192_CFB   CipherType = 11
+	CipherType_AES_256_CFB   CipherType = 12
+	CipherType_AES_128_CTR   CipherType = 13
+	CipherType_AES_192_CTR   CipherType = 14
+	CipherType_AES_256_CTR   CipherType = 15
+	CipherType_AES_128_OFB   CipherType = 16
+	CipherType_AES_192_OFB   CipherType = 17
+	CipherType_AES_256_OFB   CipherType = 18
+	CipherType_BLOWFISH_CFB  CipherType = 19
+	CipherType_CAST5_CFB     CipherType = 20
+	CipherType_DES_CFB       CipherType = 21
+	CipherType_RC4           CipherType = 22
+	CipherType_RC4_MD5       CipherType = 23
+	CipherType_SALSA20       CipherType = 24
+	CipherType_CHACHA20      CipherType = 25
+	CipherType_CHACHA20_IETF CipherType = 26
+	CipherType_TABLE         CipherType = 27
+	CipherType_NONE          CipherType = 28
 )
 
 // Enum value maps for CipherType.
@@ -62,6 +72,16 @@ var (
 		16: "AES_128_OFB",
 		17: "AES_192_OFB",
 		18: "AES_256_OFB",
+		19: "BLOWFISH_CFB",
+		20: "CAST5_CFB",
+		21: "DES_CFB",
+		22: "RC4",
+		23: "RC4_MD5",
+		24: "SALSA20",
+		25: "CHACHA20",
+		26: "CHACHA20_IETF",
+		27: "TABLE",
+		28: "NONE",
 	}
 	CipherType_value = map[string]int32{
 		"UNKNOWN":            0,
@@ -79,6 +99,16 @@ var (
 		"AES_128_OFB":        16,
 		"AES_192_OFB":        17,
 		"AES_256_OFB":        18,
+		"BLOWFISH_CFB":       19,
+		"CAST5_CFB":          20,
+		"DES_CFB":            21,
+		"RC4":                22,
+		"RC4_MD5":            23,
+		"SALSA20":            24,
+		"CHACHA20":           25,
+		"CHACHA20_IETF":      26,
+		"TABLE":              27,
+		"NONE":               28,
 	}
 )
 
@@ -279,7 +309,7 @@ const file_proxy_shadowsocks_config_proto_rawDesc = "" +
 	"\x05users\x18\x01 \x03(\v2\x1a.xray.common.protocol.UserR\x05users\x122\n" +
 	"\anetwork\x18\x02 \x03(\x0e2\x18.xray.common.net.NetworkR\anetwork\"L\n" +
 	"\fClientConfig\x12<\n" +
-	"\x06server\x18\x01 \x01(\v2$.xray.common.protocol.ServerEndpointR\x06server*\x94\x02\n" +
+	"\x06server\x18\x01 \x01(\v2$.xray.common.protocol.ServerEndpointR\x06server*\x9b\x03\n" +
 	"\n" +
 	"CipherType\x12\v\n" +
 	"\aUNKNOWN\x10\x00\x12\x0f\n" +
@@ -297,7 +327,17 @@ const file_proxy_shadowsocks_config_proto_rawDesc = "" +
 	"\vAES_256_CTR\x10\x0f\x12\x0f\n" +
 	"\vAES_128_OFB\x10\x10\x12\x0f\n" +
 	"\vAES_192_OFB\x10\x11\x12\x0f\n" +
-	"\vAES_256_OFB\x10\x12Bd\n" +
+	"\vAES_256_OFB\x10\x12\x12\x10\n" +
+	"\fBLOWFISH_CFB\x10\x13\x12\r\n" +
+	"\tCAST5_CFB\x10\x14\x12\v\n" +
+	"\aDES_CFB\x10\x15\x12\a\n" +
+	"\x03RC4\x10\x16\x12\v\n" +
+	"\aRC4_MD5\x10\x17\x12\v\n" +
+	"\aSALSA20\x10\x18\x12\f\n" +
+	"\bCHACHA20\x10\x19\x12\x11\n" +
+	"\rCHACHA20_IETF\x10\x1a\x12\t\n" +
+	"\x05TABLE\x10\x1b\x12\b\n" +
+	"\x04NONE\x10\x1cBd\n" +
 	"\x1acom.xray.proxy.shadowsocksP\x01Z+github.com/xtls/xray-core/proxy/shadowsocks\xaa\x02\x16Xray.Proxy.Shadowsocksb\x06proto3"
 
 var (
