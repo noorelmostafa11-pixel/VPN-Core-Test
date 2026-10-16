@@ -16,7 +16,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -30,10 +29,7 @@ var assets = map[string]string{
 }
 
 type manifest struct {
-	Branch     string `json:"branch"`
-	Comparison struct {
-		Commit string `json:"commit"`
-	} `json:"comparison"`
+	Branch string `json:"branch"`
 }
 
 type result struct {
@@ -47,7 +43,7 @@ type result struct {
 
 func main() {
 	if len(os.Args) != 2 {
-		fmt.Fprintln(os.Stderr, "usage: go run ./fork/check prepare|suite|vet|wire|summary")
+		fmt.Fprintln(os.Stderr, "usage: go run ./fork/check prepare|suite|vet|build|wire|summary")
 		os.Exit(2)
 	}
 	if err := execute(os.Args[1]); err != nil {
@@ -57,7 +53,7 @@ func main() {
 }
 
 func execute(phase string) error {
-	allowed := map[string]bool{"prepare": true, "suite": true, "vet": true, "wire": true, "summary": true}
+	allowed := map[string]bool{"prepare": true, "suite": true, "vet": true, "build": true, "wire": true, "summary": true}
 	if !allowed[phase] {
 		return fmt.Errorf("unknown phase %q", phase)
 	}
@@ -69,8 +65,8 @@ func execute(phase string) error {
 	if err := readJSON(filepath.Join(root, "fork", "manifest.json"), &pin); err != nil {
 		return err
 	}
-	if !regexp.MustCompile(`^[0-9a-f]{40}$`).MatchString(pin.Comparison.Commit) {
-		return errors.New("comparison must be a full pinned commit")
+	if pin.Branch != "feature/xray-custom-core" {
+		return errors.New("validation is restricted to feature/xray-custom-core")
 	}
 	temp := os.Getenv("RUNNER_TEMP")
 	if temp == "" {
@@ -116,16 +112,13 @@ func runPhase(phase, root, folder string, pin manifest) error {
 				return err
 			}
 		}
-		if err := appendFile(os.Getenv("GITHUB_OUTPUT"), "main_commit="+pin.Comparison.Commit+"\n"); err != nil {
-			return err
-		}
 		return nil
 	}
 	env, err := testEnv()
 	if err != nil {
 		return err
 	}
-	args, timeout, err := phaseArgs(phase, root, folder, pin.Comparison.Commit)
+	args, timeout, err := phaseArgs(phase, root, folder)
 	if err != nil {
 		return err
 	}
@@ -148,14 +141,24 @@ func runPhase(phase, root, folder string, pin manifest) error {
 	return nil
 }
 
-func phaseArgs(phase, root, folder, commit string) ([]string, time.Duration, error) {
+func testBinaryPath() string {
+	name := "xray-selftest"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	return filepath.Join(os.Getenv("RUNNER_TEMP"), name)
+}
+
+func phaseArgs(phase, root, folder string) ([]string, time.Duration, error) {
 	switch phase {
 	case "suite":
 		return []string{"test", "-race", "-count=1", "-timeout=15m", "-json", "./..."}, 30 * time.Minute, nil
 	case "vet":
 		return []string{"vet", "./..."}, 5 * time.Minute, nil
+	case "build":
+		return []string{"build", "-mod=readonly", "-trimpath", "-o", testBinaryPath(), "./main"}, 10 * time.Minute, nil
 	case "wire":
-		return []string{"test", "-race", "./fork/wire", "-run", "^TestMainInteroperability$", "-count=1", "-timeout=12m", "-v", "-args", "-fork-source=" + root, "-main-source=" + filepath.Join(filepath.Dir(root), "comparison-main"), "-main-commit=" + commit, "-evidence=" + filepath.Join(folder, "wire")}, 14 * time.Minute, nil
+		return []string{"test", "-race", "./fork/wire", "-run", "^TestXraySelfCompatibility$", "-count=1", "-timeout=12m", "-v", "-args", "-binary=" + testBinaryPath(), "-evidence=" + filepath.Join(folder, "wire")}, 14 * time.Minute, nil
 	}
 	return nil, 0, fmt.Errorf("unknown test phase %q", phase)
 }
@@ -241,7 +244,7 @@ func verifyWire(path string) error {
 	if err := readJSON(path, &report); err != nil {
 		return err
 	}
-	if !report.Passed || len(report.Methods) != 32 || report.Completed.Pairs != 64 || report.Completed.TCP != 128 || report.Completed.UDP != 576 || report.Completed.Greetings != 128 {
+	if !report.Passed || len(report.Methods) != 32 || report.Completed.Pairs != 32 || report.Completed.TCP != 64 || report.Completed.UDP != 288 || report.Completed.Greetings != 64 {
 		return errors.New("wire report failed or incomplete; skipped exchanges are not a pass")
 	}
 	return nil
@@ -249,9 +252,9 @@ func verifyWire(path string) error {
 
 func summarize(folder string) error {
 	var output bytes.Buffer
-	fmt.Fprintf(&output, "## Xray compatibility (%s/%s)\n\n", runtime.GOOS, runtime.GOARCH)
+	fmt.Fprintf(&output, "## Xray self-validation (%s/%s)\n\n", runtime.GOOS, runtime.GOARCH)
 	fmt.Fprintln(&output, "| Check | Result |\n| --- | --- |")
-	for _, phase := range []string{"prepare", "suite", "vet", "wire"} {
+	for _, phase := range []string{"prepare", "suite", "vet", "build", "wire"} {
 		var entry result
 		status := "NOT RUN / incomplete"
 		if err := readJSON(filepath.Join(folder, phase+".json"), &entry); err == nil {
@@ -297,8 +300,8 @@ func summarize(folder string) error {
 			fmt.Fprintln(&output, "\n</details>")
 		}
 	}
-	fmt.Fprintln(&output, "\nSuite: all repository Go tests with race detection; skipped tests remain visible in suite.log. Wire: 32 classic Shadowsocks names, both roles, 64 pairs / 128 TCP / 576 UDP. Missing or partial evidence is not a pass.")
-	fmt.Fprintln(&output, "\nLimits: no Internet/private-node acceptance, mobile SDK, Android test, packaging or release. SS2022-main wire and other missing ports remain in fork/COMPARISON.md; passing current tests does not mean complete main feature parity.")
+	fmt.Fprintln(&output, "\nSuite: all repository Go tests with race detection; skipped tests remain visible in suite.log. Wire: 32 classic Shadowsocks names, same-fork client/server, 32 pairs / 64 TCP / 288 UDP / 64 server-first greetings. Missing or partial evidence is not a pass.")
+	fmt.Fprintln(&output, "\nLimits: loopback self-compatibility is not external interoperability or Internet/private-node, mobile SDK, Android, packaging or release acceptance. SS2022 has package tests but no dedicated self-wire fixture. Race and vet failures remain visible.")
 	if err := os.WriteFile(filepath.Join(folder, "RESULTS.md"), output.Bytes(), 0o600); err != nil {
 		return err
 	}

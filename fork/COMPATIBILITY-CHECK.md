@@ -1,53 +1,36 @@
-# تشغيل فحص التوافق يدويًا
+# تشغيل اختبار فورك Xray يدويًا
 
 1. افتح [Actions → Build & Test](https://github.com/noorelmostafa11-pixel/VPN-Core-Test/actions/workflows/core-validation.yml).
-2. اضغط **Run workflow**.
-3. من **Use workflow from** اختر **feature/xray-custom-core**، وليس main.
-4. اضغط **Run workflow** لبدء الفحص بنفسك.
-5. افتح التشغيل الذي يبدأ اسمه **Xray compatibility**، ثم نتائج Windows وLinux وmacOS.
+2. اضغط **Run workflow**، واختَر **feature/xray-custom-core** في **Use workflow from**.
+3. ابدأ التشغيل يدويًا، وافتح نتائج **Xray self-validation** على Windows وLinux وmacOS.
 
-نفس اسم الصفحة موجود من المشروع القديم؛ نسخة الفحص الموجودة في الفرع الجديد
-مختلفة ومخصصة لكور Xray. استخدام نفس مسار الملف يتيح اختيار الفرع من صفحة
-التشغيل الموجودة أصلًا، من غير تعديل main. اختيار main يشغّل فحص المشروع القديم.
+الـWorkflow ده بيختبر فرع Xray فقط. مش بيعمل checkout أو build أو مقارنة
+لـ`main`، ومش بيستخدم محركًا آخر. اسم `Build & Test` مشترك بين الفرعين
+فقط لتقدر تختار فرع Xray في GitHub Actions، من غير تعديل الفرع الأساسي.
 
-## ماذا يفحص؟
+## إيه اللي بيتختبر؟
 
-- جميع اختبارات Go الموجودة في المستودع، مع اكتشاف تضارب الذاكرة، دون الاكتفاء
-  بالملفات المعدلة. السجل يحتفظ بالنجاح والفشل والحالات المتخطاة كما هي.
-- الفحص الثابت لجميع حزم الكور.
-- توافق TCP وUDP بين الفرع ونسخة main المثبتة في manifest، بالاتجاهين، للأسماء
-  التقليدية الـ32 في Shadowsocks: 64 حالة، 128 نقل TCP و576 حزمة UDP.
-- النتائج منفصلة على Windows وLinux وmacOS، في تشغيل فعلي على كل نظام.
+- **suite:** كل اختبارات Go في الفرع، مع `-race` وكشف سباقات البيانات،
+  وتسجيل جميع الإخفاقات والاختبارات المتخطاة.
+- **vet:** فحص `go vet ./...` على المشروع بالكامل، بدون تعطيل أخطائه.
+- **build:** بناء Xray CLI من نفس الـCommit على Windows وLinux وmacOS،
+  وحفظ الملف التنفيذي مؤقتًا خارج تقارير GitHub المرفوعة.
+- **wire:** تشغيل عميل Xray وسيرفر Xray في عمليتين منفصلتين من **نفس
+  الملف التنفيذي**، عبر جميع طرق Shadowsocks الكلاسيكية الـ32.
+  المستهدف: **32 زوج اتصال، 64 تبادل TCP، 288 تبادل UDP، و64 Server-first**،
+  مع مطابقة البيانات بايت ببايت. أي نقص أو فشل يمنع نجاح المرحلة.
+- **summary:** عرض حالة كل مرحلة وعدد الحزم الفاشلة والمتخطاة،
+  مع الاحتفاظ بالتقارير فقط.
 
-بعد التشغيل، صفحة **Summary** تعرض مراحل الفحص ونتائجها وعدد الحزم الناجحة
-والفاشلة وقائمة الاختبارات المتخطاة. تفاصيل كل خطوة موجودة في السجل. مرفقات
-**compatibility-report** تحتوي تقارير الاختبارات فقط؛ لا تحتوي نسخ تشغيل أو SDK.
-
-لا يوجد تشغيل تلقائي عند الرفع، أو تجهيز Android، أو حزم تنزيل، أو نشر Release.
-صاحب المشروع هو الذي يبدأ الفحص. لا توجد إعادة لمحاولات فحص البروتوكول حتى تنجح؛
-الفشل يظل فشلًا، والأدلة الناقصة لا تظهر كنجاح. فشل نظام لا يلغي اختبار البقية.
+مش بيتشغّل تلقائيًا عند Push، ومش بينشر Releases، ومش بينشئ Android AAR.
+كل اختبار يبدأ يدويًا. فشل نظام ما يمنعش محاولة اختبار باقي الأنظمة.
 
 ## حدود النتيجة
 
-النجاح يعني أن الاختبارات الحالية مرت؛ لا يعني اكتمال ميزات لم تُنقل بعد أو أن
-كل العقد الخاصة تعمل على الإنترنت. SS2022-main يحتاج فحص توافق منفصل بمفاتيحه،
-والـSDK الخاص بتطبيق الموبايل وباقي النواقص موضحة في [COMPARISON.md](COMPARISON.md).
-نتائج هذه الأنظمة ليست اختبار Android ولا اختبار دمج التطبيق.
+نجاح الـWire بيثبت توافق العميل والسيرفر داخل نفس فورك Xray على الشبكة
+المحلية فقط؛ مش دليل على التوافق مع سيرفرات مستقلة أو عقد إنترنت حية.
+SS2022 له اختبارات وحدات منفصلة ومش ضمن الـ32 طريقة في فحص Wire.
+كذلك مش اختبار Android أو دمج التطبيق أو إصدار نهائي.
 
-## Reproducibility and implementation
-
-This manual-only file deliberately shares the already registered default-branch
-workflow path. Main is not changed and its native-engine jobs are not reused.
-Actions checkout/setup/upload dependencies are pinned to commit SHAs. Go1.27.1
-is explicit; race prerequisites fail visibly rather than disabling race checks.
-GeoIP/GeoSite data are pinned to Loyalsoldier commit
-`a2d310e1de9ba35757f1633dda231192d114a306` and checked against fixed SHA256 values
-before tests. Reference main is checked out at the manifest's exact commit,
-not a moving branch. Both source checkouts are read-only to the wire fixture.
-
-The new executable orchestration is Go (`fork/check`); YAML is workflow metadata.
-No Python/PowerShell implementation is added. Go tests necessarily compile their
-test targets; any subprocess peers used for wire exchanges live only in test
-temporary directories. They are not packaged, published or included in reports.
-Reports distinguish full-suite status, skipped tests, static checks and the
-32-name wire scope, without presenting missing capability as verified parity.
+الـWorkflow يستخدم Go 1.27.1، ويتحقق من ملفات GeoIP/GeoSite المثبتة ببصمات
+SHA256 قبل تشغيل الاختبارات. Race وVet مش متعطلين، والتقارير لا تخفي الفشل.

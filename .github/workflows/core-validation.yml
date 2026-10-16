@@ -1,7 +1,6 @@
-# Same registered path as main, so Run workflow can select this branch without
-# changing main. Only manual dispatch is enabled in the custom branch.
+# Manual-only Xray fork validation; default branch stays unchanged.
 name: Build & Test
-run-name: Xray compatibility - ${{ github.ref_name }}
+run-name: Xray self-validation - ${{ github.ref_name }}
 
 on:
   workflow_dispatch:
@@ -10,12 +9,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: xray-compatibility-${{ github.ref }}
+  group: xray-self-validation-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  compatibility:
-    name: Compatibility (${{ matrix.system }})
+  self-validation:
+    name: Xray self-check (${{ matrix.system }})
     timeout-minutes: 65
     strategy:
       fail-fast: false
@@ -34,7 +33,7 @@ jobs:
     env:
       GOTOOLCHAIN: local
     steps:
-      - name: Check out the selected fork revision
+      - name: Check out only the selected Xray fork revision
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.sha }}
@@ -48,30 +47,27 @@ jobs:
       - name: Check test prerequisites and pinned data
         id: prepare
         run: go run ./fork/check prepare
-      - name: Check out pinned main for compatibility comparisons
-        id: reference
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: ${{ steps.prepare.outputs.main_commit }}
-          path: comparison-main
-          persist-credentials: false
-      - name: All core tests with race detection
+      - name: All fork tests with race detection
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         run: go run ./fork/check suite
-      - name: Static checks for the entire core
+      - name: Static checks for the entire fork
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         run: go run ./fork/check vet
-      - name: Fork and main TCP-UDP compatibility in both roles
-        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && steps.reference.outcome == 'success' }}
+      - name: Build Xray fork executable
+        id: build
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        run: go run ./fork/check build
+      - name: Xray client-server TCP-UDP self-compatibility
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' && steps.build.outcome == 'success' }}
         run: go run ./fork/check wire
-      - name: Compatibility results and known gaps
+      - name: Self-validation results and known gaps
         if: ${{ always() }}
         run: go run ./fork/check summary
       - name: Keep test reports only (no program packages)
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: compatibility-report-${{ matrix.system }}
+          name: xray-self-validation-${{ matrix.system }}
           path: ${{ runner.temp }}/xray-compatibility/
           if-no-files-found: warn
           retention-days: 7

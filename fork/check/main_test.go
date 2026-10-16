@@ -15,13 +15,13 @@ import (
 
 func TestPhaseArguments(t *testing.T) {
 	root, folder := t.TempDir(), t.TempDir()
-	for _, phase := range []string{"suite", "vet", "wire"} {
-		args, timeout, err := phaseArgs(phase, root, folder, strings.Repeat("a", 40))
+	for _, phase := range []string{"suite", "vet", "build", "wire"} {
+		args, timeout, err := phaseArgs(phase, root, folder)
 		if err != nil || timeout < time.Minute {
 			t.Fatal("missing bounded test phase", phase, err)
 		}
 		joined := strings.Join(args, " ")
-		for _, forbidden := range []string{"go build", "upload", "release", "portable", "mobile"} {
+		for _, forbidden := range []string{"upload", "release", "portable", "mobile", "comparison-main", "-main-source", "-main-commit"} {
 			if strings.Contains(joined, forbidden) {
 				t.Fatal("test phase contains packaging", joined)
 			}
@@ -29,11 +29,14 @@ func TestPhaseArguments(t *testing.T) {
 		if phase == "suite" && (!strings.Contains(joined, "-race") || !strings.Contains(joined, "./...")) {
 			t.Fatal("suite does not cover the entire repository")
 		}
-		if phase == "wire" && (!strings.Contains(joined, "-main-source="+filepath.Join(filepath.Dir(root), "comparison-main")) || !strings.Contains(joined, "-fork-source="+root)) {
-			t.Fatal("wire paths do not match checkout layout")
+		if phase == "wire" && (!strings.Contains(joined, "^TestXraySelfCompatibility$") || !strings.Contains(joined, "-binary=")) {
+			t.Fatal("wire does not use the fork's compiled binary")
+		}
+		if phase == "build" && (!strings.Contains(joined, "-o") || !strings.Contains(joined, "./main")) {
+			t.Fatal("build does not compile Xray")
 		}
 	}
-	if _, _, err := phaseArgs("mobile", root, folder, ""); err == nil {
+	if _, _, err := phaseArgs("mobile", root, folder); err == nil {
 		t.Fatal("unsupported phase accepted")
 	}
 }
@@ -97,12 +100,12 @@ func TestIncompleteWireCannotPass(t *testing.T) {
 		pairs, tcp, udp, greetings int
 		valid                      bool
 	}{
-		{true, 64, 128, 576, 128, true},
-		{false, 64, 128, 576, 128, false},
-		{true, 63, 128, 576, 128, false},
-		{true, 64, 127, 576, 128, false},
-		{true, 64, 128, 575, 128, false},
-		{true, 64, 128, 576, 127, false},
+		{true, 32, 64, 288, 64, true},
+		{false, 32, 64, 288, 64, false},
+		{true, 31, 64, 288, 64, false},
+		{true, 32, 63, 288, 64, false},
+		{true, 32, 64, 287, 64, false},
+		{true, 32, 64, 288, 63, false},
 	} {
 		data := map[string]any{"passed": test.passed, "methods": methods, "completed": map[string]int{"completed_pairs": test.pairs, "completed_tcp_echoes": test.tcp, "completed_udp_echoes": test.udp, "completed_server_first_greetings": test.greetings}}
 		if err := writeJSON(path, data); err != nil {

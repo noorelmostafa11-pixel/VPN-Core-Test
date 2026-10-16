@@ -1,5 +1,5 @@
-// Package wire_test exercises independently built fork/main executables using
-// synthetic loopback traffic. No node catalog or private configuration is read.
+// Package wire_test checks exchanges between a client and a server built
+// from the same Xray fork. No independent core or private node is used.
 package wire_test
 
 import (
@@ -22,12 +22,9 @@ import (
 )
 
 var (
-	forkBinary = flag.String("fork-binary", "", "Explicit path to the fork CLI")
-	mainBinary = flag.String("main-binary", "", "Explicit path to the comparison main CLI")
-	mainCommit = flag.String("main-commit", "", "Comparison main source commit")
-	outputDir  = flag.String("evidence", "", "Optional output directory outside the source checkout")
-	forkSource = flag.String("fork-source", "", "Optional fork checkout for temporary test peers only")
-	mainSource = flag.String("main-source", "", "Optional pinned main checkout for temporary test peers only")
+	testBinary = flag.String("binary", "", "Path to this fork's Xray executable")
+	testSource = flag.String("source", "", "Optional source checkout to build the Xray test executable")
+	outputDir  = flag.String("evidence", "", "Optional evidence directory outside the checkout")
 )
 
 const password = "synthetic-fork-wire-password"
@@ -43,43 +40,32 @@ type counts struct {
 	Greetings      int `json:"completed_server_first_greetings"`
 }
 
-func TestMainInteroperability(t *testing.T) {
-	if *forkBinary == "" && *mainBinary == "" && *forkSource == "" && *mainSource == "" {
-		t.Skip("requires independently built CLIs; see fork/wire/README.md")
+func TestXraySelfCompatibility(t *testing.T) {
+	if *testBinary == "" && *testSource == "" {
+		t.Skip("Xray self-wire integration runs separately with -binary or -source")
 	}
-	if !validCommit(*mainCommit) {
-		t.Fatal("the full lowercase comparison main commit is required")
+	if *testBinary != "" && *testSource != "" {
+		t.Fatal("supply either -binary or -source, not both")
 	}
-	binaries := []string{*forkBinary, *mainBinary}
-	if *forkSource != "" || *mainSource != "" {
-		if *forkSource == "" || *mainSource == "" || *forkBinary != "" || *mainBinary != "" {
-			t.Fatal("supply either both source checkouts or both binaries, never a partial or mixed pair")
-		}
-		binaries = sourcePeers(t, *forkSource, *mainSource, *mainCommit)
+	binary := *testBinary
+	if *testSource != "" {
+		binary = sourcePeer(t, *testSource)
 	}
-	if binaries[0] == "" || binaries[1] == "" {
-		t.Fatal("both binary paths are required")
+	path, err := filepath.Abs(binary)
+	if err != nil {
+		t.Fatal(err)
 	}
-	paths := make([]string, 2)
-	fingerprints := make([]object, 2)
-	for i, name := range binaries {
-		path, err := filepath.Abs(name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		file, err := os.Open(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		hash := sha256.New()
-		_, err = io.Copy(hash, file)
-		file.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-		paths[i] = path
-		fingerprints[i] = object{"name": filepath.Base(path), "sha256": hex.EncodeToString(hash.Sum(nil))}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
 	}
+	hash := sha256.New()
+	_, err = io.Copy(hash, file)
+	file.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	binaryHash := hex.EncodeToString(hash.Sum(nil))
 	folder := *outputDir
 	if folder == "" {
 		folder = t.TempDir()
@@ -98,30 +84,24 @@ func TestMainInteroperability(t *testing.T) {
 	var completed counts
 	defer func() {
 		report := object{
-			"main_commit": *mainCommit, "binaries": fingerprints,
+			"binary_sha256": binaryHash, "binary": filepath.Base(path),
 			"methods": methods, "roles": []string{"client", "server"},
-			"expected_pairs": 2 * len(methods), "expected_tcp_echoes": 4 * len(methods), "expected_udp_echoes": 18 * len(methods),
-			"expected_server_first_greetings": 4 * len(methods),
+			"expected_pairs": len(methods), "expected_tcp_echoes": 2 * len(methods), "expected_udp_echoes": 9 * len(methods),
+			"expected_server_first_greetings": 2 * len(methods),
 			"completed":                       completed, "passed": !t.Failed(),
 			"tcp_bytes_each": 200001, "udp_sizes": []int{32, 1400, 3800},
 			"platform":         runtime.GOOS + "/" + runtime.GOARCH,
-			"scope":            "Synthetic loopback; not Internet, application ABI or all-platform acceptance",
-			"plaintext_config": "Fork uses an empty password; pinned main requires an unused synthetic placeholder for none/plain. Neither endpoint encrypts or authenticates these methods.",
+			"scope":            "Same-fork loopback, not external peer, Internet, mobile ABI or all-platform acceptance",
+			"plaintext_config": "Both Xray endpoints use an empty password for none/plain; those methods do not encrypt or authenticate.",
 		}
 		writeJSON(t, filepath.Join(folder, "summary.json"), report)
 	}()
-	for _, server := range []bool{false, true} {
-		role := "fork-client-"
-		if server {
-			role = "fork-server-"
-		}
-		for _, method := range methods {
-			t.Run(role+method, func(t *testing.T) {
-				exchange(t, paths, server, method, filepath.Join(folder, role+method), &completed)
-			})
-		}
+	for _, method := range methods {
+		t.Run(method, func(t *testing.T) {
+			exchange(t, path, method, filepath.Join(folder, method), &completed)
+		})
 	}
-	want := counts{CompletedPairs: 2 * len(methods), TCPEchoes: 4 * len(methods), UDPEchoes: 18 * len(methods), Greetings: 4 * len(methods)}
+	want := counts{CompletedPairs: len(methods), TCPEchoes: 2 * len(methods), UDPEchoes: 9 * len(methods), Greetings: 2 * len(methods)}
 	if completed != want {
 		t.Errorf("incomplete wire coverage: completed %+v, expected %+v", completed, want)
 	}
@@ -308,52 +288,55 @@ func socks(t *testing.T, port int, command byte, target string) (net.Conn, strin
 	return c, net.JoinHostPort(host, fmt.Sprint(binary.BigEndian.Uint16(exact(t, c, 2))))
 }
 
-func exchange(t *testing.T, binaries []string, forkServer bool, method, folder string, completed *counts) {
+func exchange(t *testing.T, binary, method, folder string, completed *counts) {
 	t.Helper()
 	secret := password
 	if method == "none" || method == "plain" {
 		secret = ""
 	}
-	// Pinned main rejects empty passwords even for plaintext. Use its required
-	// unused placeholder only on that peer; the fork's empty-password case stays.
-	referenceSecret := password
 	if err := os.MkdirAll(folder, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	tcpTarget, udpTarget := echoes(t)
 	serverPort, releaseServer := reserve(t)
 	socksPort, releaseSocks := reserve(t)
-	config := object{"log": object{"loglevel": "debug"}}
-	var mainConfig object
-	forkRelease, mainRelease := releaseSocks, releaseServer
-	mainArgs := []string{"--no-socks"}
-	if forkServer {
-		config["inbounds"] = []object{{"listen": "127.0.0.1", "port": serverPort, "protocol": "shadowsocks", "settings": object{"method": method, "password": secret, "network": "tcp,udp"}}}
-		// Upstream blocks private destinations for proxy inbounds by default.
-		// Allow only this fixture's loopback echo ports, never change production defaults.
-		config["outbounds"] = []object{{"protocol": "freedom", "settings": object{"finalRules": []object{{"action": "allow", "ip": []string{"127.0.0.1/32"}, "port": fmt.Sprintf("%d,%d", tcpTarget.(*net.TCPAddr).Port, udpTarget.(*net.UDPAddr).Port)}}}}}
-		mainConfig = object{"listen_port": socksPort, "outbounds": []object{{"tag": "peer", "uri": fmt.Sprintf("ss://%s:%s@127.0.0.1:%d", method, referenceSecret, serverPort)}}, "final": "peer"}
-		forkRelease, mainRelease = releaseServer, releaseSocks
-		mainArgs = nil
-	} else {
-		config["inbounds"] = []object{{"listen": "127.0.0.1", "port": socksPort, "protocol": "socks", "settings": object{"udp": true}}}
-		config["outbounds"] = []object{{"protocol": "shadowsocks", "settings": object{"servers": []object{{"address": "127.0.0.1", "port": serverPort, "method": method, "password": secret}}}}}
-		mainConfig = object{"outbounds": []object{{"tag": "direct", "uri": "direct://"}}, "final": "direct", "inbounds": []object{{"protocol": "ss", "listen": fmt.Sprintf("127.0.0.1:%d", serverPort), "cipher": method, "password": referenceSecret}}}
+	clientConfig := object{
+		"log": object{"loglevel": "debug"},
+		"inbounds": []object{
+			{"listen": "127.0.0.1", "port": socksPort, "protocol": "socks", "settings": object{"udp": true}},
+		},
+		"outbounds": []object{
+			{"protocol": "shadowsocks", "settings": object{"servers": []object{
+				{"address": "127.0.0.1", "port": serverPort, "method": method, "password": secret},
+			}}},
+		},
+	}
+	serverConfig := object{
+		"log": object{"loglevel": "debug"},
+		"inbounds": []object{
+			{"listen": "127.0.0.1", "port": serverPort, "protocol": "shadowsocks", "settings": object{"method": method, "password": secret, "network": "tcp,udp"}},
+		},
+		// The upstream Freedom private-address block is unchanged. Only synthetic echo targets are allowed.
+		"outbounds": []object{
+			{"protocol": "freedom", "settings": object{"finalRules": []object{
+				{"action": "allow", "ip": []string{"127.0.0.1/32"}, "port": fmt.Sprintf("%d,%d", tcpTarget.(*net.TCPAddr).Port, udpTarget.(*net.UDPAddr).Port)},
+			}}},
+		},
 	}
 	temp := t.TempDir()
-	forkFile, mainFile := filepath.Join(temp, "fork.json"), filepath.Join(temp, "main.json")
-	writeJSON(t, forkFile, config)
-	writeJSON(t, mainFile, mainConfig)
-	forkDone := start(t, binaries[0], []string{"run", "-config", forkFile}, filepath.Join(folder, "fork.log"), forkRelease)
-	mainDone := start(t, binaries[1], append([]string{"--config", mainFile}, mainArgs...), filepath.Join(folder, "main.log"), mainRelease)
+	clientFile, serverFile := filepath.Join(temp, "client.json"), filepath.Join(temp, "server.json")
+	writeJSON(t, clientFile, clientConfig)
+	writeJSON(t, serverFile, serverConfig)
+	serverDone := start(t, binary, []string{"run", "-config", serverFile}, filepath.Join(folder, "server.log"), releaseServer)
+	clientDone := start(t, binary, []string{"run", "-config", clientFile}, filepath.Join(folder, "client.log"), releaseSocks)
 	deadline := time.Now().Add(8 * time.Second)
 	for _, port := range []int{serverPort, socksPort} {
 		for {
 			select {
-			case <-forkDone:
-				t.Fatal("fork stopped before readiness; inspect fork.log")
-			case <-mainDone:
-				t.Fatal("main stopped before readiness; inspect main.log")
+			case <-clientDone:
+				t.Fatal("client stopped before readiness; inspect client.log")
+			case <-serverDone:
+				t.Fatal("server stopped before readiness; inspect server.log")
 			default:
 			}
 			c, err := net.DialTimeout("tcp4", fmt.Sprintf("127.0.0.1:%d", port), 200*time.Millisecond)
