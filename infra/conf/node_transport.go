@@ -8,6 +8,9 @@ import (
 )
 
 func nodeStream(fields *nodeFields, scheme string) (*StreamConfig, error) {
+	if err := nodeShadowsocksPlugin(fields, scheme); err != nil {
+		return nil, err
+	}
 	network := strings.ToLower(fields.take("type", "network", "net"))
 	if network == "" {
 		network = "tcp"
