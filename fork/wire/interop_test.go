@@ -81,13 +81,23 @@ func TestXraySelfCompatibility(t *testing.T) {
 	}
 	methods = append(methods, "bf-cfb", "cast5-cfb", "des-cfb", "rc4", "rc4-md5", "salsa20", "chacha20", "chacha20-ietf", "table", "none", "plain")
 	methods = append(methods, "camellia-128-cfb", "camellia-192-cfb", "camellia-256-cfb", "idea-cfb", "rc2-cfb", "seed-cfb", "chacha20-poly1305")
+	// The original AEAD methods preserve their upstream client-first default.
+	// Only the explicit compatibility setting makes server-first safe for them.
+	originalAEAD := map[string]bool{
+		"aes-128-gcm": true, "aes-256-gcm": true,
+		"chacha20-ietf-poly1305": true, "xchacha20-ietf-poly1305": true,
+		"chacha20-poly1305": true,
+	}
+	totalCases := len(methods) + len(originalAEAD)
 	var completed counts
 	defer func() {
 		report := object{
 			"binary_sha256": binaryHash, "binary": filepath.Base(path),
 			"methods": methods, "roles": []string{"client", "server"},
-			"expected_pairs": len(methods), "expected_tcp_echoes": 2 * len(methods), "expected_udp_echoes": 9 * len(methods),
+			"expected_pairs": totalCases, "expected_tcp_echoes": 2 * totalCases, "expected_udp_echoes": 9 * totalCases,
 			"expected_server_first_greetings": 2 * len(methods),
+			"original_default_client_first_cases": len(originalAEAD),
+			"original_server_first_opt_in_cases": len(originalAEAD),
 			"completed":                       completed, "passed": !t.Failed(),
 			"tcp_bytes_each": 200001, "udp_sizes": []int{32, 1400, 3800},
 			"platform":         runtime.GOOS + "/" + runtime.GOARCH,
@@ -97,11 +107,20 @@ func TestXraySelfCompatibility(t *testing.T) {
 		writeJSON(t, filepath.Join(folder, "summary.json"), report)
 	}()
 	for _, method := range methods {
+		if originalAEAD[method] {
+			t.Run(method+"/original-client-first", func(t *testing.T) {
+				exchange(t, path, method, filepath.Join(folder, method, "original-client-first"), &completed, true, false)
+			})
+			t.Run(method+"/server-first-opt-in", func(t *testing.T) {
+				exchange(t, path, method, filepath.Join(folder, method, "server-first-opt-in"), &completed, false, true)
+			})
+			continue
+		}
 		t.Run(method, func(t *testing.T) {
-			exchange(t, path, method, filepath.Join(folder, method), &completed)
+			exchange(t, path, method, filepath.Join(folder, method), &completed, false, false)
 		})
 	}
-	want := counts{CompletedPairs: len(methods), TCPEchoes: 2 * len(methods), UDPEchoes: 9 * len(methods), Greetings: 2 * len(methods)}
+	want := counts{CompletedPairs: totalCases, TCPEchoes: 2 * totalCases, UDPEchoes: 9 * totalCases, Greetings: 2 * len(methods)}
 	if completed != want {
 		t.Errorf("incomplete wire coverage: completed %+v, expected %+v", completed, want)
 	}
@@ -288,7 +307,7 @@ func socks(t *testing.T, port int, command byte, target string) (net.Conn, strin
 	return c, net.JoinHostPort(host, fmt.Sprint(binary.BigEndian.Uint16(exact(t, c, 2))))
 }
 
-func exchange(t *testing.T, binary, method, folder string, completed *counts) {
+func exchange(t *testing.T, binary, method, folder string, completed *counts, clientFirst, serverFirstOptIn bool) {
 	t.Helper()
 	secret := password
 	if method == "none" || method == "plain" {
@@ -300,15 +319,19 @@ func exchange(t *testing.T, binary, method, folder string, completed *counts) {
 	tcpTarget, udpTarget := echoes(t)
 	serverPort, releaseServer := reserve(t)
 	socksPort, releaseSocks := reserve(t)
+	clientSettings := object{"servers": []object{
+		{"address": "127.0.0.1", "port": serverPort, "method": method, "password": secret},
+	}}
+	if serverFirstOptIn {
+		clientSettings["serverFirstCompatibility"] = true
+	}
 	clientConfig := object{
 		"log": object{"loglevel": "debug"},
 		"inbounds": []object{
 			{"listen": "127.0.0.1", "port": socksPort, "protocol": "socks", "settings": object{"udp": true}},
 		},
 		"outbounds": []object{
-			{"protocol": "shadowsocks", "settings": object{"servers": []object{
-				{"address": "127.0.0.1", "port": serverPort, "method": method, "password": secret},
-			}}},
+			{"protocol": "shadowsocks", "settings": clientSettings},
 		},
 	}
 	serverConfig := object{
@@ -352,12 +375,25 @@ func exchange(t *testing.T, binary, method, folder string, completed *counts) {
 	}
 	for cycle := range 2 {
 		c, _ := socks(t, socksPort, 1, tcpTarget.String())
-		if string(exact(t, c, len(greeting))) != greeting {
-			t.Fatal("server-first greeting changed")
-		}
-		completed.Greetings++
 		body := bytes.Repeat([]byte{byte(91 + cycle)}, 200001)
-		if _, err := io.Copy(c, bytes.NewReader(body)); err != nil {
+		// The upstream default requires actual client payload before reading
+		// any server greeting; server-first is a separately opted-in path.
+		if clientFirst {
+			if _, err := c.Write(body[:1]); err != nil {
+				t.Fatal("client-first initial payload:", err)
+			}
+		}
+		if string(exact(t, c, len(greeting))) != greeting {
+			t.Fatal("server greeting changed")
+		}
+		if !clientFirst {
+			completed.Greetings++
+		}
+		remaining := body
+		if clientFirst {
+			remaining = body[1:]
+		}
+		if _, err := io.Copy(c, bytes.NewReader(remaining)); err != nil {
 			t.Fatal(err)
 		}
 		if !bytes.Equal(exact(t, c, len(body)), body) {

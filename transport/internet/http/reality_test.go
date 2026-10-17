@@ -29,6 +29,22 @@ import (
 type realityFixture struct {
 	server, client *reality.Config
 	fallback       atomic.Int32
+	targetAccepts  *atomic.Int64
+}
+
+// Observe the real TLS target without mutating REALITY's dialer after the
+// listener's goroutines have started.
+type trackedRealityListener struct {
+	gonet.Listener
+	accepts *atomic.Int64
+}
+
+func (l *trackedRealityListener) Accept() (gonet.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err == nil {
+		l.accepts.Add(1)
+	}
+	return conn, err
 }
 
 func localReality(t *testing.T, h2 bool) *realityFixture {
@@ -42,7 +58,7 @@ func localRealityTarget(t *testing.T, h2, warm bool) *realityFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &realityFixture{}
+	f := &realityFixture{targetAccepts: new(atomic.Int64)}
 	target := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.fallback.Add(1)
 		w.WriteHeader(http.StatusNotFound)
@@ -50,6 +66,7 @@ func localRealityTarget(t *testing.T, h2, warm bool) *realityFixture {
 	target.EnableHTTP2 = h2
 	target.TLS = &gotls.Config{MinVersion: gotls.VersionTLS13, CurvePreferences: []gotls.CurveID{gotls.X25519}}
 	target.Config.ReadHeaderTimeout = 2 * time.Second
+	target.Listener = &trackedRealityListener{Listener: target.Listener, accepts: f.targetAccepts}
 	target.StartTLS()
 	t.Cleanup(target.Close)
 	f.server = &reality.Config{Type: "tcp", Dest: target.Listener.Addr().String(), ServerNames: []string{"reality.example"}, PrivateKey: key.Bytes(), ShortIds: [][]byte{{1, 2, 3, 4, 5, 6, 7, 8}}}
@@ -418,7 +435,9 @@ func silentRealityTarget(t *testing.T) (gonet.Listener, <-chan struct{}) {
 }
 
 func TestForkHTTP2RealityListenerStalledTargetCancellation(t *testing.T) {
-	target, _ := silentRealityTarget(t)
+	// A bare inbound TCP client sends no ClientHello, so its REALITY target
+	// remains stalled at the actual TLS handshake. Track target acceptances
+	// instead of racing to replace the live DialContext.
 	f := localReality(t, true)
 	settings := f.settings(false)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -429,24 +448,28 @@ func TestForkHTTP2RealityListenerStalledTargetCancellation(t *testing.T) {
 	}
 	l := listener.(*Listener)
 	t.Cleanup(func() { l.Close() })
-	started := make(chan struct{})
-	dial := l.realityConfig.DialContext
-	l.realityConfig.DialContext = func(ctx context.Context, network, address string) (gonet.Conn, error) {
-		// Inject a silent target into the actual handshake, after real startup
-		// detection. Keep the production target deadline/cancellation wrapper.
-		conn, err := dial(ctx, network, target.Addr().String())
-		close(started) // actual per-handshake target, not the upstream detector
-		return conn, err
-	}
+	baseline := f.targetAccepts.Load()
 	raw, err := gonet.DialTimeout("tcp", l.Addr().String(), 3*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer raw.Close()
-	select {
-	case <-started:
-	case <-time.After(3 * time.Second):
-		t.Fatal("fault schedule did not reach the silent target")
+	// Wait for the target socket of this handshake, after normal startup
+	// detection has finished, without modifying any shared config.
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	timeout := time.NewTimer(3 * time.Second)
+	defer timeout.Stop()
+waitForTarget:
+	for {
+		if f.targetAccepts.Load() > baseline {
+			break waitForTarget
+		}
+		select {
+		case <-tick.C:
+		case <-timeout.C:
+			t.Fatal("fault schedule did not reach the REALITY target")
+		}
 	}
 	cancel()
 	select {
