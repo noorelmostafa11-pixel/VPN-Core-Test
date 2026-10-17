@@ -163,7 +163,7 @@ func TestNodeMalformedAndAmbiguousInputs(t *testing.T) {
 		"socks4a://127.0.0.1:65536", "socks4a://127.0.0.1:1?unknown=secret", "socks4a://127.0.0.1:1?security=tls&security=none",
 		"ss://YWVzLTEyOC1nY206c2VjcmV0@127.0.0.1:443?plugin=not-implemented", "ss://bad-secret-profile", "ss://aes-128-gcm:%FF@127.0.0.1:443",
 		"vmess://" + nodeID + "@127.0.0.1:443?encryption=typo", "vmess://" + nodeID + "@127.0.0.1:443?aid=65", "vmess://" + nodeID + "@127.0.0.1:443?aid=1&alterId=2",
-		"vless://" + nodeID + "@1.1.1.1:443?security=none", "vless://" + nodeID + "@127.0.0.1:443?type=h2c&security=tls", "vless://" + nodeID + "@127.0.0.1:443?type=quic",
+		"vless://" + nodeID + "@1.1.1.1:443?security=none", "vless://" + nodeID + "@127.0.0.1:443?type=h2c&security=tls", "vless://" + nodeID + "@127.0.0.1:443?type=quic&quicsecurity=unknown",
 		"vless://" + nodeID + "@127.0.0.1:443?security=tls&pbk=secret", "vless://" + nodeID + "@127.0.0.1:443?sni=secret", "vless://" + nodeID + "@127.0.0.1:443?type=ws&extra=%7B%7D",
 		"vless://" + nodeID + "@127.0.0.1:443?type=ws&mode=packet-up", "vless://" + nodeID + "@127.0.0.1:443?type=tcp&path=ignored", "vless://" + nodeID + "@127.0.0.1:443?type=grpc&mode=invalid",
 		"trojan://secret@127.0.0.1:443?security=invalid", "trojan://secret@127.0.0.1:443?security=tls&insecure=invalid", "trojan://secret@127.0.0.1:443#%0Abad",

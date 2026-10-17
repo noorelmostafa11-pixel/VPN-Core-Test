@@ -19,6 +19,12 @@ unchanged to keep upstream imports and future merges compatible.
 
 ## Checkpoint
 
+Standalone legacy QUIC is now an independent registered transport with packet
+AEAD/camouflage, normal TLS or its explicitly selected historical internal-
+certificate mode. URI metadata selects it automatically. Browser fingerprint
+and historical typed-header protobuf variants remain explicitly unsupported,
+not substituted. [Checks and limits](fork/VERIFICATION-LEGACY-QUIC.md).
+
 Original-behavior preservation is a prerequisite for further additions.
 Existing upstream configurations retain their ignored fields and AUTO fallbacks;
 ambiguous legacy VMess/SOCKS choices now use a separate `legacySettings` block.

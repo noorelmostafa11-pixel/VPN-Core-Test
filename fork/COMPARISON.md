@@ -117,8 +117,10 @@ meaning. This is a bounded input importer, not complete main URI/SDK parity.
 - SS2022 fork/main interoperability requires a separate key/configuration-aware
   fixture. The existing upstream package race suite passes; that is not proof
   of compatibility with main, private nodes or every application setting.
-- Legacy standalone QUIC removed from upstream. XHTTP is not an interchangeable
-  wire-level alias for that protocol.
+- Standalone legacy QUIC is implemented as a separate carrier, not an XHTTP/H3
+  alias. Browser/uTLS fingerprints, historical typed-header protobuf conversion
+  and advanced modern tuning are still pending; unknown variants are rejected.
+  [Implemented packet/TLS/stream scope](VERIFICATION-LEGACY-QUIC.md).
 - Hysteria 1, TUIC v5, AnyTLS, ShadowTLS v2/v3 and SSH proxy endpoints absent from
   the pinned upstream proxy registrations.
 - SIP003 wrapper/plugin semantics and custom health/body validation need a

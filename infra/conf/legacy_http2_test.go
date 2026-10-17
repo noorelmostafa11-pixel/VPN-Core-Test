@@ -66,7 +66,7 @@ func TestForkLegacyHTTP2Configuration(t *testing.T) {
 		`{"network":"h2c","security":"tls"}`,
 		`{"network":"http","security":"reality"}`,
 		`{"network":"h3"}`,
-		`{"network":"quic"}`,
+		`{"network":"quic-unknown"}`,
 		`{"network":"http","httpSettings":{"method":"HEAD"}}`,
 		`{"network":"http","httpSettings":{"method":"bad\r\n"}}`,
 		`{"network":"http","httpSettings":{"path":"/%zz"}}`,

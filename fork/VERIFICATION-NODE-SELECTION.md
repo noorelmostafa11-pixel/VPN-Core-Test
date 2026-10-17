@@ -22,7 +22,8 @@ Supported node input in this batch:
   mKCP transport selections. TLS/REALITY metadata is preserved and validated by
   the original builders; an unsupported pairing remains an error, not another
   transport. HTTP2+REALITY is now available in the subsequent
-  [pairing checkpoint](VERIFICATION-HTTP2-REALITY.md); standalone QUIC is pending.
+  [pairing checkpoint](VERIFICATION-HTTP2-REALITY.md). Standalone QUIC now has a
+  bounded [packet/TLS/stream implementation](VERIFICATION-LEGACY-QUIC.md).
 
 For VMess, cipher and alterId come from the node profile; needed low-level
 legacySettings/protobuf flags are generated internally. SOCKS4/4a selects the

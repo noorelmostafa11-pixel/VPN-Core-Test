@@ -36,7 +36,7 @@ func (p TransportProtocol) Build() (string, error) {
 	case "h3":
 		return "", errors.PrintRemovedFeatureError("HTTP transport (without header padding, etc.)", "XHTTP stream-one H2 & H3")
 	case "quic":
-		return "", errors.PrintRemovedFeatureError("QUIC transport (without web service, etc.)", "XHTTP stream-one H3")
+		return "quic", nil
 	case "hysteria":
 		return "hysteria", nil
 	case "masque":
@@ -60,6 +60,7 @@ type StreamConfig struct {
 	RAWSettings         *TCPConfig         `json:"rawSettings"`
 	TCPSettings         *TCPConfig         `json:"tcpSettings"`
 	HTTPSettings        *HTTPConfig        `json:"httpSettings"`
+	QUICSettings        *QUICConfig        `json:"quicSettings"`
 	XHTTPSettings       *SplitHTTPConfig   `json:"xhttpSettings"`
 	SplitHTTPSettings   *SplitHTTPConfig   `json:"splithttpSettings"`
 	KCPSettings         *KCPConfig         `json:"kcpSettings"`
@@ -79,6 +80,7 @@ func (c *StreamConfig) UnmarshalJSON(data []byte) error {
 	shadow := struct {
 		*original
 		HTTPSettings json.RawMessage `json:"httpSettings"`
+		QUICSettings json.RawMessage `json:"quicSettings"`
 	}{original: (*original)(c)}
 	if err := json.Unmarshal(data, &shadow); err != nil {
 		return err
@@ -88,11 +90,16 @@ func (c *StreamConfig) UnmarshalJSON(data []byte) error {
 		network = c.Method
 	}
 	c.HTTPSettings = nil
+	c.QUICSettings = nil
 	if network != nil {
 		switch strings.ToLower(string(*network)) {
 		case "http", "h2", "http2", "h2c":
 			if len(shadow.HTTPSettings) != 0 {
 				return json.Unmarshal(shadow.HTTPSettings, &c.HTTPSettings)
+			}
+		case "quic":
+			if len(shadow.QUICSettings) != 0 {
+				return json.Unmarshal(shadow.QUICSettings, &c.QUICSettings)
 			}
 		}
 	}
@@ -125,6 +132,13 @@ func (c *StreamConfig) Build() (*internet.StreamConfig, error) {
 		}
 		if c.Network != nil && strings.EqualFold(string(*c.Network), "h2c") && security != "" && security != "none" {
 			return nil, errors.New("h2c requires cleartext security none")
+		}
+	}
+	if config.ProtocolName == "quic" {
+		switch strings.ToLower(c.Security) {
+		case "", "none", "tls":
+		default:
+			return nil, errors.New("legacy QUIC supports TLS or its explicit legacy internal-certificate mode only")
 		}
 	}
 
@@ -164,6 +178,17 @@ func (c *StreamConfig) Build() (*internet.StreamConfig, error) {
 
 	if c.RAWSettings != nil {
 		c.TCPSettings = c.RAWSettings
+	}
+	if config.ProtocolName == "quic" {
+		quicSettings := c.QUICSettings
+		if quicSettings == nil {
+			quicSettings = &QUICConfig{}
+		}
+		qs, err := quicSettings.Build()
+		if err != nil {
+			return nil, errors.New("Failed to build legacy QUIC config").Base(err)
+		}
+		config.TransportSettings = append(config.TransportSettings, &internet.TransportConfig{ProtocolName: "quic", Settings: serial.ToTypedMessage(qs)})
 	}
 	if config.ProtocolName == "http" {
 		httpSettings := c.HTTPSettings

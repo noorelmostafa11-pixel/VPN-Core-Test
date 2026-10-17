@@ -85,10 +85,31 @@ func nodeStream(fields *nodeFields, scheme string) (*StreamConfig, error) {
 	mode := fields.take("mode")
 	header := strings.ToLower(fields.take("headertype", "header-type"))
 	extra := fields.take("extra")
-	if header != "" && header != "none" {
+	if header != "" && header != "none" && network != "quic" {
 		return nil, errors.New("node URI: transport header import is not implemented")
 	}
 	switch network {
+	case "quic":
+		if stream.Security == "tls" && fingerprint != "" && fingerprint != "unsafe" && !strings.EqualFold(fingerprint, "hellogolang") {
+			return nil, errors.New("node URI: QUIC browser TLS fingerprints are not implemented")
+		}
+		cipher := strings.ToLower(fields.take("quicsecurity", "quic-security", "quic_security"))
+		key := fields.take("quickey", "quic-key", "quic_key", "key")
+		if host != "" {
+			if cipher != "" && cipher != strings.ToLower(host) {
+				return nil, errors.New("node URI: conflicting QUIC packet cipher")
+			}
+			cipher = strings.ToLower(host)
+		}
+		if path != "" {
+			if key != "" && key != path {
+				return nil, errors.New("node URI: conflicting QUIC key")
+			}
+			key = path
+		}
+		domain := fields.take("headerdomain", "header-domain", "header_domain")
+		encoded, _ := json.Marshal(map[string]string{"type": header, "domain": domain})
+		stream.QUICSettings = &QUICConfig{Security: cipher, Key: key, Header: encoded}
 	case "tcp", "raw", "kcp", "mkcp":
 		if host != "" || path != "" || mode != "" || service != "" || extra != "" {
 			return nil, errors.New("node URI: unsupported raw/KCP transport parameters")
