@@ -139,7 +139,7 @@ func TestNodeXHTTPDownloadRejectsUntrustedNestedConfig(t *testing.T) {
 		"insecure-certificate": `{` + base + `,"tlsSettings":{"allowInsecure":true}}`,
 		"local-key-file": `{` + base + `,"tlsSettings":{"certificates":[{"keyFile":"private.key"}]}}`,
 		"local-certificate": `{` + base + `,"tlsSettings":{"certificateFile":"secret.pem"}}`,
-		"unsafe-download-transport": `{` + base + `,"xhttpSettings":{"headers":{"X-Injected":"value"}}}`,
+		"unsafe-download-transport": `{` + base + `,"xhttpSettings":{"headers":{"Connection":"close"}}}`,
 		"nested-download": `{` + base + `,"xhttpSettings":{"downloadSettings":{}}}`,
 		"invalid-download-host": `{` + base + `,"xhttpSettings":{"host":"bad\r\nInjected: yes"}}`,
 		"invalid-download-path": `{` + base + `,"xhttpSettings":{"path":"not/absolute"}}`,
@@ -209,6 +209,44 @@ func TestNodeXHTTPDownloadAdvancedRejectsUnboundedInputs(t *testing.T) {
 			profile := `{"downloadSettings":{"address":"download.example.invalid","port":443,"network":"xhttp","security":"tls","xhttpSettings":` + inner + `}}`
 			u := "vless://" + xhttpNodeTestID + "@127.0.0.1:443?type=xhttp&mode=stream-up&extra=" + url.QueryEscape(profile)
 			if _,err:=conf.ParseNodeURI(u);err==nil{t.Fatal("unbounded XHTTP metadata accepted")}
+		})
+	}
+}
+
+func TestNodeXHTTPDownloadOrdinaryHeaderParity(t *testing.T) {
+	inner := `{"address":"download.example.invalid","port":443,"network":"xhttp","security":"tls","tlsSettings":{"serverName":"download.example.invalid"},"xhttpSettings":{"path":"/down","headers":{"X-Route":"synthetic","X-Edge":"test"}}}`
+	for _, base := range xhttpNodeProfiles() {
+		t.Run(strings.SplitN(base,"://",2)[0],func(t *testing.T){
+			raw := `{"downloadSettings":`+inner+`}`
+			got,err:=conf.ParseNodeURI(base+"?type=xhttp&mode=stream-up&extra="+url.QueryEscape(raw))
+			if err!=nil{t.Fatal(err)}
+			fromURI,err:=got.StreamSetting.Build()
+			if err!=nil{t.Fatal(err)}
+			var down conf.StreamConfig
+			if err:=json.Unmarshal([]byte(inner),&down);err!=nil{t.Fatal(err)}
+			expected:=*got.StreamSetting
+			expected.XHTTPSettings=&conf.SplitHTTPConfig{Mode:"stream-up",DownloadSettings:&down}
+			fromJSON,err:=expected.Build()
+			if err!=nil{t.Fatal(err)}
+			if !proto.Equal(fromURI,fromJSON){t.Fatal("download-only XHTTP header mismatch")}
+		})
+	}
+}
+
+func TestNodeXHTTPDownloadRejectsControlHeaders(t *testing.T) {
+	for name,headers:=range map[string]string{
+		"host":`{"Host":"override.example"}`,
+		"connection":`{"Connection":"upgrade"}`,
+		"upgrade":`{"Upgrade":"websocket"}`,
+		"content-length":`{"Content-Length":"999"}`,
+		"duplicate-case":`{"X-Route":"one","x-route":"two"}`,
+		"bad-name":`{"Bad Key":"value"}`,
+		"header-newline":`{"X-Route":"one\r\nX-Bad:yes"}`,
+	} {
+		t.Run(name,func(t *testing.T){
+			inner:=`{"downloadSettings":{"address":"download.example.invalid","port":443,"network":"xhttp","security":"tls","xhttpSettings":{"headers":`+headers+`}}}`
+			u:="vless://"+xhttpNodeTestID+"@127.0.0.1:443?type=xhttp&mode=stream-up&extra="+url.QueryEscape(inner)
+			if _,err:=conf.ParseNodeURI(u);err==nil{t.Fatal("unsafe nested XHTTP HTTP header accepted")}
 		})
 	}
 }

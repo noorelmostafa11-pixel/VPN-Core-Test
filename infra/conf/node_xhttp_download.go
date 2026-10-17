@@ -96,6 +96,7 @@ func nodeXHTTPDownloadTransport(raw json.RawMessage) error {
 	}
 	var transport struct {
 		Host                 string     `json:"host"`
+		Headers              map[string]string `json:"headers"`
 		Path                 string     `json:"path"`
 		Mode                 string     `json:"mode"`
 		XPaddingBytes        Int32Range `json:"xPaddingBytes"`
@@ -118,6 +119,19 @@ func nodeXHTTPDownloadTransport(raw json.RawMessage) error {
 	case "", "auto", "packet-up", "stream-up", "stream-one":
 	default:
 		return errors.New("node URI: unsupported XHTTP download mode")
+	}
+	// HTTP headers on the independent XHTTP download leg use the same
+	// reserved-name and input-safety policy as the original WS/HTTPUpgrade
+	// node import. Host remains the dedicated authority field.
+	if len(transport.Headers) > 32 {
+		return errors.New("node URI: too many XHTTP download headers")
+	}
+	for key, value := range transport.Headers {
+		if !nodeHTTPHeaderToken(key) || nodeHTTPTransportReservedHeader(key) ||
+			len(value) > 2048 || !nodeHTTPHeaderValue(value) ||
+			strings.ContainsAny(value, "\\r\\n\\x00") {
+			return errors.New("node URI: unsafe XHTTP download header")
+		}
 	}
 	if transport.XPaddingBytes.From < 0 || transport.XPaddingBytes.To > 8192 ||
 		len(transport.XPaddingKey) > 64 || len(transport.XPaddingHeader) > 128 {
@@ -142,6 +156,7 @@ func nodeXHTTPDownloadTransport(raw json.RawMessage) error {
 	// fields. This does not instantiate a dialer or touch local files.
 	config := &SplitHTTPConfig{
 		Host: transport.Host, Path: transport.Path, Mode: transport.Mode,
+		Headers: transport.Headers,
 		XPaddingBytes: transport.XPaddingBytes,
 		XPaddingObfsMode: transport.XPaddingObfsMode,
 		XPaddingKey: transport.XPaddingKey,
