@@ -181,6 +181,7 @@ func nodeStream(fields *nodeFields, scheme string) (*StreamConfig, error) {
 			list := StringList(strings.Split(host, ","))
 			stream.HTTPSettings.Host = &list
 		}
+		if err := nodeHTTP2Extensions(fields, stream.HTTPSettings); err != nil { return nil, err }
 	case "xhttp", "splithttp":
 		stream.XHTTPSettings = &SplitHTTPConfig{Host: host, Path: path, Mode: mode}
 		if extra != "" {
