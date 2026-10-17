@@ -76,6 +76,8 @@ func init() {
 	ReaderDecoderByFormat["toml"] = DecodeTOMLConfig
 	ReaderDecoderByFormat["uri"] = DecodeURIConfig
 	ReaderDecoderByFormat["node"] = DecodeNodeConfig
+	ReaderDecoderByFormat["subscription"] = DecodeSubscriptionConfig
+	ReaderDecoderByFormat["sub"] = DecodeSubscriptionConfig
 
 	core.ConfigBuilderForFiles = BuildConfig
 	core.ConfigMergedFormFiles = MergeConfigFromFiles
