@@ -13,7 +13,7 @@ import (
 	xnet "github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/core"
 	_ "github.com/xtls/xray-core/main/distro/all"
-	"github.com/xtls/xray-core/testing/servers/tcp"
+	"github.com/xtls/xray-core/testing/servers/udp"
 )
 
 func TestForkLegacyQUICCoreVLESS(t *testing.T) {
@@ -47,7 +47,7 @@ func TestForkLegacyQUICCoreVLESS(t *testing.T) {
 				}
 			})
 			echoPort := echo.Addr().(*net.TCPAddr).Port
-			port := tcp.PickPort()
+			port := udp.PickPort()
 			stream := map[string]any{"network": "quic", "security": "none", "quicSettings": map[string]any{"security": "aes-128-gcm", "key": "synthetic", "header": map[string]any{"type": "dtls"}}}
 			serverConfig, _ := json.Marshal(map[string]any{"inbounds": []any{map[string]any{"listen": "127.0.0.1", "port": port, "protocol": "vless", "settings": map[string]any{"clients": []any{map[string]any{"id": id}}, "decryption": "none"}, "streamSettings": stream}}, "outbounds": []any{map[string]any{"protocol": "freedom", "settings": map[string]any{"finalRules": []any{map[string]any{"action": "allow", "network": "tcp", "port": echoPort, "ip": []string{"127.0.0.1"}}}}}}})
 			server, err := core.StartInstance("json", serverConfig)
