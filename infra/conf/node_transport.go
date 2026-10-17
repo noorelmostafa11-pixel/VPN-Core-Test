@@ -162,6 +162,15 @@ func nodeStream(fields *nodeFields, scheme string) (*StreamConfig, error) {
 			for key, value := range object {
 				switch strings.ToLower(key) {
 				case "headers", "xpaddingbytes", "xpaddingobfsmode", "xpaddingkey", "xpaddingheader", "xpaddingplacement", "xpaddingmethod", "uplinkhttpmethod", "sessionidplacement", "sessionidkey", "sessionidtable", "sessionidlength", "seqplacement", "seqkey", "uplinkdataplacement", "uplinkdatakey", "uplinkchunksize", "nogrpcheader", "nosseheader", "scmaxeachpostbytes", "scminpostsintervalms", "scmaxbufferedposts", "scstreamupserversecs", "servermaxheaderbytes":
+				case "downloadsettings":
+					// Only this new opt-in accepts nested download data. Keep the
+					// original extra parser unchanged for all other XHTTP links.
+					if !nodeJSONObject(json.NewDecoder(strings.NewReader(extra)), 0) {
+						return nil, errors.New("node URI: ambiguous XHTTP extra object")
+					}
+					if err := nodeXHTTPDownloadSettings(value); err != nil {
+						return nil, err
+					}
 				case "xmux":
 					var settings map[string]json.RawMessage
 					if json.Unmarshal(value, &settings) != nil || settings == nil {
