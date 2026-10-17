@@ -141,6 +141,8 @@ func getRegepxByFormat() string {
 		return `^.+\.toml$`
 	case "yaml", "yml":
 		return `^.+\.(yaml|yml)$`
+	case "uri":
+		return `^.+\.uri$`
 	default:
 		return `^.+\.(json|jsonc|toml|yaml|yml)$`
 	}

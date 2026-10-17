@@ -25,6 +25,12 @@ ambiguous legacy VMess/SOCKS choices now use a separate `legacySettings` block.
 The original Shadowsocks server-first behavior fix is opt-in for original
 methods. [Selection rules and baseline comparison](fork/VERIFICATION-PRESERVATION.md).
 
+Node-URI input now selects implemented support automatically from the node's
+protocol/transport/security metadata, with no per-feature enable switches.
+Use a `.uri` input file or the Go URI reader; original JSON behavior stays
+unchanged. Low-level legacy fields are generated internally, not required in
+node links. [Automatic selection and its current scope](fork/VERIFICATION-NODE-SELECTION.md).
+
 The first compatibility addition is explicit Shadowsocks `aes-192-gcm`, including
 client, server and multi-user server configuration, TCP and UDP. The existing
 four classic AEAD methods remain supported. See [verification](fork/VERIFICATION.md)

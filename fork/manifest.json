@@ -27,17 +27,18 @@
     "scope": "All fork Go tests with race detection, full vet, same-fork CLI build and classic Shadowsocks client/server TCP/UDP self-wire",
     "packages_releases_mobile_jobs": false
   },
-  "checkpoint": "classic-shadowsocks-method-list-complete",
+  "checkpoint": "automatic-node-uri-selection",
   "original_behavior_policy": {
     "baseline": "701af60772cda123492f86e383e1fdba066614a9",
     "document": "fork/VERIFICATION-PRESERVATION.md",
     "shared_fixture": "infra/conf/original_behavior_test.go",
-    "vmess_socks_ambiguous_legacy_selection": "Separate per-node legacySettings and protobuf legacy_compatibility gate; original ignored fields and AUTO fallbacks stay unchanged",
-    "shadowsocks_server_first": "Optional serverFirstCompatibility for original methods; added methods select additional path",
+    "vmess_socks_ambiguous_legacy_selection": "Node URI metadata automatically generates matching internal fields; original Xray JSON ignored fields and AUTO fallbacks stay unchanged",
+    "shadowsocks_server_first": "Automatic on node URI input; original full JSON retains its prior default and low-level setting",
     "http_settings": "Parsed and built only for an explicitly selected standalone HTTP2 transport",
     "owner_stability_fixes": "Preserved; no broad reset to upstream"
   },
   "verified_custom_additions": [
+    "Automatic common node-URI input: paths selected from node metadata without per-feature switches; original JSON semantics retained",
     "Shadowsocks AES-192-GCM: explicit client/server/multi-user configuration, TCP and UDP",
     "Shadowsocks AES-128/192/256-CFB, CTR and OFB: explicit single-user client/server, TCP and UDP",
     "Shadowsocks AEAD server-first: optional serverFirstCompatibility for original methods; no hidden default change",
@@ -53,12 +54,18 @@
   "classic_wire_endpoint_pairs": 32,
   "vendored_primitives": "proxy/shadowsocks/internal/cryptobin/SOURCES.json",
   "runtime_validation_platform": "windows/amd64",
+  "latest_node_selection_validation": {
+    "runtime": "windows/amd64",
+    "build": "windows/amd64",
+    "document": "fork/VERIFICATION-NODE-SELECTION.md",
+    "internet_foreign_runtime_application_abi": "not validated"
+  },
   "build_validation_platforms": [
     "windows/amd64",
     "linux/amd64",
     "darwin/arm64"
   ],
   "internet_acceptance": "not tested",
-  "application_sdk_acceptance": "not implemented",
+  "application_sdk_acceptance": "Common Go URI entry point implemented; complete native application ABI/mobile integration not implemented or validated",
   "ss2022_selftest_scope": "SS2022 package tests exist; classic self-wire fixture does not include SS2022"
 }

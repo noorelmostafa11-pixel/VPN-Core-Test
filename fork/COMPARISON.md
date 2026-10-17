@@ -102,6 +102,14 @@ and 2022, WireGuard, Hysteria 2, TUN, XHTTP, WebSocket, HTTP Upgrade, gRPC or
 mKCP merely because they were present in main. Upstream versions, platform
 support and exact settings still require compatibility checks where used.
 
+## Automatic node input
+
+The URI boundary automatically selects existing/added paths from common
+VMess/VLESS/Trojan/Shadowsocks/SOCKS/HTTP node metadata. No per-feature switches
+are required in these links. Original full Xray configurations retain their
+meaning. This is a bounded input importer, not complete main URI/SDK parity.
+[Entry points, validation and limits](VERIFICATION-NODE-SELECTION.md).
+
 ## Still to port or resolve
 
 - SS2022 fork/main interoperability requires a separate key/configuration-aware
@@ -115,8 +123,9 @@ support and exact settings still require compatibility checks where used.
   the pinned upstream proxy registrations.
 - SIP003 wrapper/plugin semantics and custom health/body validation need a
   deeper comparison before declaring what upstream lacks.
-- Application configuration import and SDK interfaces need a Go-first integration
-  design. The upstream CLI alone does not preserve the old application ABI.
+- Remaining application configuration/subscription import and SDK interfaces
+  need Go-first integration. The common URI reader is implemented; it does not
+  alone preserve the old application ABI or cover every main link variant.
 
 Future work should port one bounded capability at a time, retain upstream
 security defaults and verify both roles where applicable. Do not import the

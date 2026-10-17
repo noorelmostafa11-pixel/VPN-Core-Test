@@ -14,15 +14,23 @@
 - Reproduce missing behavior, run affected tests and build the same source before
   publishing. Record failures and prerequisites; do not weaken assertions, remove
   checks or retry protocol failures until they pass.
+- The owner authorized publishing completed, verified requested batches to
+  `feature/xray-custom-core` without another per-batch permission request. Use a
+  normal non-force branch push only; this does not authorize main, tags, PRs,
+  releases, workflow dispatch/monitoring or unrelated changes.
 - Distinguish compilation, runtime/race/wire, platform/package and Internet/SDK
   acceptance. A cross-build is not runtime acceptance on the target OS.
 - Do not drop supported protocols to make the binary smaller. Measure size and
   performance claims against equivalent builds.
 - Add support without reinterpreting configurations that work on pinned upstream
-  `701af60772cda123492f86e383e1fdba066614a9`. Preserve ignored fields and AUTO
-  fallbacks as well as ordinary defaults. Ambiguous VMess/SOCKS legacy behavior
-  requires the separate per-node `legacySettings` opt-in (and protobuf gate),
-  never an automatic retry, downgrade or a shared-default change.
+  `701af60772cda123492f86e383e1fdba066614a9`. Preserve ignored fields, AUTO
+  fallbacks and working original paths. All implemented additions must be
+  available in the normal distribution, without manual per-feature switches.
+  Node-URI input selects its path automatically from protocol/transport/security
+  metadata. Original Xray JSON/protobuf keeps its original interpretation;
+  legacySettings/protobuf gates remain low-level representations, not something
+  a URI user must supply. Never infer another protocol from a transient failure,
+  weaken certificate/authentication policy or replay application bytes as probes.
 - New cipher/protocol selectors may enter added paths. A behavior fix affecting
   an original path must be separately opted into or explicitly authorized;
   preserve the owner's existing race/stability fixes. Run the shared original

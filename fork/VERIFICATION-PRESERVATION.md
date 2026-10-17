@@ -1,5 +1,10 @@
 # Preserve original behavior; isolate added support
 
+Selection update: normal node-URI input now generates the matching internal
+configuration automatically, with no manual feature switches. Original JSON
+semantics below are still preserved; its low-level legacy fields are not a
+requirement in node links. See [automatic node selection](VERIFICATION-NODE-SELECTION.md).
+
 Date: 2026-10-17. Source parent: `cf7b0bc3ba8f15bbad6c104bca33c82303670bba`.
 Comparison authority for original Xray behavior:
 `701af60772cda123492f86e383e1fdba066614a9`, the pinned upstream foundation.

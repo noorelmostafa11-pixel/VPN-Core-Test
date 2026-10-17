@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	gonet "net"
 	"testing"
@@ -16,6 +17,12 @@ import (
 )
 
 func TestForkLegacyHTTP2CoreVLESS(t *testing.T) {
+	for _, inputFormat := range []string{"json", "uri"} {
+		t.Run(inputFormat, func(t *testing.T) { testLegacyHTTP2CoreVLESS(t, inputFormat) })
+	}
+}
+
+func testLegacyHTTP2CoreVLESS(t *testing.T, inputFormat string) {
 	const id = "00000000-0000-4000-8000-000000000001"
 	echo, err := gonet.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
@@ -58,7 +65,10 @@ func TestForkLegacyHTTP2CoreVLESS(t *testing.T) {
 	clientConfig, _ := json.Marshal(map[string]any{
 		"outbounds": []any{map[string]any{"protocol": "vless", "settings": map[string]any{"vnext": []any{map[string]any{"address": "127.0.0.1", "port": tunnelPort, "users": []any{map[string]any{"id": id, "encryption": "none"}}}}}, "streamSettings": stream}},
 	})
-	client, err := core.StartInstance("json", clientConfig)
+	if inputFormat == "uri" {
+		clientConfig = []byte(fmt.Sprintf("vless://%s@127.0.0.1:%d?type=h2c&host=tunnel.example&path=%%2Flegacy", id, tunnelPort))
+	}
+	client, err := core.StartInstance(inputFormat, clientConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
