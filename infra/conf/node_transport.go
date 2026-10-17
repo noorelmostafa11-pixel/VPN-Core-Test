@@ -80,6 +80,7 @@ func nodeStream(fields *nodeFields, scheme string) (*StreamConfig, error) {
 		return nil, errors.New("node URI: security parameters on an unencrypted transport")
 	}
 
+	header := strings.ToLower(fields.take("headertype", "header-type"))
 	host := fields.take("host", "authority")
 	if strings.ContainsAny(host, "\r\n\x00 \t") || (strings.Contains(host, ",") && network != "http" && network != "h2" && network != "http2" && network != "h2c" && !((network == "tcp" || network == "raw") && header == "http")) {
 		return nil, errors.New("node URI: invalid transport authority")
@@ -87,7 +88,6 @@ func nodeStream(fields *nodeFields, scheme string) (*StreamConfig, error) {
 	path := fields.take("path", "wspath")
 	service := fields.take("servicename", "service-name", "grpc-service-name", "service_name")
 	mode := fields.take("mode")
-	header := strings.ToLower(fields.take("headertype", "header-type"))
 	extra := fields.take("extra")
 	if header != "" && header != "none" && network != "quic" && network != "tcp" && network != "raw" && network != "kcp" && network != "mkcp" {
 		return nil, errors.New("node URI: transport header import is not implemented")
