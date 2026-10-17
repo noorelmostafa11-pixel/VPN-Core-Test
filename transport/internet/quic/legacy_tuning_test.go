@@ -12,6 +12,9 @@ func TestLegacyQUICTuningUnspecifiedDefaults(t *testing.T) {
 	if err := ValidateLegacyQUICParams(nil); err != nil {t.Fatal(err)}
 	if !reflect.DeepEqual(tunedLegacyQUICConfig(nil), quicConfig()) {t.Fatal("legacy QUIC defaults changed")}
 	if !reflect.DeepEqual(tunedLegacyQUICConfig(&internet.QuicParams{}), quicConfig()) {t.Fatal("empty tuning changed defaults")}
+	// The shared StreamConfig.Build() historically inserts this value when any
+	// finalmask.quicParams object is selected. It is not a BBR enable switch.
+	if err:=ValidateLegacyQUICParams(&internet.QuicParams{BbrProfile:"standard",MaxIdleTimeout:80});err!=nil{t.Fatal("stream builder default BBR profile rejected:",err)}
 }
 
 func TestLegacyQUICTuningAppliesBoundedOnly(t *testing.T) {
@@ -32,6 +35,7 @@ func TestLegacyQUICTuningAppliesBoundedOnly(t *testing.T) {
 func TestLegacyQUICTuningRejectsUnsupported(t *testing.T) {
 	for name, params := range map[string]*internet.QuicParams{
 		"browser-parrot":{DisableChromeParrot:true},
+		"unsupported-bbr-profile":{BbrProfile:"aggressive"},
 		"congestion":{Congestion:"bbr"},
 		"brutal":{BrutalUp:102400},
 		"mtu":{DisablePathMtuDiscovery:true},

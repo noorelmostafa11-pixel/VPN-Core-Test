@@ -142,8 +142,22 @@ func nodeStream(fields *nodeFields, scheme string) (*StreamConfig, error) {
 		}
 	case "ws", "websocket":
 		stream.WSSettings = &WebSocketConfig{Host: host, Path: path}
+		var err error
+		stream.WSSettings.Headers, err = nodeHTTPTransportHeaders(fields, "wsheaders", "ws-headers", "websocketheaders")
+		if err != nil {
+			return nil, err
+		}
+		stream.WSSettings.HeartbeatPeriod, err = nodeTransportUint32(fields, 0, 3600, "wsheartbeatperiod", "ws-heartbeat-period")
+		if err != nil {
+			return nil, err
+		}
 	case "httpupgrade":
 		stream.HTTPUPGRADESettings = &HttpUpgradeConfig{Host: host, Path: path}
+		var err error
+		stream.HTTPUPGRADESettings.Headers, err = nodeHTTPTransportHeaders(fields, "httpupgradeheaders", "http-upgrade-headers")
+		if err != nil {
+			return nil, err
+		}
 	case "grpc":
 		if service == "" {
 			service = strings.TrimLeft(path, "/")
@@ -152,6 +166,9 @@ func nodeStream(fields *nodeFields, scheme string) (*StreamConfig, error) {
 			return nil, errors.New("node URI: invalid gRPC mode")
 		}
 		stream.GRPCSettings = &GRPCConfig{Authority: host, ServiceName: service, MultiMode: mode == "multi"}
+		if err := nodeGRPCExtensions(fields, stream.GRPCSettings); err != nil {
+			return nil, err
+		}
 	case "http", "h2", "http2", "h2c":
 		stream.HTTPSettings = &HTTPConfig{Path: path}
 		if host != "" {

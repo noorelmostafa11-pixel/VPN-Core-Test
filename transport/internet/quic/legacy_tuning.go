@@ -15,7 +15,7 @@ func ValidateLegacyQUICParams(p *internet.QuicParams) error {
 	if p == nil {
 		return nil
 	}
-	if p.Congestion != "" || p.BbrProfile != "" ||
+	if p.Congestion != "" || (p.BbrProfile != "" && p.BbrProfile != "standard") ||
 		p.BrutalUp != 0 || p.BrutalDown != 0 || p.BrutalDisableLossCompensation ||
 		p.DisablePathMtuDiscovery || p.DisableChromeParrot || p.DisableGSO || p.DisableStatelessReset {
 		return errors.New("legacy QUIC: unsupported modern QUIC tuning")
