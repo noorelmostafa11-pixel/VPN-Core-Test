@@ -128,7 +128,7 @@ func nodeJSONFields(body string) (*nodeFields, error) {
 					return nil, errors.New("node URI: invalid list parameter")
 				}
 				value = strings.Join(list, ",")
-			} else if (key == "extra" || key == "quicparams" || key == "wsheaders" || key == "ws-headers" || key == "websocketheaders" || key == "httpupgradeheaders" || key == "http-upgrade-headers") && len(raw) != 0 && raw[0] == '{' {
+			} else if (key == "extra" || key == "quicparams" || key == "headers" || key == "wsheaders" || key == "ws-headers" || key == "websocketheaders" || key == "httpupgradeheaders" || key == "http-upgrade-headers") && len(raw) != 0 && raw[0] == '{' {
 				value = string(raw)
 			} else {
 				var scalar any
