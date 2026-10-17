@@ -17,3 +17,5 @@ Unknown, duplicate, case-ambiguous, oversized, environment-derived, file-based, 
 3. **Final only, NOT_VERIFIED**: independent TLS/REALITY XHTTP download peer testing, entire suite on Windows/Linux/macOS, race/vet/build, and additive TCP/mKCP plus later groups evaluated together. No statement of runtime interoperability is made at this checkpoint.
 
 This checkpoint is not a merge into the owner's original branch and is not an application or production deployment.
+
+Additional opt-in nested download XHTTP settings: bounded padding placement/method and XMux numeric limits, with original XHTTP builder semantic validation. Nested headers, arbitrary extra/downloadSettings recursion and files remain rejected. Source-level parity fixtures added; full-Go test execution remains NOT_VERIFIED.

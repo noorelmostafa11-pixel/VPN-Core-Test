@@ -95,9 +95,18 @@ func nodeXHTTPDownloadTransport(raw json.RawMessage) error {
 		return nil
 	}
 	var transport struct {
-		Host string `json:"host"`
-		Path string `json:"path"`
-		Mode string `json:"mode"`
+		Host                 string     `json:"host"`
+		Path                 string     `json:"path"`
+		Mode                 string     `json:"mode"`
+		XPaddingBytes        Int32Range `json:"xPaddingBytes"`
+		XPaddingObfsMode     bool       `json:"xPaddingObfsMode"`
+		XPaddingKey          string     `json:"xPaddingKey"`
+		XPaddingHeader       string     `json:"xPaddingHeader"`
+		XPaddingPlacement    string     `json:"xPaddingPlacement"`
+		XPaddingMethod       string     `json:"xPaddingMethod"`
+		NoGRPCHeader         bool       `json:"noGRPCHeader"`
+		NoSSEHeader          bool       `json:"noSSEHeader"`
+		Xmux                 XmuxConfig `json:"xmux"`
 	}
 	if err := nodeXHTTPDecodeObject(raw, &transport); err != nil {
 		return errors.New("node URI: unsupported XHTTP download transport settings")
@@ -109,6 +118,42 @@ func nodeXHTTPDownloadTransport(raw json.RawMessage) error {
 	case "", "auto", "packet-up", "stream-up", "stream-one":
 	default:
 		return errors.New("node URI: unsupported XHTTP download mode")
+	}
+	if transport.XPaddingBytes.From < 0 || transport.XPaddingBytes.To > 8192 ||
+		len(transport.XPaddingKey) > 64 || len(transport.XPaddingHeader) > 128 {
+		return errors.New("node URI: unsafe XHTTP download padding")
+	}
+	if transport.XPaddingHeader != "" && !nodeHTTPHeaderToken(transport.XPaddingHeader) {
+		return errors.New("node URI: invalid XHTTP download padding header")
+	}
+	for _, rng := range []Int32Range{
+		transport.Xmux.MaxConcurrency, transport.Xmux.MaxConnections,
+		transport.Xmux.CMaxReuseTimes, transport.Xmux.HMaxRequestTimes,
+		transport.Xmux.HMaxReusableSecs,
+	} {
+		if rng.From < 0 || rng.To > 4096 {
+			return errors.New("node URI: unsafe XHTTP download XMux limits")
+		}
+	}
+	if transport.Xmux.HKeepAlivePeriod < 0 || transport.Xmux.HKeepAlivePeriod > 3600 {
+		return errors.New("node URI: unsafe XHTTP download keep-alive")
+	}
+	// Preserve original Full-JSON semantics and validation for the accepted
+	// fields. This does not instantiate a dialer or touch local files.
+	config := &SplitHTTPConfig{
+		Host: transport.Host, Path: transport.Path, Mode: transport.Mode,
+		XPaddingBytes: transport.XPaddingBytes,
+		XPaddingObfsMode: transport.XPaddingObfsMode,
+		XPaddingKey: transport.XPaddingKey,
+		XPaddingHeader: transport.XPaddingHeader,
+		XPaddingPlacement: transport.XPaddingPlacement,
+		XPaddingMethod: transport.XPaddingMethod,
+		NoGRPCHeader: transport.NoGRPCHeader,
+		NoSSEHeader: transport.NoSSEHeader,
+		Xmux: transport.Xmux,
+	}
+	if _, err := config.Build(); err != nil {
+		return errors.New("node URI: invalid XHTTP download transport settings")
 	}
 	return nil
 }

@@ -175,3 +175,40 @@ func TestNodeXHTTPDownloadRejectsUntrustedNestedConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestNodeXHTTPDownloadSafeAdvancedPaddingAndXMux(t *testing.T) {
+	inner := `{"address":"download.example.invalid","port":443,"network":"xhttp","security":"tls","tlsSettings":{"serverName":"download.example.invalid"},"xhttpSettings":{"host":"download.example.invalid","path":"/down","xPaddingBytes":"64-128","xPaddingObfsMode":true,"xPaddingPlacement":"header","xPaddingMethod":"tokenish","xmux":{"maxConnections":3,"hMaxRequestTimes":10}}}`
+	for _, base := range xhttpNodeProfiles() {
+		t.Run(strings.SplitN(base, "://", 2)[0], func(t *testing.T) {
+			extra := `{"downloadSettings":` + inner + `}`
+			got, err := conf.ParseNodeURI(base + "?type=xhttp&mode=stream-up&extra=" + url.QueryEscape(extra))
+			if err != nil { t.Fatal(err) }
+			a, err := got.StreamSetting.Build()
+			if err != nil { t.Fatal(err) }
+			var down conf.StreamConfig
+			if err := json.Unmarshal([]byte(inner), &down); err != nil { t.Fatal(err) }
+			want := *got.StreamSetting
+			want.XHTTPSettings = &conf.SplitHTTPConfig{Mode:"stream-up",DownloadSettings:&down}
+			b, err := want.Build()
+			if err != nil { t.Fatal(err) }
+			if !proto.Equal(a,b) { t.Fatal("nested XHTTP padding/XMux differs from full JSON") }
+		})
+	}
+}
+
+func TestNodeXHTTPDownloadAdvancedRejectsUnboundedInputs(t *testing.T) {
+	for label, inner := range map[string]string{
+		"too-large-padding":`{"xPaddingBytes":999999}`,
+		"invalid-padding-header":`{"xPaddingHeader":"Bad Header"}`,
+		"oversized-xmux":`{"xmux":{"maxConnections":999999}}`,
+		"bad-placement":`{"xPaddingPlacement":"unknown"}`,
+		"nested-extra":`{"extra":{"downloadSettings":{}}}`,
+		"header-injection":`{"headers":{"Host":"override.example"}}`,
+	} {
+		t.Run(label,func(t *testing.T){
+			profile := `{"downloadSettings":{"address":"download.example.invalid","port":443,"network":"xhttp","security":"tls","xhttpSettings":` + inner + `}}`
+			u := "vless://" + xhttpNodeTestID + "@127.0.0.1:443?type=xhttp&mode=stream-up&extra=" + url.QueryEscape(profile)
+			if _,err:=conf.ParseNodeURI(u);err==nil{t.Fatal("unbounded XHTTP metadata accepted")}
+		})
+	}
+}
