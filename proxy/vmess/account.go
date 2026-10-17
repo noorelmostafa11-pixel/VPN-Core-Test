@@ -17,8 +17,9 @@ type MemoryAccount struct {
 	// AlterIDs explicitly selects legacy timestamp/HMAC headers when nonempty.
 	AlterIDs []*protocol.ID
 	// Security type of the account. Used for client connections.
-	Security        protocol.SecurityType
-	AllowLegacyBody bool
+	Security            protocol.SecurityType
+	AllowLegacyBody     bool
+	LegacyCompatibility bool
 
 	AuthenticatedLengthExperiment bool
 	NoTerminationSignal           bool
@@ -42,28 +43,31 @@ func (a *MemoryAccount) ToProto() proto.Message {
 		test = test + "NoTerminationSignal"
 	}
 	return &Account{
-		Id:               a.ID.String(),
-		AlterId:          uint32(len(a.AlterIDs)),
-		TestsEnabled:     test,
-		SecuritySettings: &protocol.SecurityConfig{Type: a.Security},
-		AllowLegacyBody:  a.AllowLegacyBody,
+		Id:                  a.ID.String(),
+		AlterId:             uint32(len(a.AlterIDs)),
+		TestsEnabled:        test,
+		SecuritySettings:    &protocol.SecurityConfig{Type: a.Security},
+		AllowLegacyBody:     a.AllowLegacyBody,
+		LegacyCompatibility: a.LegacyCompatibility,
 	}
 }
 
 // AsAccount implements protocol.Account.
 func (a *Account) AsAccount() (protocol.Account, error) {
-	if a.AlterId > MaxLegacyAlterIDs {
-		return nil, errors.New("legacy VMess alterId exceeds 64")
-	}
 	security := a.SecuritySettings.GetSecurityType()
-	switch security {
-	case protocol.SecurityType_AES128_CFB, protocol.SecurityType_NONE, protocol.SecurityType_ZERO:
-		if strings.Contains(a.TestsEnabled, "AuthenticatedLength") {
-			return nil, errors.New("AuthenticatedLength requires an AEAD body mode")
+	if a.LegacyCompatibility {
+		if a.AlterId > MaxLegacyAlterIDs {
+			return nil, errors.New("legacy VMess alterId exceeds 64")
 		}
-	case protocol.SecurityType_AES128_GCM, protocol.SecurityType_CHACHA20_POLY1305:
-	default:
-		return nil, errors.New("unsupported VMess security type")
+		switch security {
+		case protocol.SecurityType_AES128_CFB, protocol.SecurityType_NONE, protocol.SecurityType_ZERO:
+			if strings.Contains(a.TestsEnabled, "AuthenticatedLength") {
+				return nil, errors.New("AuthenticatedLength requires an AEAD body mode")
+			}
+		case protocol.SecurityType_AES128_GCM, protocol.SecurityType_CHACHA20_POLY1305:
+		default:
+			return nil, errors.New("unsupported VMess security type")
+		}
 	}
 	id, err := uuid.ParseString(a.Id)
 	if err != nil {
@@ -77,12 +81,16 @@ func (a *Account) AsAccount() (protocol.Account, error) {
 	if strings.Contains(a.TestsEnabled, "NoTerminationSignal") {
 		NoTerminationSignal = true
 	}
-	return &MemoryAccount{
+	account := &MemoryAccount{
 		ID:                            protoID,
-		AlterIDs:                      newLegacyAlterIDs(protoID, a.AlterId),
 		Security:                      security,
-		AllowLegacyBody:               a.AllowLegacyBody,
+		LegacyCompatibility:           a.LegacyCompatibility,
 		AuthenticatedLengthExperiment: AuthenticatedLength,
 		NoTerminationSignal:           NoTerminationSignal,
-	}, nil
+	}
+	if a.LegacyCompatibility {
+		account.AlterIDs = newLegacyAlterIDs(protoID, a.AlterId)
+		account.AllowLegacyBody = a.AllowLegacyBody
+	}
+	return account, nil
 }

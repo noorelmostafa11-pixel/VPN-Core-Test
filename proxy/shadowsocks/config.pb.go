@@ -270,10 +270,12 @@ func (x *ServerConfig) GetNetwork() []net.Network {
 }
 
 type ClientConfig struct {
-	state         protoimpl.MessageState   `protogen:"open.v1"`
-	Server        *protocol.ServerEndpoint `protobuf:"bytes,1,opt,name=server,proto3" json:"server,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state  protoimpl.MessageState   `protogen:"open.v1"`
+	Server *protocol.ServerEndpoint `protobuf:"bytes,1,opt,name=server,proto3" json:"server,omitempty"`
+	// Optional fix for empty initial payloads on original AEAD methods.
+	ServerFirstCompatibility bool `protobuf:"varint,2,opt,name=server_first_compatibility,json=serverFirstCompatibility,proto3" json:"server_first_compatibility,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *ClientConfig) Reset() {
@@ -313,6 +315,13 @@ func (x *ClientConfig) GetServer() *protocol.ServerEndpoint {
 	return nil
 }
 
+func (x *ClientConfig) GetServerFirstCompatibility() bool {
+	if x != nil {
+		return x.ServerFirstCompatibility
+	}
+	return false
+}
+
 var File_proxy_shadowsocks_config_proto protoreflect.FileDescriptor
 
 const file_proxy_shadowsocks_config_proto_rawDesc = "" +
@@ -325,9 +334,10 @@ const file_proxy_shadowsocks_config_proto_rawDesc = "" +
 	"\biv_check\x18\x03 \x01(\bR\aivCheck\"t\n" +
 	"\fServerConfig\x120\n" +
 	"\x05users\x18\x01 \x03(\v2\x1a.xray.common.protocol.UserR\x05users\x122\n" +
-	"\anetwork\x18\x02 \x03(\x0e2\x18.xray.common.net.NetworkR\anetwork\"L\n" +
+	"\anetwork\x18\x02 \x03(\x0e2\x18.xray.common.net.NetworkR\anetwork\"\x8a\x01\n" +
 	"\fClientConfig\x12<\n" +
-	"\x06server\x18\x01 \x01(\v2$.xray.common.protocol.ServerEndpointR\x06server*\x86\x04\n" +
+	"\x06server\x18\x01 \x01(\v2$.xray.common.protocol.ServerEndpointR\x06server\x12<\n" +
+	"\x1aserver_first_compatibility\x18\x02 \x01(\bR\x18serverFirstCompatibility*\x86\x04\n" +
 	"\n" +
 	"CipherType\x12\v\n" +
 	"\aUNKNOWN\x10\x00\x12\x0f\n" +

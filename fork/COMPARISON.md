@@ -38,7 +38,8 @@ covered by this classic wire harness. See [checks](VERIFICATION-BLOCK-CFB.md).
 ## SOCKS4 and SOCKS4a outbound
 
 Explicit `socks4`/`socks4a` protocol selectors and the existing `socks` settings
-with `version: "4"`/`"4a"` now implement TCP CONNECT. SOCKS4 resolves domain
+with `legacySettings.version: "4"`/`"4a"` implement TCP CONNECT. The old top-level
+version field remains ignored on `socks`, preserving SOCKS5. SOCKS4 resolves domain
 targets locally to IPv4 under the handshake deadline; SOCKS4a forwards domains
 to the proxy without a local lookup. User IDs are supported, not password
 authentication. IPv6 destinations, UDP and BIND are not represented as supported.
@@ -47,21 +48,23 @@ See [scope and verification](VERIFICATION-SOCKS4.md).
 
 ## VMess body compatibility with modern AEAD headers
 
-Explicit `aes-128-cfb`, `none` and `zero` now retain their actual body semantics
-instead of becoming AUTO. CFB uses continuous AES-CFB and the historical FNV
+Explicit `legacySettings.security` values `aes-128-cfb`, `none` and `zero` select
+the added body semantics. Without that opt-in, original security fallbacks stay
+AUTO, including unknown names. CFB uses continuous AES-CFB and the historical FNV
 checksum framing; none uses unencrypted chunks; zero is unframed NONE for TCP
 only, never wire security code6. Outbound defaults remain modern AEAD modes.
-Inbound weak body modes require per-user `allowLegacyBody: true`; default
+Inbound weak body modes require per-user `legacySettings.allowLegacyBody: true`; default
 inbounds still reject them. [Body checkpoint](VERIFICATION-VMESS-BODY.md).
 
 ## Explicit legacy VMess headers
 
-`alterId: 1..64` now restores timestamp/HMAC-MD5 request headers, the exact
+`legacySettings.alterId: 1..64` restores timestamp/HMAC-MD5 request headers, the exact
 derived-ID chain, primary-ID command key, timestamp-derived CFB IV and MD5
 response keys. Response CFB body state continues after the encrypted header;
-AEAD and NONE bodies do not use that CFB stream. Default `alterId: 0` remains
-modern AEAD. Positive inbound alterId permits legacy headers for that user;
-it does not permit weak body modes without `allowLegacyBody: true`.
+AEAD and NONE bodies do not use that CFB stream. With no legacySettings, the
+original modern path is retained even if an ignored top-level alterId is present.
+Positive inbound legacySettings.alterId permits legacy headers for that user;
+it does not permit weak bodies without legacySettings.allowLegacyBody: true.
 
 The inbound has at most 256 legacy identities (primary plus alter IDs), a lazy
 10-second lookup index with strict +/-120-second acceptance, and an 8192-entry
@@ -69,6 +72,9 @@ fail-closed replay cache. Replay identity includes primary user, body key and
 IV, so legitimate same-second connections are not mistaken for replays.
 These bounds deliberately do not promise unbounded historical configurations.
 [Verification and acceptance boundaries](VERIFICATION-VMESS-LEGACY-HEADER.md).
+
+The original-behavior regression fixture is run unchanged on pinned upstream
+and the fork. [Isolation rules, migration and checks](VERIFICATION-PRESERVATION.md).
 
 ## Restored standalone HTTP/2 and h2c
 

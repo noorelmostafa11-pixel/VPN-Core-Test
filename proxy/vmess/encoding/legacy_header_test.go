@@ -25,7 +25,7 @@ import (
 
 func headerUser(t *testing.T, alter uint32, body bool) *protocol.MemoryUser {
 	t.Helper()
-	a, err := (&vmess.Account{Id: "00000000-0000-4000-8000-000000000001", AlterId: alter, AllowLegacyBody: body}).AsAccount()
+	a, err := (&vmess.Account{Id: "00000000-0000-4000-8000-000000000001", LegacyCompatibility: true, AlterId: alter, AllowLegacyBody: body}).AsAccount()
 	if err != nil {
 		t.Fatal(err)
 	}

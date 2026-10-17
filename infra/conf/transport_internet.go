@@ -1,6 +1,7 @@
 package conf
 
 import (
+	"encoding/json"
 	"os"
 	"strings"
 
@@ -71,6 +72,33 @@ type StreamConfig struct {
 	SocketSettings      *SocketConfig      `json:"sockopt"`
 }
 
+// Parse fork-only HTTP settings only when that transport is selected. Upstream
+// ignored this field on TCP/XHTTP/etc., including values of unrelated types.
+func (c *StreamConfig) UnmarshalJSON(data []byte) error {
+	type original StreamConfig
+	shadow := struct {
+		*original
+		HTTPSettings json.RawMessage `json:"httpSettings"`
+	}{original: (*original)(c)}
+	if err := json.Unmarshal(data, &shadow); err != nil {
+		return err
+	}
+	network := c.Network
+	if c.Method != nil {
+		network = c.Method
+	}
+	c.HTTPSettings = nil
+	if network != nil {
+		switch strings.ToLower(string(*network)) {
+		case "http", "h2", "http2", "h2c":
+			if len(shadow.HTTPSettings) != 0 {
+				return json.Unmarshal(shadow.HTTPSettings, &c.HTTPSettings)
+			}
+		}
+	}
+	return nil
+}
+
 // Build implements Buildable.
 func (c *StreamConfig) Build() (*internet.StreamConfig, error) {
 	config := &internet.StreamConfig{
@@ -137,7 +165,7 @@ func (c *StreamConfig) Build() (*internet.StreamConfig, error) {
 	if c.RAWSettings != nil {
 		c.TCPSettings = c.RAWSettings
 	}
-	if c.HTTPSettings != nil || config.ProtocolName == "http" {
+	if config.ProtocolName == "http" {
 		httpSettings := c.HTTPSettings
 		if httpSettings == nil {
 			httpSettings = &HTTPConfig{}

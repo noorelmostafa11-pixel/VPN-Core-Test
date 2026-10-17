@@ -14,7 +14,7 @@ import (
 
 func legacyUser(t *testing.T, number int, count uint32) *protocol.MemoryUser {
 	t.Helper()
-	account, err := (&Account{Id: fmt.Sprintf("00000000-0000-4000-8000-%012d", number), AlterId: count}).AsAccount()
+	account, err := (&Account{Id: fmt.Sprintf("00000000-0000-4000-8000-%012d", number), LegacyCompatibility: true, AlterId: count}).AsAccount()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestForkVMessAlterIDDerivationAndRoundTrip(t *testing.T) {
 		}
 	}
 	for _, count := range []uint32{65, ^uint32(0)} {
-		if _, err := (&Account{Id: "00000000-0000-4000-8000-000000000001", AlterId: count}).AsAccount(); err == nil {
+		if _, err := (&Account{Id: "00000000-0000-4000-8000-000000000001", LegacyCompatibility: true, AlterId: count}).AsAccount(); err == nil {
 			t.Fatal("unbounded derivation accepted")
 		}
 	}

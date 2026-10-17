@@ -75,20 +75,27 @@ type SocksRemoteConfig struct {
 }
 
 type SocksClientConfig struct {
-	Version       string `json:"version"`
-	forcedVersion string
-	Address       *Address             `json:"address"`
-	Port          uint16               `json:"port"`
-	Level         uint32               `json:"level"`
-	Email         string               `json:"email"`
-	Username      string               `json:"user"`
-	Password      string               `json:"pass"`
-	Servers       []*SocksRemoteConfig `json:"servers"`
+	LegacySettings *SocksLegacySettings `json:"legacySettings"`
+	forcedVersion  string
+	Address        *Address             `json:"address"`
+	Port           uint16               `json:"port"`
+	Level          uint32               `json:"level"`
+	Email          string               `json:"email"`
+	Username       string               `json:"user"`
+	Password       string               `json:"pass"`
+	Servers        []*SocksRemoteConfig `json:"servers"`
+}
+
+type SocksLegacySettings struct {
+	Version string `json:"version"`
 }
 
 func (v *SocksClientConfig) Build() (proto.Message, error) {
 	config := new(socks.ClientConfig)
-	version := strings.ToLower(v.Version)
+	version := ""
+	if v.LegacySettings != nil {
+		version = strings.ToLower(v.LegacySettings.Version)
+	}
 	if v.forcedVersion != "" {
 		if version != "" && version != v.forcedVersion {
 			return nil, errors.New("SOCKS protocol and version conflict")
@@ -102,9 +109,10 @@ func (v *SocksClientConfig) Build() (proto.Message, error) {
 	case "4a":
 		config.Version = socks.ClientVersion_SOCKS4A
 	default:
-		return nil, errors.New("unsupported SOCKS version: ", v.Version)
+		return nil, errors.New("unsupported SOCKS version: ", version)
 	}
 	legacy := config.Version != socks.ClientVersion_SOCKS5
+	config.LegacyCompatibility = legacy
 	if legacy && v.Password != "" {
 		return nil, errors.New("SOCKS4/4a has a user ID, not password authentication")
 	}
@@ -123,7 +131,7 @@ func (v *SocksClientConfig) Build() (proto.Message, error) {
 		return nil, errors.New(`SOCKS settings: "servers" should have one and only one member. Multiple endpoints in "servers" should use multiple SOCKS outbounds and routing balancer instead`)
 	}
 	for _, serverConfig := range v.Servers {
-		if serverConfig == nil || serverConfig.Address == nil || serverConfig.Port == 0 {
+		if legacy && (serverConfig == nil || serverConfig.Address == nil || serverConfig.Port == 0) {
 			return nil, errors.New("SOCKS server requires an address and nonzero port")
 		}
 		if len(serverConfig.Users) > 1 {

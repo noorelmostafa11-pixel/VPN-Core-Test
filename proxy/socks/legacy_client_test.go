@@ -13,6 +13,7 @@ import (
 	"github.com/xtls/xray-core/common/protocol"
 	"github.com/xtls/xray-core/common/serial"
 	"github.com/xtls/xray-core/common/session"
+	"github.com/xtls/xray-core/core"
 )
 
 func legacyRequest(address net.Address) *protocol.RequestHeader {
@@ -38,7 +39,7 @@ func TestForkSocks4GoldenAndFragmentedReply(t *testing.T) {
 	} {
 		var writer fragmentWriter
 		reader := iotest.OneByteReader(bytes.NewReader(append([]byte{0, 90, 0, 0, 0, 0, 0, 0}, []byte("server-first")...)))
-		response, err := ClientHandshake(legacyRequest(test.address), reader, &writer)
+		response, err := clientHandshake4(legacyRequest(test.address), reader, &writer)
 		if err != nil || response != nil || !bytes.Equal(writer.Bytes(), test.wire) {
 			t.Fatal("incorrect wire request or fragmented response", err, writer.Bytes())
 		}
@@ -52,12 +53,12 @@ func TestForkSocks4GoldenAndFragmentedReply(t *testing.T) {
 func TestForkSocks4BoundsAndRejections(t *testing.T) {
 	for size := range 8 {
 		var writer bytes.Buffer
-		if _, err := ClientHandshake(legacyRequest(net.LocalHostIP), bytes.NewReader([]byte{0, 90, 0, 0, 0, 0, 0, 0}[:size]), &writer); err == nil {
+		if _, err := clientHandshake4(legacyRequest(net.LocalHostIP), bytes.NewReader([]byte{0, 90, 0, 0, 0, 0, 0, 0}[:size]), &writer); err == nil {
 			t.Fatal("truncated response accepted", size)
 		}
 	}
 	for _, reply := range [][]byte{{4, 90, 0, 0, 0, 0, 0, 0}, {0, 91, 0, 0, 0, 0, 0, 0}, {0, 92, 0, 0, 0, 0, 0, 0}, {0, 93, 0, 0, 0, 0, 0, 0}, {0, 0, 0, 0, 0, 0, 0, 0}, {0, 255, 0, 0, 0, 0, 0, 0}} {
-		if _, err := ClientHandshake(legacyRequest(net.LocalHostIP), bytes.NewReader(reply), io.Discard); err == nil {
+		if _, err := clientHandshake4(legacyRequest(net.LocalHostIP), bytes.NewReader(reply), io.Discard); err == nil {
 			t.Fatal("invalid/rejected response accepted", reply)
 		}
 	}
@@ -77,7 +78,7 @@ func TestForkSocks4BoundsAndRejections(t *testing.T) {
 		request := legacyRequest(net.LocalHostIP)
 		modify(request)
 		var writer bytes.Buffer
-		if _, err := ClientHandshake(request, bytes.NewReader(make([]byte, 8)), &writer); err == nil || writer.Len() != 0 {
+		if _, err := clientHandshake4(request, bytes.NewReader(make([]byte, 8)), &writer); err == nil || writer.Len() != 0 {
 			t.Fatal("invalid legacy request wrote a header", err)
 		}
 	}
@@ -126,15 +127,31 @@ func TestForkSocks4LocalIPv4Resolution(t *testing.T) {
 }
 
 func TestForkSocks4RuntimeConfigGuards(t *testing.T) {
-	if _, err := NewClient(context.Background(), &ClientConfig{Version: ClientVersion(99)}); err == nil {
+	if _, err := NewClient(context.Background(), &ClientConfig{Version: ClientVersion(99), LegacyCompatibility: true}); err == nil {
 		t.Fatal("unknown protobuf version accepted")
 	}
 	for _, version := range []ClientVersion{ClientVersion_SOCKS4, ClientVersion_SOCKS4A} {
 		for _, account := range []*Account{{Password: "not-auth"}, {Username: "bad\x00id"}, {Username: strings.Repeat("u", 256)}} {
-			config := &ClientConfig{Version: version, Server: &protocol.ServerEndpoint{Address: net.NewIPOrDomain(net.LocalHostIP), Port: 1080, User: &protocol.User{Account: serial.ToTypedMessage(account)}}}
+			config := &ClientConfig{Version: version, LegacyCompatibility: true, Server: &protocol.ServerEndpoint{Address: net.NewIPOrDomain(net.LocalHostIP), Port: 1080, User: &protocol.User{Account: serial.ToTypedMessage(account)}}}
 			if _, err := NewClient(context.Background(), config); err == nil {
 				t.Fatal("protobuf account bypassed legacy guards")
 			}
+		}
+	}
+}
+
+func TestOriginalSocksProtobufVersion(t *testing.T) {
+	instance, err := core.New(&core.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { instance.Close() })
+	for _, version := range []ClientVersion{ClientVersion_SOCKS5, ClientVersion_SOCKS4, ClientVersion_SOCKS4A, ClientVersion(99)} {
+		config := &ClientConfig{Version: version, Server: &protocol.ServerEndpoint{Address: net.NewIPOrDomain(net.LocalHostIP), Port: 1080}}
+		ctx := context.WithValue(context.Background(), core.XrayKey(1), instance)
+		client, err := NewClient(ctx, config)
+		if err != nil || client.version != ClientVersion_SOCKS5 {
+			t.Fatal("an old ignored protobuf field changed SOCKS5", version, err)
 		}
 	}
 }

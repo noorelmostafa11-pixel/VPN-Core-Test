@@ -19,10 +19,17 @@ Example outbound settings (synthetic local endpoint):
 `protocol: "socks4"` selects local IPv4 resolution, while `"socks4a"` sends
 domain names to the SOCKS server. Both use the SOCKS4 version4 CONNECT wire
 format; the latter uses 0.0.0.1 and a NUL-terminated domain extension. The
-existing `protocol: "socks"` also accepts settings `version: "4"`/`"4a"`/`"5"`.
-An omitted version still means SOCKS5. Explicit alias/version conflicts and
-unknown versions are errors, never automatic fallback. Both flat settings and
+existing `protocol: "socks"` accepts a separate `legacySettings.version` of
+`"4"`/`"4a"`/`"5"`. Its old top-level version field remains ignored, including
+values of unrelated JSON types, as on pinned upstream. Without the new opt-in
+it stays SOCKS5. Explicit alias/legacySettings conflicts and unknown versions
+inside the new block are errors, never automatic fallback. Both flat settings and
 the existing single-member `servers`/`users` format are supported.
+
+Protobuf selection requires legacy_compatibility as well as version; otherwise
+the original SOCKS5 path is used. The exported ClientHandshake API is identical
+to pinned upstream; the added client chooses a separate SOCKS4 handshake only
+after explicit opt-in. [Baseline checks](VERIFICATION-PRESERVATION.md).
 
 SOCKS4 domain lookup uses the host resolver with the existing handshake timeout
 and caller cancellation; it selects an IPv4 result, rejecting IPv6-only answers.

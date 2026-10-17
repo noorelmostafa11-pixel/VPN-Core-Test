@@ -27,7 +27,7 @@ type Account struct {
 	// ID of the account, in the form of a UUID, e.g.,
 	// "66ad4540-b58c-4ad2-9926-ea63445a9b57".
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	// Explicit legacy timestamp/HMAC header opt-in, 1..64; zero keeps AEAD.
+	// Honored only with legacy_compatibility; old field 2 stays inert otherwise.
 	AlterId uint32 `protobuf:"varint,2,opt,name=alter_id,json=alterId,proto3" json:"alter_id,omitempty"`
 	// Security settings. Only applies to client side.
 	SecuritySettings *protocol.SecurityConfig `protobuf:"bytes,3,opt,name=security_settings,json=securitySettings,proto3" json:"security_settings,omitempty"`
@@ -35,8 +35,10 @@ type Account struct {
 	TestsEnabled string `protobuf:"bytes,4,opt,name=tests_enabled,json=testsEnabled,proto3" json:"tests_enabled,omitempty"`
 	// Explicit per-user inbound opt-in; defaults remain authenticated body modes.
 	AllowLegacyBody bool `protobuf:"varint,5,opt,name=allow_legacy_body,json=allowLegacyBody,proto3" json:"allow_legacy_body,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// Separate fork opt-in. Original accounts ignore alter_id and weak-body flags.
+	LegacyCompatibility bool `protobuf:"varint,6,opt,name=legacy_compatibility,json=legacyCompatibility,proto3" json:"legacy_compatibility,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *Account) Reset() {
@@ -104,17 +106,25 @@ func (x *Account) GetAllowLegacyBody() bool {
 	return false
 }
 
+func (x *Account) GetLegacyCompatibility() bool {
+	if x != nil {
+		return x.LegacyCompatibility
+	}
+	return false
+}
+
 var File_proxy_vmess_account_proto protoreflect.FileDescriptor
 
 const file_proxy_vmess_account_proto_rawDesc = "" +
 	"\n" +
-	"\x19proxy/vmess/account.proto\x12\x10xray.proxy.vmess\x1a\x1dcommon/protocol/headers.proto\"\xd8\x01\n" +
+	"\x19proxy/vmess/account.proto\x12\x10xray.proxy.vmess\x1a\x1dcommon/protocol/headers.proto\"\x8b\x02\n" +
 	"\aAccount\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
 	"\balter_id\x18\x02 \x01(\rR\aalterId\x12Q\n" +
 	"\x11security_settings\x18\x03 \x01(\v2$.xray.common.protocol.SecurityConfigR\x10securitySettings\x12#\n" +
 	"\rtests_enabled\x18\x04 \x01(\tR\ftestsEnabled\x12*\n" +
-	"\x11allow_legacy_body\x18\x05 \x01(\bR\x0fallowLegacyBodyBR\n" +
+	"\x11allow_legacy_body\x18\x05 \x01(\bR\x0fallowLegacyBody\x121\n" +
+	"\x14legacy_compatibility\x18\x06 \x01(\bR\x13legacyCompatibilityBR\n" +
 	"\x14com.xray.proxy.vmessP\x01Z%github.com/xtls/xray-core/proxy/vmess\xaa\x02\x10Xray.Proxy.Vmessb\x06proto3"
 
 var (

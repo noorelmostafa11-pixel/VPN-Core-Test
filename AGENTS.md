@@ -18,6 +18,16 @@
   acceptance. A cross-build is not runtime acceptance on the target OS.
 - Do not drop supported protocols to make the binary smaller. Measure size and
   performance claims against equivalent builds.
+- Add support without reinterpreting configurations that work on pinned upstream
+  `701af60772cda123492f86e383e1fdba066614a9`. Preserve ignored fields and AUTO
+  fallbacks as well as ordinary defaults. Ambiguous VMess/SOCKS legacy behavior
+  requires the separate per-node `legacySettings` opt-in (and protobuf gate),
+  never an automatic retry, downgrade or a shared-default change.
+- New cipher/protocol selectors may enter added paths. A behavior fix affecting
+  an original path must be separately opted into or explicitly authorized;
+  preserve the owner's existing race/stability fixes. Run the shared original
+  behavior fixture on pinned upstream and the fork, and test original and added
+  runtime paths together before publishing. See `fork/VERIFICATION-PRESERVATION.md`.
 - Inherited workflows are intentionally inactive in `.github/upstream-workflows`.
   The owner-authorized manual-only compatibility workflow is
   `.github/workflows/core-validation.yml`, reusing the existing registered path

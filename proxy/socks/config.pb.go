@@ -257,10 +257,12 @@ func (x *ServerConfig) GetUserLevel() uint32 {
 type ClientConfig struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Sever is a list of Socks server addresses.
-	Server        *protocol.ServerEndpoint `protobuf:"bytes,1,opt,name=server,proto3" json:"server,omitempty"`
-	Version       ClientVersion            `protobuf:"varint,2,opt,name=version,proto3,enum=xray.proxy.socks.ClientVersion" json:"version,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Server  *protocol.ServerEndpoint `protobuf:"bytes,1,opt,name=server,proto3" json:"server,omitempty"`
+	Version ClientVersion            `protobuf:"varint,2,opt,name=version,proto3,enum=xray.proxy.socks.ClientVersion" json:"version,omitempty"`
+	// Separate fork opt-in; otherwise retain the original SOCKS5 path.
+	LegacyCompatibility bool `protobuf:"varint,3,opt,name=legacy_compatibility,json=legacyCompatibility,proto3" json:"legacy_compatibility,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *ClientConfig) Reset() {
@@ -307,6 +309,13 @@ func (x *ClientConfig) GetVersion() ClientVersion {
 	return ClientVersion_SOCKS5
 }
 
+func (x *ClientConfig) GetLegacyCompatibility() bool {
+	if x != nil {
+		return x.LegacyCompatibility
+	}
+	return false
+}
+
 var File_proxy_socks_config_proto protoreflect.FileDescriptor
 
 const file_proxy_socks_config_proto_rawDesc = "" +
@@ -325,10 +334,11 @@ const file_proxy_socks_config_proto_rawDesc = "" +
 	"user_level\x18\x06 \x01(\rR\tuserLevel\x1a;\n" +
 	"\rAccountsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x87\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xba\x01\n" +
 	"\fClientConfig\x12<\n" +
 	"\x06server\x18\x01 \x01(\v2$.xray.common.protocol.ServerEndpointR\x06server\x129\n" +
-	"\aversion\x18\x02 \x01(\x0e2\x1f.xray.proxy.socks.ClientVersionR\aversion*%\n" +
+	"\aversion\x18\x02 \x01(\x0e2\x1f.xray.proxy.socks.ClientVersionR\aversion\x121\n" +
+	"\x14legacy_compatibility\x18\x03 \x01(\bR\x13legacyCompatibility*%\n" +
 	"\bAuthType\x12\v\n" +
 	"\aNO_AUTH\x10\x00\x12\f\n" +
 	"\bPASSWORD\x10\x01*4\n" +

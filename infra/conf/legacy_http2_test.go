@@ -96,3 +96,27 @@ func TestForkLegacyHTTP2Configuration(t *testing.T) {
 		}
 	}
 }
+
+func TestForkHTTP2MethodSelectorIsolation(t *testing.T) {
+	for _, raw := range []string{
+		`{"method":"tcp","network":"h2","httpSettings":{"host":true}}`,
+		`{"method":"xhttp","network":"h2","httpSettings":"ignored"}`,
+	} {
+		var c conf.StreamConfig
+		if err := json.Unmarshal([]byte(raw), &c); err != nil {
+			t.Fatal(err)
+		}
+		stream, err := c.Build()
+		if err != nil || stream.ProtocolName == "http" || c.HTTPSettings != nil {
+			t.Fatal("method override entered the HTTP2 path", err)
+		}
+	}
+	var c conf.StreamConfig
+	if err := json.Unmarshal([]byte(`{"method":"h2c","network":"tcp","httpSettings":{"path":"/explicit"}}`), &c); err != nil {
+		t.Fatal(err)
+	}
+	stream, err := c.Build()
+	if err != nil || stream.ProtocolName != "http" || c.HTTPSettings == nil || c.HTTPSettings.Path != "/explicit" {
+		t.Fatal("explicit HTTP2 method lost its settings", err)
+	}
+}

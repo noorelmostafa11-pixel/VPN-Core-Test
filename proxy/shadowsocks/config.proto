@@ -59,4 +59,6 @@ message ServerConfig {
 
 message ClientConfig {
   xray.common.protocol.ServerEndpoint server = 1;
+  // Optional fix for empty initial payloads on original AEAD methods.
+  bool server_first_compatibility = 2;
 }

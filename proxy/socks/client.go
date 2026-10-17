@@ -29,7 +29,11 @@ type Client struct {
 
 // NewClient creates a SOCKS client based on the given config.
 func NewClient(ctx context.Context, config *ClientConfig) (*Client, error) {
-	if config.Version != ClientVersion_SOCKS5 && config.Version != ClientVersion_SOCKS4 && config.Version != ClientVersion_SOCKS4A {
+	version := ClientVersion_SOCKS5
+	if config.LegacyCompatibility {
+		version = config.Version
+	}
+	if version != ClientVersion_SOCKS5 && version != ClientVersion_SOCKS4 && version != ClientVersion_SOCKS4A {
 		return nil, errors.New("unsupported SOCKS client version")
 	}
 	if config.Server == nil {
@@ -39,7 +43,7 @@ func NewClient(ctx context.Context, config *ClientConfig) (*Client, error) {
 	if err != nil {
 		return nil, errors.New("failed to get server spec").Base(err)
 	}
-	if config.Version != ClientVersion_SOCKS5 {
+	if version != ClientVersion_SOCKS5 {
 		if err := validateLegacyUser(server.User); err != nil {
 			return nil, err
 		}
@@ -47,7 +51,7 @@ func NewClient(ctx context.Context, config *ClientConfig) (*Client, error) {
 
 	v := core.MustFromContext(ctx)
 	c := &Client{
-		version:       config.Version,
+		version:       version,
 		server:        server,
 		policyManager: v.GetFeature(policy.ManagerType()).(policy.Manager),
 	}
@@ -133,7 +137,11 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 			request.Address = address
 		}
 	}
-	udpRequest, err := ClientHandshake(request, conn, conn)
+	handshake := ClientHandshake
+	if c.version != ClientVersion_SOCKS5 {
+		handshake = clientHandshake4
+	}
+	udpRequest, err := handshake(request, conn, conn)
 	if err != nil {
 		return errors.New("failed to establish connection to server").Base(err)
 	}

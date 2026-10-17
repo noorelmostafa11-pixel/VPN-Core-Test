@@ -28,16 +28,25 @@
     "packages_releases_mobile_jobs": false
   },
   "checkpoint": "classic-shadowsocks-method-list-complete",
+  "original_behavior_policy": {
+    "baseline": "701af60772cda123492f86e383e1fdba066614a9",
+    "document": "fork/VERIFICATION-PRESERVATION.md",
+    "shared_fixture": "infra/conf/original_behavior_test.go",
+    "vmess_socks_ambiguous_legacy_selection": "Separate per-node legacySettings and protobuf legacy_compatibility gate; original ignored fields and AUTO fallbacks stay unchanged",
+    "shadowsocks_server_first": "Optional serverFirstCompatibility for original methods; added methods select additional path",
+    "http_settings": "Parsed and built only for an explicitly selected standalone HTTP2 transport",
+    "owner_stability_fixes": "Preserved; no broad reset to upstream"
+  },
   "verified_custom_additions": [
     "Shadowsocks AES-192-GCM: explicit client/server/multi-user configuration, TCP and UDP",
     "Shadowsocks AES-128/192/256-CFB, CTR and OFB: explicit single-user client/server, TCP and UDP",
-    "Shadowsocks AEAD server-first: ignore an empty initial inbound buffer instead of encoding an end marker",
+    "Shadowsocks AEAD server-first: optional serverFirstCompatibility for original methods; no hidden default change",
     "Shadowsocks bf-cfb, cast5-cfb, des-cfb, rc4, rc4-md5, salsa20, chacha20, chacha20-ietf, table, none/plain: explicit single-user TCP/UDP",
     "Original ChaCha20 64-bit counter carry, Salsa20 counter exhaustion, per-account immutable table permutations",
     "Shadowsocks camellia-128/192/256-cfb, idea-cfb, rc2-cfb (128 effective bits), seed-cfb (SEED-128): explicit single-user TCP/UDP",
-    "SOCKS4 and SOCKS4a outbound TCP CONNECT: explicit versions, user ID, local IPv4 versus remote domain resolution; SOCKS5 default unchanged",
-    "VMess aes-128-cfb and none framed bodies, TCP-only zero raw NONE; inbound weak bodies require per-user allowLegacyBody",
-    "VMess explicit alterId1..64 timestamp/HMAC headers and MD5 response keys; default0 remains modern AEAD; bounded per-validator legacy index and session replay cache",
+    "SOCKS4 and SOCKS4a outbound TCP CONNECT: new protocol selectors or legacySettings.version, user ID, local IPv4 versus remote domain resolution; original SOCKS5 semantics retained",
+    "VMess legacySettings.security for aes-128-cfb/none framed bodies and TCP-only zero; inbound weak bodies require legacySettings.allowLegacyBody",
+    "VMess legacySettings.alterId1..64 timestamp/HMAC headers and MD5 response keys; ignored top-level alterId stays modern; bounded legacy index and replay cache",
     "Standalone legacy HTTP2 TCP carrier: http/h2/http2 selectors with TLS, explicit prior-knowledge h2c; independent transport and historical httpSettings schema; REALITY pairing pending and rejected"
   ],
   "classic_wire_method_names": 32,

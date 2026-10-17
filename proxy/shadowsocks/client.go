@@ -22,8 +22,9 @@ import (
 
 // Client is a inbound handler for Shadowsocks protocol
 type Client struct {
-	server        *protocol.ServerSpec
-	policyManager policy.Manager
+	serverFirstCompatibility bool
+	server                   *protocol.ServerSpec
+	policyManager            policy.Manager
 }
 
 // An inbound may expose an already-consumed, empty handshake buffer as its
@@ -39,6 +40,13 @@ func (w initialPayloadWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
 	return w.Writer.WriteMultiBuffer(mb)
 }
 
+func initialWriter(writer buf.Writer, method CipherType, enabled bool) buf.Writer {
+	if enabled || !isOriginalCipher(method) {
+		return initialPayloadWriter{writer}
+	}
+	return writer
+}
+
 // NewClient create a new Shadowsocks client.
 func NewClient(ctx context.Context, config *ClientConfig) (*Client, error) {
 	if config.Server == nil {
@@ -51,8 +59,9 @@ func NewClient(ctx context.Context, config *ClientConfig) (*Client, error) {
 
 	v := core.MustFromContext(ctx)
 	client := &Client{
-		server:        server,
-		policyManager: v.GetFeature(policy.ManagerType()).(policy.Manager),
+		serverFirstCompatibility: config.ServerFirstCompatibility,
+		server:                   server,
+		policyManager:            v.GetFeature(policy.ManagerType()).(policy.Manager),
 	}
 	return client, nil
 }
@@ -102,7 +111,7 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 	}
 
 	user := server.User
-	_, ok := user.Account.(*MemoryAccount)
+	account, ok := user.Account.(*MemoryAccount)
 	if !ok {
 		return errors.New("user account is not valid")
 	}
@@ -136,7 +145,7 @@ func (c *Client) Process(ctx context.Context, link *transport.Link, dialer inter
 				return errors.New("failed to write request").Base(err)
 			}
 
-			if err = buf.CopyOnceTimeout(link.Reader, initialPayloadWriter{bodyWriter}, time.Millisecond*100); err != nil && err != buf.ErrNotTimeoutReader && err != buf.ErrReadTimeout {
+			if err = buf.CopyOnceTimeout(link.Reader, initialWriter(bodyWriter, account.CipherType, c.serverFirstCompatibility), time.Millisecond*100); err != nil && err != buf.ErrNotTimeoutReader && err != buf.ErrReadTimeout {
 				return errors.New("failed to write A request payload").Base(err)
 			}
 

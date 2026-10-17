@@ -439,9 +439,6 @@ func (w *UDPWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
 }
 
 func ClientHandshake(request *protocol.RequestHeader, reader io.Reader, writer io.Writer) (*protocol.RequestHeader, error) {
-	if request.Version == socks4Version {
-		return clientHandshake4(request, reader, writer)
-	}
 	authByte := byte(authNotRequired)
 	if request.User != nil {
 		authByte = byte(authPassword)

@@ -12,7 +12,7 @@ message Account {
   // ID of the account, in the form of a UUID, e.g.,
   // "66ad4540-b58c-4ad2-9926-ea63445a9b57".
   string id = 1;
-  // Explicit legacy timestamp/HMAC header opt-in, 1..64; zero keeps AEAD.
+  // Honored only with legacy_compatibility; old field 2 stays inert otherwise.
   uint32 alter_id = 2;
   // Security settings. Only applies to client side.
   xray.common.protocol.SecurityConfig security_settings = 3;
@@ -20,4 +20,6 @@ message Account {
   string tests_enabled = 4;
   // Explicit per-user inbound opt-in; defaults remain authenticated body modes.
   bool allow_legacy_body = 5;
+  // Separate fork opt-in. Original accounts ignore alter_id and weak-body flags.
+  bool legacy_compatibility = 6;
 }

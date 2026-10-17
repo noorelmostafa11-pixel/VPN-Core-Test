@@ -215,7 +215,7 @@ func TestForkVMessLegacyBodyMalformed(t *testing.T) {
 func TestForkVMessLegacyHeaderOptIn(t *testing.T) {
 	for _, security := range []protocol.SecurityType{protocol.SecurityType_AES128_CFB, protocol.SecurityType_NONE} {
 		for _, allow := range []bool{false, true} {
-			account, err := (&vmess.Account{Id: "00000000-0000-4000-8000-000000000001", AllowLegacyBody: allow}).AsAccount()
+			account, err := (&vmess.Account{Id: "00000000-0000-4000-8000-000000000001", LegacyCompatibility: true, AllowLegacyBody: allow}).AsAccount()
 			if err != nil {
 				t.Fatal(err)
 			}

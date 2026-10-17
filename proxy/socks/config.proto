@@ -45,4 +45,6 @@ message ClientConfig {
   // Sever is a list of Socks server addresses.
   xray.common.protocol.ServerEndpoint server = 1;
   ClientVersion version = 2;
+  // Separate fork opt-in; otherwise retain the original SOCKS5 path.
+  bool legacy_compatibility = 3;
 }

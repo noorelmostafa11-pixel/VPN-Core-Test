@@ -31,9 +31,16 @@ var ErrIVNotUnique = errors.New("IV is not unique")
 // Equals implements protocol.Account.Equals().
 func (a *MemoryAccount) Equals(another protocol.Account) bool {
 	if account, ok := another.(*MemoryAccount); ok {
+		if isOriginalCipher(a.CipherType) && isOriginalCipher(account.CipherType) {
+			return bytes.Equal(a.Key, account.Key)
+		}
 		return a.CipherType == account.CipherType && bytes.Equal(a.Key, account.Key)
 	}
 	return false
+}
+
+func isOriginalCipher(method CipherType) bool {
+	return method >= CipherType_AES_128_GCM && method <= CipherType_XCHACHA20_POLY1305
 }
 
 func (a *MemoryAccount) ToProto() proto.Message {

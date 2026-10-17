@@ -36,9 +36,9 @@ func TestForkLegacySocksConfiguration(t *testing.T) {
 func TestForkLegacySocksVersionAndGuards(t *testing.T) {
 	for _, version := range []string{"", "5", "4", "4a", "4A", "6", "unknown"} {
 		for _, flat := range []bool{true, false} {
-			settings := `{"version":"` + version + `","address":"127.0.0.1","port":1080,"user":"synthetic"}`
+			settings := `{"legacySettings":{"version":"` + version + `"},"address":"127.0.0.1","port":1080,"user":"synthetic"}`
 			if !flat {
-				settings = `{"version":"` + version + `","servers":[{"address":"127.0.0.1","port":1080,"users":[{"user":"synthetic"}]}]}`
+				settings = `{"legacySettings":{"version":"` + version + `"},"servers":[{"address":"127.0.0.1","port":1080,"users":[{"user":"synthetic"}]}]}`
 			}
 			var config conf.SocksClientConfig
 			if err := json.Unmarshal([]byte(settings), &config); err != nil {
@@ -76,14 +76,14 @@ func TestForkLegacySocksVersionAndGuards(t *testing.T) {
 			{"user", "not-auth", false},
 			{"", "not-auth", false},
 		} {
-			config := conf.SocksClientConfig{Version: version, Address: &conf.Address{Address: net.LocalHostIP}, Port: 1080, Username: test.user, Password: test.password}
+			config := conf.SocksClientConfig{LegacySettings: &conf.SocksLegacySettings{Version: version}, Address: &conf.Address{Address: net.LocalHostIP}, Port: 1080, Username: test.user, Password: test.password}
 			if _, err := config.Build(); (err == nil) != test.valid {
 				t.Fatal("legacy credential policy mismatch", version, err)
 			}
 		}
 	}
 	for _, protocol := range []string{"socks4", "socks4a"} {
-		settings := json.RawMessage(`{"version":"5","address":"127.0.0.1","port":1080}`)
+		settings := json.RawMessage(`{"legacySettings":{"version":"5"},"address":"127.0.0.1","port":1080}`)
 		if _, err := (&conf.OutboundDetourConfig{Protocol: protocol, Settings: &settings}).Build(); err == nil {
 			t.Fatal("alias/version conflict accepted")
 		}

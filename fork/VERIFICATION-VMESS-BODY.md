@@ -1,5 +1,10 @@
 # VMess body modes with modern AEAD headers
 
+Current configuration supersedes this historical checkpoint: VMess legacy
+choices and inbound permissions now live inside `legacySettings`. Outside that
+block, ignored alterId and AUTO fallbacks match pinned upstream. See
+[preservation and migration](VERIFICATION-PRESERVATION.md).
+
 Historical body-only checkpoint. Its alterId rejection notes describe that
 revision, not current behavior. Explicit legacy headers were subsequently added
 in [the next checkpoint](VERIFICATION-VMESS-LEGACY-HEADER.md); alterId0 and the

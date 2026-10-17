@@ -16,23 +16,28 @@ import (
 )
 
 type VMessAccount struct {
+	ID             string               `json:"id"`
+	Security       string               `json:"security"`
+	Experiments    string               `json:"experiments"`
+	LegacySettings *VMessLegacySettings `json:"legacySettings"`
+}
+
+// LegacySettings is a separate opt-in, not a reinterpretation of old ignored
+// alterId/security fields. Original configurations keep upstream semantics.
+type VMessLegacySettings struct {
 	AlterID         uint32 `json:"alterId"`
-	AllowLegacyBody bool   `json:"allowLegacyBody"`
-	ID              string `json:"id"`
 	Security        string `json:"security"`
-	Experiments     string `json:"experiments"`
+	AllowLegacyBody bool   `json:"allowLegacyBody"`
 }
 
 // Build implements Buildable
 func (a *VMessAccount) Build() *vmess.Account {
+	security := a.Security
+	if a.LegacySettings != nil && a.LegacySettings.Security != "" {
+		security = a.LegacySettings.Security
+	}
 	var st protocol.SecurityType
-	switch strings.ToLower(a.Security) {
-	case "aes-128-cfb":
-		st = protocol.SecurityType_AES128_CFB
-	case "none":
-		st = protocol.SecurityType_NONE
-	case "zero":
-		st = protocol.SecurityType_ZERO
+	switch strings.ToLower(security) {
 	case "aes-128-gcm":
 		st = protocol.SecurityType_AES128_GCM
 	case "chacha20-poly1305":
@@ -40,27 +45,46 @@ func (a *VMessAccount) Build() *vmess.Account {
 	case "", "auto":
 		st = protocol.SecurityType_AUTO
 	default:
-		st = protocol.SecurityType_UNKNOWN
+		st = protocol.SecurityType_AUTO
 	}
-	return &vmess.Account{
-		AlterId:         a.AlterID,
-		AllowLegacyBody: a.AllowLegacyBody,
-		Id:              a.ID,
+	account := &vmess.Account{
+		Id: a.ID,
 		SecuritySettings: &protocol.SecurityConfig{
 			Type: st,
 		},
 		TestsEnabled: a.Experiments,
 	}
+	if a.LegacySettings != nil {
+		account.LegacyCompatibility = true
+		account.AlterId = a.LegacySettings.AlterID
+		account.AllowLegacyBody = a.LegacySettings.AllowLegacyBody
+		switch strings.ToLower(security) {
+		case "aes-128-cfb":
+			account.SecuritySettings.Type = protocol.SecurityType_AES128_CFB
+		case "none":
+			account.SecuritySettings.Type = protocol.SecurityType_NONE
+		case "zero":
+			account.SecuritySettings.Type = protocol.SecurityType_ZERO
+		case "", "auto", "aes-128-gcm", "chacha20-poly1305":
+		default:
+			account.SecuritySettings.Type = protocol.SecurityType_UNKNOWN
+		}
+	}
+	return account
 }
 
 func (a *VMessAccount) validate() error {
-	if a.AlterID > vmess.MaxLegacyAlterIDs {
+	if a.LegacySettings == nil {
+		return nil
+	}
+	if a.LegacySettings.AlterID > vmess.MaxLegacyAlterIDs {
 		return errors.New("legacy VMess alterId exceeds 64")
 	}
 	if a.Build().SecuritySettings.Type == protocol.SecurityType_UNKNOWN {
 		return errors.New("unsupported VMess security: ", a.Security)
 	}
-	if (strings.EqualFold(a.Security, "none") || strings.EqualFold(a.Security, "zero") || strings.EqualFold(a.Security, "aes-128-cfb")) && strings.Contains(a.Experiments, "AuthenticatedLength") {
+	security := a.Build().SecuritySettings.Type
+	if (security == protocol.SecurityType_NONE || security == protocol.SecurityType_ZERO || security == protocol.SecurityType_AES128_CFB) && strings.Contains(a.Experiments, "AuthenticatedLength") {
 		return errors.New("AuthenticatedLength requires an AEAD body mode")
 	}
 	return nil
@@ -135,15 +159,15 @@ type VMessOutboundTarget struct {
 }
 
 type VMessOutboundConfig struct {
-	AlterID     uint32                 `json:"alterId"`
-	Address     *Address               `json:"address"`
-	Port        uint16                 `json:"port"`
-	Level       uint32                 `json:"level"`
-	Email       string                 `json:"email"`
-	ID          string                 `json:"id"`
-	Security    string                 `json:"security"`
-	Experiments string                 `json:"experiments"`
-	Receivers   []*VMessOutboundTarget `json:"vnext"`
+	LegacySettings *VMessLegacySettings   `json:"legacySettings"`
+	Address        *Address               `json:"address"`
+	Port           uint16                 `json:"port"`
+	Level          uint32                 `json:"level"`
+	Email          string                 `json:"email"`
+	ID             string                 `json:"id"`
+	Security       string                 `json:"security"`
+	Experiments    string                 `json:"experiments"`
+	Receivers      []*VMessOutboundTarget `json:"vnext"`
 }
 
 // Build implements Buildable
@@ -187,7 +211,7 @@ func (c *VMessOutboundConfig) Build() (proto.Message, error) {
 			account := new(VMessAccount)
 			if c.Address != nil {
 				account.ID = c.ID
-				account.AlterID = c.AlterID
+				account.LegacySettings = c.LegacySettings
 				account.Security = c.Security
 				account.Experiments = c.Experiments
 			} else {

@@ -239,13 +239,14 @@ type ShadowsocksServerTarget struct {
 }
 
 type ShadowsocksClientConfig struct {
-	Address  *Address                   `json:"address"`
-	Port     uint16                     `json:"port"`
-	Level    byte                       `json:"level"`
-	Email    string                     `json:"email"`
-	Cipher   string                     `json:"method"`
-	Password string                     `json:"password"`
-	Servers  []*ShadowsocksServerTarget `json:"servers"`
+	ServerFirstCompatibility bool                       `json:"serverFirstCompatibility"`
+	Address                  *Address                   `json:"address"`
+	Port                     uint16                     `json:"port"`
+	Level                    byte                       `json:"level"`
+	Email                    string                     `json:"email"`
+	Cipher                   string                     `json:"method"`
+	Password                 string                     `json:"password"`
+	Servers                  []*ShadowsocksServerTarget `json:"servers"`
 }
 
 func (v *ShadowsocksClientConfig) Build() (proto.Message, error) {
@@ -287,6 +288,7 @@ func (v *ShadowsocksClientConfig) Build() (proto.Message, error) {
 		return config, nil
 	}
 	config := new(shadowsocks.ClientConfig)
+	config.ServerFirstCompatibility = v.ServerFirstCompatibility
 	account := &shadowsocks.Account{
 		Password: server.Password,
 	}

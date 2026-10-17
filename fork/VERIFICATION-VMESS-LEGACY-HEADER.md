@@ -1,5 +1,10 @@
 # Explicit legacy VMess alter-ID headers
 
+Current selection rule: put alterId/security/allowLegacyBody inside the separate
+`legacySettings` block. Top-level ignored fields no longer activate these paths;
+original configurations keep upstream behavior. The results below describe the
+historical checkpoint. See [preservation and migration](VERIFICATION-PRESERVATION.md).
+
 Base: body checkpoint `e98b95fbb00d4b2577ba1711e3d2e40629b13c6c` plus this
 patch. The prior JSON and protobuf guards rejected every positive alterId;
 that missing behavior was confirmed in source before implementing this batch.

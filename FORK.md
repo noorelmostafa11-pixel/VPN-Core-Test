@@ -19,6 +19,12 @@ unchanged to keep upstream imports and future merges compatible.
 
 ## Checkpoint
 
+Original-behavior preservation is a prerequisite for further additions.
+Existing upstream configurations retain their ignored fields and AUTO fallbacks;
+ambiguous legacy VMess/SOCKS choices now use a separate `legacySettings` block.
+The original Shadowsocks server-first behavior fix is opt-in for original
+methods. [Selection rules and baseline comparison](fork/VERIFICATION-PRESERVATION.md).
+
 The first compatibility addition is explicit Shadowsocks `aes-192-gcm`, including
 client, server and multi-user server configuration, TCP and UDP. The existing
 four classic AEAD methods remain supported. See [verification](fork/VERIFICATION.md)
@@ -49,14 +55,17 @@ local IPv4 resolution for SOCKS4 and remote domain resolution for SOCKS4a.
 SOCKS5 stays the default; unsupported UDP/IPv6/password semantics are rejected
 instead of substituted. [Settings and local checks](fork/VERIFICATION-SOCKS4.md).
 
-VMess `aes-128-cfb`, `none` and TCP-only `zero` body modes are now explicit
-choices with modern AEAD headers. Inbound use requires a per-user opt-in;
+VMess `aes-128-cfb`, `none` and TCP-only `zero` body modes are explicit choices
+inside `legacySettings`, with modern AEAD headers when its alterId is zero.
+Inbound use requires a per-user opt-in in that same block;
 modern defaults are retained. [Body details](fork/VERIFICATION-VMESS-BODY.md).
 
-Explicit `alterId: 1..64` now selects historical VMess timestamp/HMAC headers
+Explicit `legacySettings.alterId: 1..64` selects historical VMess timestamp/HMAC headers
 on outbounds and opts an inbound user into accepting them. Zero remains modern
 AEAD, with no automatic downgrade. Legacy header/body permission is separate;
-CFB/none bodies still need `allowLegacyBody: true` on the inbound user. This is
+CFB/none bodies still need `legacySettings.allowLegacyBody: true` on the inbound user.
+An old top-level `alterId` remains ignored, and top-level `none`/`zero`/CFB/unknown
+security names still select AUTO, exactly as on pinned upstream. This is
 an old, weaker protocol for compatibility, not a security recommendation.
 [Settings, bounds and local checks](fork/VERIFICATION-VMESS-LEGACY-HEADER.md).
 
