@@ -93,6 +93,10 @@ func GetFormatByExtension(ext string) string {
 		return "uri"
 	case "node":
 		return "node"
+	case "sub", "subscription":
+		return "subscription"
+	case "subjson", "node-list":
+		return "subjson"
 	default:
 		return ""
 	}
