@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -43,6 +44,15 @@ func referencePeer(t *testing.T, secure bool, handler http.Handler) (*httptest.S
 
 func dialPeer(t *testing.T, server *httptest.Server, settings *internet.MemoryStreamConfig, ctx context.Context) *clientConn {
 	t.Helper()
+	c := dialPeerWithoutDeadline(t, server, settings, ctx)
+	if err := c.SetDeadline(time.Now().Add(8 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+func dialPeerWithoutDeadline(t *testing.T, server *httptest.Server, settings *internet.MemoryStreamConfig, ctx context.Context) *clientConn {
+	t.Helper()
 	port := server.Listener.Addr().(*gonet.TCPAddr).Port
 	conn, err := Dial(ctx, net.TCPDestination(net.LocalHostIP, net.Port(port)), settings)
 	if err != nil {
@@ -57,9 +67,6 @@ func dialPeer(t *testing.T, server *httptest.Server, settings *internet.MemorySt
 			t.Error("HTTP/2 response worker did not join")
 		}
 	})
-	if err := c.SetDeadline(time.Now().Add(8 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
 	return c
 }
 
@@ -142,11 +149,18 @@ func TestForkLegacyHTTP2ClientRejectsResponses(t *testing.T) {
 				}
 				w.WriteHeader(test.status)
 			}))
-			c := dialPeer(t, server, settings, context.Background())
-			if _, err := c.Read(make([]byte, 1)); err == nil || err == io.EOF {
-				t.Fatal("invalid response accepted", err)
+			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+			defer cancel()
+			c := dialPeerWithoutDeadline(t, server, settings, ctx)
+			want := "invalid legacy HTTP/2 response: status " + strconv.Itoa(test.status)
+			if _, err := c.Read(make([]byte, 1)); err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("invalid HTTP/2 response rejection: got %v, want %q", err, want)
 			}
-			<-c.workerDone
+			select {
+			case <-c.workerDone:
+			case <-ctx.Done():
+				t.Fatal("HTTP/2 response worker did not finish after rejection")
+			}
 			mu.Lock()
 			defer mu.Unlock()
 			if requests != 1 {
