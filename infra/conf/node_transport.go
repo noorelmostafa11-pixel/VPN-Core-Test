@@ -79,8 +79,9 @@ func nodeStream(fields *nodeFields, scheme string) (*StreamConfig, error) {
 	} else if sni != "" || fingerprint != "" || alpn != "" || insecure != "" || ech != "" || key != "" || shortID != "" || spider != "" || pqv != "" {
 		return nil, errors.New("node URI: security parameters on an unencrypted transport")
 	}
+
 	host := fields.take("host", "authority")
-	if strings.ContainsAny(host, "\r\n\x00 \t") || (strings.Contains(host, ",") && network != "http" && network != "h2" && network != "http2" && network != "h2c") {
+	if strings.ContainsAny(host, "\r\n\x00 \t") || (strings.Contains(host, ",") && network != "http" && network != "h2" && network != "http2" && network != "h2c" && !((network == "tcp" || network == "raw") && header == "http")) {
 		return nil, errors.New("node URI: invalid transport authority")
 	}
 	path := fields.take("path", "wspath")
@@ -88,7 +89,7 @@ func nodeStream(fields *nodeFields, scheme string) (*StreamConfig, error) {
 	mode := fields.take("mode")
 	header := strings.ToLower(fields.take("headertype", "header-type"))
 	extra := fields.take("extra")
-	if header != "" && header != "none" && network != "quic" {
+	if header != "" && header != "none" && network != "quic" && network != "tcp" && network != "raw" && network != "kcp" && network != "mkcp" {
 		return nil, errors.New("node URI: transport header import is not implemented")
 	}
 	switch network {
@@ -113,9 +114,23 @@ func nodeStream(fields *nodeFields, scheme string) (*StreamConfig, error) {
 		domain := fields.take("headerdomain", "header-domain", "header_domain")
 		encoded, _ := json.Marshal(map[string]string{"type": header, "domain": domain})
 		stream.QUICSettings = &QUICConfig{Security: cipher, Key: key, Header: encoded}
-	case "tcp", "raw", "kcp", "mkcp":
-		if host != "" || path != "" || mode != "" || service != "" || extra != "" {
-			return nil, errors.New("node URI: unsupported raw/KCP transport parameters")
+	case "tcp", "raw":
+		if mode != "" || service != "" || extra != "" {
+			return nil, errors.New("node URI: unsupported raw transport parameters")
+		}
+		var err error
+		stream.TCPSettings, err = nodeLegacyTCPHeader(header, host, path)
+		if err != nil {
+			return nil, err
+		}
+	case "kcp", "mkcp":
+		if mode != "" || service != "" || extra != "" {
+			return nil, errors.New("node URI: unsupported mKCP transport parameters")
+		}
+		var err error
+		stream.KCPSettings, stream.FinalMask, err = nodeLegacyKCP(fields, header, host, path)
+		if err != nil {
+			return nil, err
 		}
 	case "ws", "websocket":
 		stream.WSSettings = &WebSocketConfig{Host: host, Path: path}
