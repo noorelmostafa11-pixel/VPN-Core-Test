@@ -29,6 +29,11 @@ func nodeLegacyQUICTuning(fields *nodeFields) (*FinalMask, error) {
 		return nil, errors.New("node URI: invalid legacy QUIC tuning object")
 	}
 	var data struct {
+		Congestion                   string `json:"congestion"`
+		BbrProfile                   string `json:"bbrProfile"`
+		BrutalUp                     Bandwidth `json:"brutalUp"`
+		BrutalDown                   Bandwidth `json:"brutalDown"`
+		BrutalDisableLossCompensation bool `json:"brutalDisableLossCompensation"`
 		MaxIdleTimeout                int64  `json:"maxIdleTimeout"`
 		KeepAlivePeriod               int64  `json:"keepAlivePeriod"`
 		MaxIncomingStreams            int64  `json:"maxIncomingStreams"`
@@ -46,7 +51,18 @@ func nodeLegacyQUICTuning(fields *nodeFields) (*FinalMask, error) {
 	if decoder.Decode(&rest) != io.EOF {
 		return nil, errors.New("node URI: invalid legacy QUIC tuning suffix")
 	}
+	up, err := data.BrutalUp.Bps()
+	if err != nil {
+		return nil, errors.New("node URI: invalid legacy QUIC upload rate")
+	}
+	down, err := data.BrutalDown.Bps()
+	if err != nil {
+		return nil, errors.New("node URI: invalid legacy QUIC download rate")
+	}
 	settings := &internet.QuicParams{
+		Congestion: data.Congestion, BbrProfile: data.BbrProfile,
+		BrutalUp: up, BrutalDown: down,
+		BrutalDisableLossCompensation: data.BrutalDisableLossCompensation,
 		MaxIdleTimeout:           data.MaxIdleTimeout,
 		KeepAlivePeriod:          data.KeepAlivePeriod,
 		MaxIncomingStreams:       data.MaxIncomingStreams,
@@ -59,6 +75,9 @@ func nodeLegacyQUICTuning(fields *nodeFields) (*FinalMask, error) {
 		return nil, errors.New("node URI: unsupported legacy QUIC tuning values")
 	}
 	return &FinalMask{QuicParams: &QuicParamsConfig{
+		Congestion: data.Congestion, BbrProfile: data.BbrProfile,
+		BrutalUp: data.BrutalUp, BrutalDown: data.BrutalDown,
+		BrutalDisableLossCompensation: data.BrutalDisableLossCompensation,
 		MaxIdleTimeout:                data.MaxIdleTimeout,
 		KeepAlivePeriod:               data.KeepAlivePeriod,
 		MaxIncomingStreams:            data.MaxIncomingStreams,

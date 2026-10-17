@@ -36,6 +36,11 @@ func TestLegacyQUICTuningRejectsUnsupported(t *testing.T) {
 	for name, params := range map[string]*internet.QuicParams{
 		"browser-parrot":{DisableChromeParrot:true},
 		"unsupported-bbr-profile":{BbrProfile:"aggressive"},
+		"bbr-and-brutal":{Congestion:"bbr",BbrProfile:"standard",BrutalUp:102400},
+		"brutal-without-down":{Congestion:"force-brutal",BrutalUp:102400},
+		"brutal-rate-overflow":{Congestion:"force-brutal",BrutalUp:1<<42,BrutalDown:102400},
+		"unsupported-mode":{Congestion:"cubic"},
+
 		"congestion":{Congestion:"bbr"},
 		"brutal":{BrutalUp:102400},
 		"mtu":{DisablePathMtuDiscovery:true},
@@ -49,5 +54,22 @@ func TestLegacyQUICTuningRejectsUnsupported(t *testing.T) {
 		"window-reversed":{InitStreamReceiveWindow:65536,MaxStreamReceiveWindow:32768},
 	} {
 		t.Run(name,func(t *testing.T){if err:=ValidateLegacyQUICParams(params);err==nil {t.Fatal("unsupported tuning accepted")}})
+	}
+}
+
+func TestLegacyQUICOptInCongestionControllers(t *testing.T) {
+	for name, params := range map[string]*internet.QuicParams{
+		"bbr":{Congestion:"bbr",BbrProfile:"standard"},
+		"bbr-conservative":{Congestion:"bbr",BbrProfile:"conservative"},
+		"bbr-aggressive":{Congestion:"bbr",BbrProfile:"aggressive"},
+		"reno":{Congestion:"reno",BbrProfile:"standard"},
+		"brutal-bidirectional":{Congestion:"force-brutal",BrutalUp:102400,BrutalDown:204800,BrutalDisableLossCompensation:true},
+	} {
+		t.Run(name,func(t *testing.T){
+			if err:=ValidateLegacyQUICParams(params);err!=nil{t.Fatal(err)}
+			if !reflect.DeepEqual(tunedLegacyQUICConfig(params),quicConfig()) {
+				t.Fatal("congestion selection changed flow defaults")
+			}
+		})
 	}
 }

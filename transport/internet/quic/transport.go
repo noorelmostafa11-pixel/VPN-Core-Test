@@ -13,6 +13,7 @@ import (
 	xnet "github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/common/protocol/tls/cert"
 	"github.com/xtls/xray-core/transport/internet"
+	"github.com/xtls/xray-core/transport/internet/quic/congestion"
 	"github.com/xtls/xray-core/transport/internet/stat"
 	"github.com/xtls/xray-core/transport/internet/tls"
 )
@@ -150,6 +151,7 @@ func Dial(ctx context.Context, dest xnet.Destination, settings *internet.MemoryS
 	if err != nil {
 		return nil, err
 	}
+	applyLegacyQUICCongestion(parent, settings.QuicParams, false)
 	stream, err := parent.OpenStreamSync(handshake)
 	if err != nil {
 		parent.CloseWithError(0, "")
@@ -179,6 +181,7 @@ type Listener struct {
 	closed      bool
 	stop        func() bool
 	connections map[*q.Conn]struct{}
+	tuning      *internet.QuicParams
 	workers     sync.WaitGroup
 	done        chan struct{}
 }
@@ -225,6 +228,7 @@ func (l *Listener) accept() {
 			conn.CloseWithError(0, "")
 			return
 		}
+		applyLegacyQUICCongestion(conn, l.tuning, true)
 		l.connections[conn] = struct{}{}
 		l.workers.Add(1)
 		l.mu.Unlock()
@@ -280,7 +284,7 @@ func Listen(ctx context.Context, address xnet.Address, port xnet.Port, settings 
 		return nil, err
 	}
 	listenCtx, cancel := context.WithCancel(ctx)
-	l := &Listener{packet: packet, transport: transport, listener: listener, ctx: listenCtx, cancel: cancel, handler: handler, connections: make(map[*q.Conn]struct{}), done: make(chan struct{})}
+	l := &Listener{packet: packet, transport: transport, listener: listener, ctx: listenCtx, cancel: cancel, handler: handler, connections: make(map[*q.Conn]struct{}), tuning: settings.QuicParams, done: make(chan struct{})}
 	l.workers.Add(1)
 	stop := context.AfterFunc(ctx, func() { l.Close() })
 	l.mu.Lock()

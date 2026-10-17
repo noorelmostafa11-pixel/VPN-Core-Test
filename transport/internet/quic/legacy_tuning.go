@@ -5,6 +5,8 @@ import (
 	"time"
 
 	q "github.com/apernet/quic-go"
+	"github.com/xtls/xray-core/transport/internet/quic/congestion"
+	"github.com/xtls/xray-core/transport/internet/quic/congestion/bbr"
 	"github.com/xtls/xray-core/transport/internet"
 )
 
@@ -15,10 +17,38 @@ func ValidateLegacyQUICParams(p *internet.QuicParams) error {
 	if p == nil {
 		return nil
 	}
-	if p.Congestion != "" || (p.BbrProfile != "" && p.BbrProfile != "standard") ||
-		p.BrutalUp != 0 || p.BrutalDown != 0 || p.BrutalDisableLossCompensation ||
-		p.DisablePathMtuDiscovery || p.DisableChromeParrot || p.DisableGSO || p.DisableStatelessReset {
-		return errors.New("legacy QUIC: unsupported modern QUIC tuning")
+	if p.DisablePathMtuDiscovery || p.DisableChromeParrot || p.DisableGSO || p.DisableStatelessReset {
+		return errors.New("legacy QUIC: unsupported QUIC transport tuning")
+	}
+	switch p.Congestion {
+	case "", "reno":
+		// Keep the pre-existing Reno controller in the default and explicit
+		// Reno cases. The shared JSON builder inserts "standard" by default.
+		if p.BbrProfile != "" && p.BbrProfile != "standard" || p.BrutalUp != 0 || p.BrutalDown != 0 || p.BrutalDisableLossCompensation {
+			return errors.New("legacy QUIC: unrelated congestion parameters")
+		}
+	case "bbr":
+		switch p.BbrProfile {
+		case "", "standard", "conservative", "aggressive":
+		default:
+			return errors.New("legacy QUIC: unsupported BBR profile")
+		}
+		if p.BrutalUp != 0 || p.BrutalDown != 0 || p.BrutalDisableLossCompensation {
+			return errors.New("legacy QUIC: BBR conflicts with Brutal")
+		}
+	case "force-brutal":
+		// An explicit capacity is required for both directions because the
+		// legacy carrier applies the same profile to client and listener.
+		// Cap extreme values to avoid overflowing pacer/CWND calculations.
+		const minRate, maxRate = 65536, 1 << 30 // bytes/second
+		if p.BrutalUp < minRate || p.BrutalUp > maxRate || p.BrutalDown < minRate || p.BrutalDown > maxRate {
+			return errors.New("legacy QUIC: Brutal requires bounded up and down rates")
+		}
+		if p.BbrProfile != "" && p.BbrProfile != "standard" {
+			return errors.New("legacy QUIC: Brutal does not use a BBR profile")
+		}
+	default:
+		return errors.New("legacy QUIC: unsupported congestion controller")
 	}
 	if p.MaxIdleTimeout != 0 && (p.MaxIdleTimeout < 4 || p.MaxIdleTimeout > 120) {
 		return errors.New("legacy QUIC: max idle timeout outside 4..120 seconds")
@@ -79,4 +109,27 @@ func tunedLegacyQUICConfig(p *internet.QuicParams) *q.Config {
 		config.MaxConnectionReceiveWindow = p.MaxConnReceiveWindow
 	}
 	return config
+}
+
+// applyLegacyQUICCongestion is deliberately no-op for every previously
+// supported configuration. Only explicit BBR/Brutal modes replace Reno.
+// The same vetted controller implementation is used by the XHTTP/H3 path.
+func applyLegacyQUICCongestion(conn *q.Conn, p *internet.QuicParams, server bool) {
+	if p == nil || conn == nil {
+		return
+	}
+	switch p.Congestion {
+	case "bbr":
+		profile := p.BbrProfile
+		if profile == "" {
+			profile = "standard"
+		}
+		congestion.UseBBR(conn, bbr.Profile(profile))
+	case "force-brutal":
+		rate := p.BrutalUp
+		if server {
+			rate = p.BrutalDown
+		}
+		congestion.UseBrutal(conn, rate, p.BrutalDisableLossCompensation)
+	}
 }

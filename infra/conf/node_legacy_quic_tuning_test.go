@@ -100,7 +100,7 @@ func TestNodeLegacyQUICTuningRejectsUnsafe(t *testing.T) {
 	invalid := map[string]string{
 		"empty":"","null":"null","array":"[]","malformed":"{",
 		"unknown":`{"disableChromeParrot":true}`,
-		"congestion":`{"congestion":"bbr"}`,
+		"congestion-invalid":`{"congestion":"cubic"}`,
 		"brutal":`{"brutalUp":"1mbps"}`,
 		"key-file":`{"certificates":[{"keyFile":"private.key"}]}`,
 		"socket":`{"sockopt":{"dialerProxy":"direct"}}`,
@@ -127,6 +127,51 @@ func TestNodeLegacyQUICTuningRejectsUnsafe(t *testing.T) {
 	} {
 		t.Run(name,func(t *testing.T){
 			if _,err:=conf.ParseNodeURI("vless://"+quicTuningNodeID+"@127.0.0.1:443"+suffix);err==nil{t.Fatal("invalid carrier/profile accepted")}
+		})
+	}
+}
+
+func TestNodeLegacyQUICNewCongestionFourFamilies(t *testing.T) {
+	modes := map[string]string{
+		"bbr": `{"congestion":"bbr","bbrProfile":"aggressive"}`,
+		"force-brutal": `{"congestion":"force-brutal","brutalUp":"8mbps","brutalDown":"16mbps","brutalDisableLossCompensation":true}`,
+	}
+	for _, base := range []string{
+		"vless://"+quicTuningNodeID+"@127.0.0.1:443",
+		"vmess://"+quicTuningNodeID+"@127.0.0.1:443",
+		"trojan://synthetic@127.0.0.1:443",
+		"ss://aes-128-gcm:synthetic@127.0.0.1:443",
+	} {
+		for mode, option := range modes {
+			t.Run(strings.SplitN(base,"://",2)[0]+"/"+mode,func(t *testing.T){
+				got,err:=conf.ParseNodeURI(base+"?type=quic&quicParams="+url.QueryEscape(option))
+				if err!=nil{t.Fatal(err)}
+				cfg,err:=got.StreamSetting.Build()
+				if err!=nil{t.Fatal(err)}
+				if cfg.QuicParams==nil || cfg.QuicParams.Congestion!=mode {
+					t.Fatal("QUIC congestion selection absent or changed")
+				}
+				if mode=="force-brutal" && (cfg.QuicParams.BrutalUp!=1048576 || cfg.QuicParams.BrutalDown!=2097152) {
+					t.Fatal("QUIC rates differed from original bandwidth conversion")
+				}
+			})
+		}
+	}
+}
+
+func TestNodeLegacyQUICCongestionRejectsUnsafeRates(t *testing.T) {
+	base:="vless://"+quicTuningNodeID+"@127.0.0.1:443?type=quic&quicParams="
+	for label, raw := range map[string]string{
+		"brutal-missing-down":`{"congestion":"force-brutal","brutalUp":"8mbps"}`,
+		"brutal-undersized":`{"congestion":"force-brutal","brutalUp":"100kbps","brutalDown":"8mbps"}`,
+		"brutal-overflow":`{"congestion":"force-brutal","brutalUp":"100000000000gbps","brutalDown":"8mbps"}`,
+		"brutal-with-bbr":`{"congestion":"bbr","brutalUp":"8mbps"}`,
+		"unknown-profile":`{"congestion":"bbr","bbrProfile":"invalid"}`,
+		"unselected-controller":`{"brutalUp":"8mbps","brutalDown":"8mbps"}`,
+		"non-string-rate":`{"congestion":"force-brutal","brutalUp":102400,"brutalDown":"8mbps"}`,
+	} {
+		t.Run(label,func(t *testing.T){
+			if _,err:=conf.ParseNodeURI(base+url.QueryEscape(raw));err==nil{t.Fatal("invalid QUIC control metadata accepted")}
 		})
 	}
 }
