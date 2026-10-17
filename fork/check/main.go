@@ -232,10 +232,27 @@ func ensureAsset(ctx context.Context, client *http.Client, url, path, want strin
 
 func digest(data []byte) string { value := sha256.Sum256(data); return hex.EncodeToString(value[:]) }
 
+// Keep this independent of the wire fixture's own reported expectations:
+// its claims alone must never make an incomplete test run acceptable.
+const (
+	wireMethodCount       = 32
+	wireOriginalAEADCases = 5
+	wirePairCount         = 37
+	wireTCPEchoes         = 74
+	wireUDPEchoes         = 333
+	wireServerFirst       = 64
+)
+
 func verifyWire(path string) error {
 	var report struct {
-		Passed    bool     `json:"passed"`
-		Methods   []string `json:"methods"`
+		Passed                       bool     `json:"passed"`
+		Methods                      []string `json:"methods"`
+		ExpectedPairs                int      `json:"expected_pairs"`
+		ExpectedTCP                  int      `json:"expected_tcp_echoes"`
+		ExpectedUDP                  int      `json:"expected_udp_echoes"`
+		ExpectedGreetings            int      `json:"expected_server_first_greetings"`
+		OriginalDefaultClientFirst   int      `json:"original_default_client_first_cases"`
+		OriginalServerFirstOptIn     int      `json:"original_server_first_opt_in_cases"`
 		Completed struct {
 			Pairs     int `json:"completed_pairs"`
 			TCP       int `json:"completed_tcp_echoes"`
@@ -246,8 +263,31 @@ func verifyWire(path string) error {
 	if err := readJSON(path, &report); err != nil {
 		return err
 	}
-	if !report.Passed || len(report.Methods) != 32 || report.Completed.Pairs != 32 || report.Completed.TCP != 64 || report.Completed.UDP != 288 || report.Completed.Greetings != 64 {
+	if !report.Passed ||
+		len(report.Methods) != wireMethodCount ||
+		report.ExpectedPairs != wirePairCount ||
+		report.ExpectedTCP != wireTCPEchoes ||
+		report.ExpectedUDP != wireUDPEchoes ||
+		report.ExpectedGreetings != wireServerFirst ||
+		report.OriginalDefaultClientFirst != wireOriginalAEADCases ||
+		report.OriginalServerFirstOptIn != wireOriginalAEADCases ||
+		report.Completed.Pairs != wirePairCount ||
+		report.Completed.TCP != wireTCPEchoes ||
+		report.Completed.UDP != wireUDPEchoes ||
+		report.Completed.Greetings != wireServerFirst {
 		return errors.New("wire report failed or incomplete; skipped exchanges are not a pass")
+	}
+	seen := make(map[string]bool, len(report.Methods))
+	for _, method := range report.Methods {
+		if method == "" || seen[method] {
+			return errors.New("wire report has missing or duplicate cipher names")
+		}
+		seen[method] = true
+	}
+	for _, method := range []string{"aes-128-gcm", "aes-256-gcm", "chacha20-ietf-poly1305", "xchacha20-ietf-poly1305", "chacha20-poly1305"} {
+		if !seen[method] {
+			return errors.New("wire report omitted original AEAD compatibility coverage")
+		}
 	}
 	return nil
 }
@@ -302,7 +342,7 @@ func summarize(folder string) error {
 			fmt.Fprintln(&output, "\n</details>")
 		}
 	}
-	fmt.Fprintln(&output, "\nSuite: all repository Go tests with race detection; skipped tests remain visible in suite.log. Wire: 32 classic Shadowsocks names, same-fork client/server, 32 pairs / 64 TCP / 288 UDP / 64 server-first greetings. Missing or partial evidence is not a pass.")
+	fmt.Fprintln(&output, "\nSuite: all repository Go tests with race detection; skipped tests remain visible in suite.log. Wire: 32 classic Shadowsocks names, 37 same-fork client/server cases (including 5 original-AEAD client-first defaults and 5 explicit server-first opt-ins), 74 TCP echoes / 333 UDP echoes / 64 pre-payload server-first greetings. Missing or partial evidence is not a pass.")
 	fmt.Fprintln(&output, "\nLimits: loopback self-compatibility is not external interoperability or Internet/private-node, mobile SDK, Android, packaging or release acceptance. SS2022 has package tests but no dedicated self-wire fixture. Race and vet failures remain visible.")
 	if err := os.WriteFile(filepath.Join(folder, "RESULTS.md"), output.Bytes(), 0o600); err != nil {
 		return err

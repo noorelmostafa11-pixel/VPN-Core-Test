@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -94,26 +95,66 @@ func TestPinnedAssets(t *testing.T) {
 
 func TestIncompleteWireCannotPass(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "summary.json")
-	methods := make([]string, 32)
-	for _, test := range []struct {
-		passed                     bool
-		pairs, tcp, udp, greetings int
-		valid                      bool
+	// The test fixture deliberately fixes literal counts independently of the
+	// validator constants, so changing acceptance thresholds needs a test update.
+	methods := []string{"aes-128-gcm", "aes-256-gcm", "chacha20-ietf-poly1305", "xchacha20-ietf-poly1305", "chacha20-poly1305"}
+	for len(methods) < 32 {
+		methods = append(methods, fmt.Sprintf("other-cipher-%02d", len(methods)))
+	}
+	validReport := func() map[string]any {
+		return map[string]any{
+			"passed": true,
+			"methods": append([]string(nil), methods...),
+			"expected_pairs": 37,
+			"expected_tcp_echoes": 74,
+			"expected_udp_echoes": 333,
+			"expected_server_first_greetings": 64,
+			"original_default_client_first_cases": 5,
+			"original_server_first_opt_in_cases": 5,
+			"completed": map[string]int{
+				"completed_pairs": 37,
+				"completed_tcp_echoes": 74,
+				"completed_udp_echoes": 333,
+				"completed_server_first_greetings": 64,
+			},
+		}
+	}
+	setCompleted := func(data map[string]any, field string, value int) {
+		data["completed"].(map[string]int)[field] = value
+	}
+	for _, tc := range []struct {
+		name   string
+		mutate func(map[string]any)
 	}{
-		{true, 32, 64, 288, 64, true},
-		{false, 32, 64, 288, 64, false},
-		{true, 31, 64, 288, 64, false},
-		{true, 32, 63, 288, 64, false},
-		{true, 32, 64, 287, 64, false},
-		{true, 32, 64, 288, 63, false},
+		{"complete", nil},
+		{"reported-failure", func(d map[string]any) { d["passed"] = false }},
+		{"missing-method", func(d map[string]any) { d["methods"] = d["methods"].([]string)[:31] }},
+		{"duplicate-method", func(d map[string]any) { d["methods"].([]string)[0] = d["methods"].([]string)[1] }},
+		{"missing-original-cipher", func(d map[string]any) { d["methods"].([]string)[0] = "unverified-cipher" }},
+		{"missing-pair", func(d map[string]any) { setCompleted(d, "completed_pairs", 36) }},
+		{"missing-TCP", func(d map[string]any) { setCompleted(d, "completed_tcp_echoes", 73) }},
+		{"missing-UDP", func(d map[string]any) { setCompleted(d, "completed_udp_echoes", 332) }},
+		{"missing-greeting", func(d map[string]any) { setCompleted(d, "completed_server_first_greetings", 63) }},
+		{"extra-pair", func(d map[string]any) { setCompleted(d, "completed_pairs", 38) }},
+		{"old-pair-expectation", func(d map[string]any) { d["expected_pairs"] = 32 }},
+		{"old-TCP-expectation", func(d map[string]any) { d["expected_tcp_echoes"] = 64 }},
+		{"old-UDP-expectation", func(d map[string]any) { d["expected_udp_echoes"] = 288 }},
+		{"wrong-greeting-expectation", func(d map[string]any) { d["expected_server_first_greetings"] = 74 }},
+		{"missing-default-coverage", func(d map[string]any) { d["original_default_client_first_cases"] = 0 }},
+		{"missing-opt-in-coverage", func(d map[string]any) { d["original_server_first_opt_in_cases"] = 0 }},
 	} {
-		data := map[string]any{"passed": test.passed, "methods": methods, "completed": map[string]int{"completed_pairs": test.pairs, "completed_tcp_echoes": test.tcp, "completed_udp_echoes": test.udp, "completed_server_first_greetings": test.greetings}}
-		if err := writeJSON(path, data); err != nil {
-			t.Fatal(err)
-		}
-		if err := verifyWire(path); (err == nil) != test.valid {
-			t.Fatal("partial evidence reported as success", test, err)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			data := validReport()
+			if tc.mutate != nil {
+				tc.mutate(data)
+			}
+			if err := writeJSON(path, data); err != nil {
+				t.Fatal(err)
+			}
+			if err := verifyWire(path); (err == nil) != (tc.mutate == nil) {
+				t.Fatal("incorrect wire evidence acceptance", tc.name, err)
+			}
+		})
 	}
 	if err := verifyWire(filepath.Join(t.TempDir(), "absent.json")); err == nil {
 		t.Fatal("missing evidence accepted")
@@ -140,7 +181,7 @@ func TestSummaryDoesNotInventResults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, expected := range []string{"| prepare | PASS", "| suite | FAIL", "| wire | NOT RUN / incomplete", "not external interoperability", "SS2022", "1 passed packages, 1 failed packages, 1 skipped tests", "NeedsExternalPeer"} {
+	for _, expected := range []string{"| prepare | PASS", "| suite | FAIL", "| wire | NOT RUN / incomplete", "not external interoperability", "SS2022", "1 passed packages, 1 failed packages, 1 skipped tests", "NeedsExternalPeer", "37 same-fork client/server cases", "74 TCP echoes / 333 UDP echoes / 64 pre-payload server-first greetings"} {
 		if !strings.Contains(string(data), expected) {
 			t.Fatal("missing result/boundary", expected)
 		}
