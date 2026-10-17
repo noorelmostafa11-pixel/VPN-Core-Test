@@ -136,11 +136,18 @@ go build -trimpath -ldflags="-s -w" -o xray ./main
 Stripping debug symbols does not remove protocol implementations. No size or
 performance improvement over upstream is claimed without a measured comparison.
 
-## Offline target packaging (input assets still required)
+## Release packaging
 
-A Go-only per-target packaging command is provided at [tools/package](tools/package):
-`go run ./tools/package -os windows -arch amd64 -offline`. See
-[PACKAGING.md](PACKAGING.md) for the platform matrix, required checksum-locked
-Geo/Wintun assets and vendored Go dependencies. At this revision these external
-files have not yet been committed; packaging fails closed until they are present.
-The existing manual-only compatibility workflow is unchanged.
+The Go-only per-target release bundler follows upstream Xray's approach:
+fetch verified Geo and Wintun assets during packaging and compile the selected
+core directly from this branch. From the repository root:
+
+```text
+go run ./tools/package -os windows -arch amd64
+```
+
+It creates `dist/Xray-windows-amd64.zip` (with runtime assets and licenses).
+Other architectures/operating systems are individually selectable; all targets
+are built only when explicitly requested. Dependencies are resolved through Go,
+not copied from an installed application. See [PACKAGING.md](PACKAGING.md).
+The existing manual-only compatibility workflow remains unchanged.

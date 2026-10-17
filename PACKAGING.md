@@ -1,55 +1,47 @@
-# Offline per-target Xray packaging
+# Per-target Xray release packaging
 
-This branch provides a Go packaging command. It packages **only the target you ask for**; `-target all` is opt-in. Neither packaging code nor the CLI build downloads runtime assets. This does not edit Xray protocols or upstream configuration behavior.
+This branch includes a Go packaging command that follows the upstream Xray release approach: build the selected core from this checkout, download checksum-verified runtime assets at **packaging time**, and create a platform-specific ZIP. No external runtime binaries, vendored Go sources, installed VPN application or manually copied DLL/data files are needed in the repository. The host needs Go at the version required by `go.mod` and network access for first-time module downloads and the pinned runtime assets.
 
-> **Current repository status (2026-10-17): NOT READY for a complete offline package.** The branch does **not yet** contain the `assets/shared/*.dat`, `assets/windows/*/wintun.dll`, `assets/windows/LICENSE-Wintun`, or vendored Go dependency sources (`vendor/modules.txt` and contents). The command deliberately fails rather than shipping a ZIP with missing files. Asset hashes must not be invented. Before promising clone-and-build without network, the owner must add and verify the actual redistributable upstream files and commit the complete `vendor/` tree. This is a one-time repository preparation requirement, not a per-build download.
-
-## Usage (repository root)
-
-Install the Go version required by `go.mod` (currently Go 1.27; Windows build previously used 1.27.1). From PowerShell, disable automatic Go downloads *before running* `go run`:
+## Usage from the repository root
 
 ```powershell
-$env:GOTOOLCHAIN = "local"
-$env:GOPROXY = "off"
-$env:GOSUMDB = "off"
-go run ./tools/package -os windows -arch amd64 -offline
+go run ./tools/package -os windows -arch amd64
 ```
 
-For ARM64 Windows choose `-arch arm64`. For Linux choose `-os linux -arch amd64` (or arm64 / arm), for macOS choose `-os darwin -arch amd64` (or arm64). Android ARM64 is a **CLI executable** target only, not an Android APK/AAR, JNI SDK, or proof of Android runtime integration.
+Creates `dist/Xray-windows-amd64.zip`, with `xray.exe`, `geoip.dat`, `geosite.dat`, `wintun.dll` for Windows AMD64, `LICENSE`, `LICENSE-Wintun`, and the original `xray_no_window.cmd`, `.ps1` and `.vbs` helpers. It does not use or modify any installed VPN application or previous Xray binary.
+
+Other target choices:
 
 ```text
 go run ./tools/package -list
-go run ./tools/package -os windows -arch arm64 -offline
-go run ./tools/package -target all -offline  # explicitly build all supported targets
+go run ./tools/package -os windows -arch arm64
+go run ./tools/package -os windows -arch 386
+go run ./tools/package -os linux -arch amd64
+go run ./tools/package -os darwin -arch arm64
+go run ./tools/package -os android -arch arm64
+go run ./tools/package -target all    # optional; only when every supported target is wanted
 ```
 
-Output for Windows/AMD64, when all prerequisites are present and build succeeds: `dist/Xray-windows-amd64.zip`. The archive contains `xray.exe`, `geoip.dat`, `geosite.dat`, `wintun.dll`, upstream `LICENSE`, Wintun's `LICENSE-Wintun`, and inherited `xray_no_window` launchers. Non-Windows archives contain target `xray`, geo files and `LICENSE`. All are built from the selected checkout's source. There is no hardcoded path to an installed application.
+Each invocation packages **only the requested target**, except an explicit `-target all`. Android output is a CLI executable, not an APK, AAR or SDK. Cross-build success is not runtime acceptance on a target OS.
 
-## Required tracked input files
+## Distribution inputs and integrity
 
-```text
-assets/manifest.json            SHA256 locks for each external runtime file
-assets/shared/geoip.dat         common, only if routing rules need geo data
-assets/shared/geosite.dat
-assets/windows/386/wintun.dll   Windows 32-bit TUN driver library
-assets/windows/amd64/wintun.dll
-assets/windows/arm64/wintun.dll
-assets/windows/LICENSE-Wintun   Wintun redistribution notice/license
-vendor/modules.txt             and all vendored Go dependency sources
+The command downloads the two Geo files from pinned `Loyalsoldier/v2ray-rules-dat` revision `a2d310e1de9ba35757f1633dda231192d114a306`, using the SHA256 digests already recorded for compatibility testing in `fork/check/main.go`. For Windows it also downloads the official [Wintun](https://www.wintun.net/) `wintun-0.14.1.zip`, using the exact archive SHA256 pinned by the inherited Xray `scheduled-assets-update.yml` workflow. These three digests are recorded in [assets/manifest.json](assets/manifest.json). The entire Wintun ZIP is checked before any DLL or license file is extracted; `386` selects upstream `x86`. Windows packages include Wintun's supplied binary redistribution license. Respect that license's redistribution conditions.
+
+The original Xray `LICENSE` and Windows helper scripts come directly from this repository. Go downloads the module dependencies declared by `go.mod`/`go.sum` as necessary; the build uses `-mod=readonly` to forbid changing module declarations during packaging. Nothing is committed to Git by the packaging command. Build artifacts and downloaded assets are discarded from temporary staging after ZIP creation; finished ZIPs remain in `dist/`.
+
+The checks are fail-closed: rejected HTTP responses, missing archive entries, digest mismatches, missing licenses and Go build errors abort that target without publishing an incomplete ZIP. Already completed ZIPs from earlier invocations can remain in `dist/` if a later run fails; use the current command's exit status, not mere ZIP existence, to determine success. This is a **network-capable packaging command**, not an offline packaging mode. If a host cannot reach the pinned official asset sources, packaging fails rather than silently substituting unrelated files.
+
+## Verification boundaries
+
+Run packaging-unit tests without fetching the rest of the Go module graph:
+
+```powershell
+$env:GO111MODULE = "off"
+go test ./tools/package
+Remove-Item Env:\GO111MODULE
 ```
 
-Only the selected target's Wintun DLL is included. `geoip.dat` and `geosite.dat` are shared and are included in every CLI archive. Wintun is a Windows TUN runtime dependency; ordinary proxy configurations do not require TUN. No Linux/macOS/Android Wintun file is created or used. See `proxy/tun/README.md` for OS-specific network behavior.
+These tests cover target selection, verified HTTP acquisition, Wintun ZIP mapping, license inclusion, failure cases, environment variables, and ZIP safety. Actual full Xray compilation and runtime must still be tested on the requested target; the packaging unit tests alone do not prove that Windows networking or TUN works.
 
-The repository currently pins the SHA256 of the two geo data files already used in `fork/check/main.go` at pinned Loyalsoldier/v2ray-rules-dat revision `a2d310e1de9ba35757f1633dda231192d114a306`. The bytes are **not present yet**. All added Wintun DLLs and `LICENSE-Wintun` must receive correct SHA256 values in `assets/manifest.json` before packaging. Only commit runtime binaries and geo files once source provenance, hashes and redistribution obligations are reviewed. In `.gitignore`, only narrowly scoped assets should be exempted from the binary/data ignore patterns. Never commit a generated `xray` binary or anything under `dist/`.
-
-For true offline builds from a fresh clone, all Go modules must also be committed as source under `vendor/` with a `modules.txt` consistent with `go.mod`. `go mod vendor` is a **repository provisioning step**, not part of the offline packaging command; populating a missing module cache may otherwise contact outside services. The Go compiler/toolchain must be available locally.
-
-## Fail-closed rules and verification
-
-- The CLI refuses unsupported OS/architecture pairs or conflicting target flags.
-- `vendor/modules.txt` must be present; compiled builds use `-mod=vendor`, `GOPROXY=off`, `GOSUMDB=off`, `GOTOOLCHAIN=local`, `CGO_ENABLED=0`, and `GOWORK=off`.
-- Every external asset is required to be a nonempty regular file, with a valid 64-character SHA256 pin and exact matching bytes. Missing files, hash mismatches, Go errors and missing vendored module files stop the command; no silently incomplete ZIP is created.
-- Staging happens in a temporary directory and ZIPs are created via a temporary file before being published to `dist/`. An old completed ZIP may remain if a subsequent build fails; don't confuse its presence with a successful current run.
-- The packaging command does not change the manual-only test workflow, dispatch Actions, push tags, publish releases, or run tests on remote hosts.
-
-**Verification limits:** unit tests of the stdlib-only packaging utility can run without external dependencies (`GO111MODULE=off go test ./tools/package`). Actual full Xray compilation and runtime on every platform must be verified independently after all inputs have been committed. A cross-compile is not Windows/macOS/Android runtime acceptance.
+Only the Go packaging utility, checksum manifest, and documentation are changed; original protocols, configuration behavior and the manual-only test workflow are untouched.
