@@ -145,6 +145,10 @@ func getRegepxByFormat() string {
 		return `^.+\.uri$`
 	case "node":
 		return `^.+\.node$`
+	case "sub", "subscription":
+		return `^.+\.(sub|subscription)$`
+	case "subjson", "node-list":
+		return `^.+\.(subjson|node-list)$`
 	default:
 		return `^.+\.(json|jsonc|toml|yaml|yml)$`
 	}
