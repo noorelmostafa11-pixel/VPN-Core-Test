@@ -78,6 +78,8 @@ func init() {
 	ReaderDecoderByFormat["node"] = DecodeNodeConfig
 	ReaderDecoderByFormat["subscription"] = DecodeSubscriptionConfig
 	ReaderDecoderByFormat["sub"] = DecodeSubscriptionConfig
+	ReaderDecoderByFormat["subjson"] = DecodeNodeListJSONConfig
+	ReaderDecoderByFormat["node-list"] = DecodeNodeListJSONConfig
 
 	core.ConfigBuilderForFiles = BuildConfig
 	core.ConfigMergedFormFiles = MergeConfigFromFiles
