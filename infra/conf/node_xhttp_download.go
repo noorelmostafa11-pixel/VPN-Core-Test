@@ -128,8 +128,7 @@ func nodeXHTTPDownloadTransport(raw json.RawMessage) error {
 	}
 	for key, value := range transport.Headers {
 		if !nodeHTTPHeaderToken(key) || nodeHTTPTransportReservedHeader(key) ||
-			len(value) > 2048 || !nodeHTTPHeaderValue(value) ||
-			strings.ContainsAny(value, "\\r\\n\\x00") {
+			len(value) > 2048 || !nodeHTTPHeaderValue(value) {
 			return errors.New("node URI: unsafe XHTTP download header")
 		}
 	}
