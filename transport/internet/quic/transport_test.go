@@ -142,13 +142,17 @@ func (p *oraclePacket) WriteTo(src []byte, addr net.Addr) (int, error) {
 	return len(src), nil
 }
 
-func peerListener(t *testing.T, config *Config, security *tls.Config, fault bool) (*q.Listener, *oraclePacket) {
+func peerListener(t *testing.T, config *Config, security *tls.Config, fault bool, prefixOverride ...[]byte) (*q.Listener, *oraclePacket) {
 	t.Helper()
 	raw, err := net.ListenPacket("udp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	packet := oracle(t, raw, config.Security.Type, config.HeaderType)
+	if len(prefixOverride) > 0 {
+		// Set the historical wire prefix before QUIC starts its read goroutine.
+		packet.prefix = bytes.Clone(prefixOverride[0])
+	}
 	packet.fault = fault
 	transport := &q.Transport{Conn: packet, DisableGSO: true}
 	listener, err := transport.Listen(security.GetTLSConfig(), &q.Config{InitialPacketSize: 1200, DisablePathMTUDiscovery: true, MaxIncomingUniStreams: -1})

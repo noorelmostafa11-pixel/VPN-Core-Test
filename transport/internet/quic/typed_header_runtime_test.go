@@ -34,8 +34,8 @@ func TestForkLegacyQUICTypedHeaderIndependentPeers(t *testing.T) {
 					var half func() error
 					if role == "client" {
 						peerConfig := &Config{Security: config.Security, HeaderType: fixture.kind}
-						listener, packet := peerListener(t, peerConfig, serverTLS, false)
-						packet.prefix = prefix // Literal old-wire oracle, including DNS domain.
+						// Apply the literal historical wire prefix before starting the listener.
+						listener, _ := peerListener(t, peerConfig, serverTLS, false, prefix)
 						go func() {
 							parent, err := listener.Accept(ctx)
 							if err != nil {
