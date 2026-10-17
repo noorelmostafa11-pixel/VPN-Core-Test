@@ -87,6 +87,9 @@ func TestAddedAdvancedTransportRejectsUnsafeMetadata(t *testing.T) {
 	cases:=map[string]string{
 		"ws-empty-headers":"ws&wsHeaders=",
 		"ws-invalid-headers":"ws&wsHeaders="+url.QueryEscape(`{"Host":"override.example"}`),
+		"ws-reserved-connection":"ws&wsHeaders="+url.QueryEscape(`{"Connection":"keep-alive"}`),
+		"ws-reserved-handshake":"ws&wsHeaders="+url.QueryEscape(`{"Sec-WebSocket-Key":"forged"}`),
+		"upgrade-reserved-upgrade":"httpupgrade&httpUpgradeHeaders="+url.QueryEscape(`{"Upgrade":"websocket"}`),
 		"ws-control-header":"ws&wsHeaders="+url.QueryEscape(`{"X-Test":"evil\r\nHost: bad"}`),
 		"ws-duplicate-header":"ws&wsHeaders="+url.QueryEscape(`{"X-Test":"a","x-test":"b"}`),
 		"ws-bad-header-name":"ws&wsHeaders="+url.QueryEscape(`{"Bad Key":"x"}`),

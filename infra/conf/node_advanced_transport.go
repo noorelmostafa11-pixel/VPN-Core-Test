@@ -29,7 +29,7 @@ func nodeHTTPTransportHeaders(fields *nodeFields, keys ...string) (map[string]st
 		return nil, errors.New("node URI: invalid HTTP transport headers")
 	}
 	for key, value := range headers {
-		if !nodeHTTPHeaderToken(key) || strings.EqualFold(key, "Host") || len(value) > 2048 ||
+		if !nodeHTTPHeaderToken(key) || nodeHTTPTransportReservedHeader(key) || len(value) > 2048 ||
 			strings.ContainsAny(value, "\x00\r\n") || !nodeHTTPHeaderValue(value) {
 			return nil, errors.New("node URI: unsafe HTTP transport header")
 		}
@@ -118,4 +118,16 @@ func nodeHTTPHeaderValue(value string) bool {
 		}
 	}
 	return true
+}
+
+func nodeHTTPTransportReservedHeader(key string) bool {
+	switch strings.ToLower(key) {
+	case "host", "connection", "proxy-connection", "upgrade",
+		"content-length", "transfer-encoding", "sec-websocket-key",
+		"sec-websocket-version", "sec-websocket-accept",
+		"sec-websocket-protocol", "sec-websocket-extensions":
+		return true
+	default:
+		return false
+	}
 }
