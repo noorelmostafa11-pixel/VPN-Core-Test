@@ -2,7 +2,6 @@ package conf
 
 import (
 	"encoding/json"
-	"strings"
 
 	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/protocol"
@@ -75,47 +74,17 @@ type SocksRemoteConfig struct {
 }
 
 type SocksClientConfig struct {
-	LegacySettings *SocksLegacySettings `json:"legacySettings"`
-	forcedVersion  string
-	Address        *Address             `json:"address"`
-	Port           uint16               `json:"port"`
-	Level          uint32               `json:"level"`
-	Email          string               `json:"email"`
-	Username       string               `json:"user"`
-	Password       string               `json:"pass"`
-	Servers        []*SocksRemoteConfig `json:"servers"`
-}
-
-type SocksLegacySettings struct {
-	Version string `json:"version"`
+	Address  *Address             `json:"address"`
+	Port     uint16               `json:"port"`
+	Level    uint32               `json:"level"`
+	Email    string               `json:"email"`
+	Username string               `json:"user"`
+	Password string               `json:"pass"`
+	Servers  []*SocksRemoteConfig `json:"servers"`
 }
 
 func (v *SocksClientConfig) Build() (proto.Message, error) {
 	config := new(socks.ClientConfig)
-	version := ""
-	if v.LegacySettings != nil {
-		version = strings.ToLower(v.LegacySettings.Version)
-	}
-	if v.forcedVersion != "" {
-		if version != "" && version != v.forcedVersion {
-			return nil, errors.New("SOCKS protocol and version conflict")
-		}
-		version = v.forcedVersion
-	}
-	switch version {
-	case "", "5":
-	case "4":
-		config.Version = socks.ClientVersion_SOCKS4
-	case "4a":
-		config.Version = socks.ClientVersion_SOCKS4A
-	default:
-		return nil, errors.New("unsupported SOCKS version: ", version)
-	}
-	legacy := config.Version != socks.ClientVersion_SOCKS5
-	config.LegacyCompatibility = legacy
-	if legacy && v.Password != "" {
-		return nil, errors.New("SOCKS4/4a has a user ID, not password authentication")
-	}
 	if v.Address != nil {
 		v.Servers = []*SocksRemoteConfig{
 			{
@@ -131,9 +100,6 @@ func (v *SocksClientConfig) Build() (proto.Message, error) {
 		return nil, errors.New(`SOCKS settings: "servers" should have one and only one member. Multiple endpoints in "servers" should use multiple SOCKS outbounds and routing balancer instead`)
 	}
 	for _, serverConfig := range v.Servers {
-		if legacy && (serverConfig == nil || serverConfig.Address == nil || serverConfig.Port == 0) {
-			return nil, errors.New("SOCKS server requires an address and nonzero port")
-		}
 		if len(serverConfig.Users) > 1 {
 			return nil, errors.New(`SOCKS servers: "users" should have one member at most. Multiple members in "users" should use multiple SOCKS outbounds and routing balancer instead`)
 		}
@@ -161,9 +127,6 @@ func (v *SocksClientConfig) Build() (proto.Message, error) {
 				}
 			}
 			user.Account = serial.ToTypedMessage(account.Build())
-			if legacy && (account.Password != "" || len(account.Username) > 255 || strings.ContainsAny(account.Username, "\x00\r\n")) {
-				return nil, errors.New("invalid SOCKS4/4a user ID or unsupported password")
-			}
 			server.User = user
 			break
 		}

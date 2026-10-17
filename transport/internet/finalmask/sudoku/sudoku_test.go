@@ -31,18 +31,17 @@ import (
 	core "github.com/xtls/xray-core/core"
 	"github.com/xtls/xray-core/proxy/dokodemo"
 	"github.com/xtls/xray-core/proxy/freedom"
-	hyproxy "github.com/xtls/xray-core/proxy/hysteria"
-	hyaccount "github.com/xtls/xray-core/proxy/hysteria/account"
+
 	"github.com/xtls/xray-core/proxy/vless"
 	vin "github.com/xtls/xray-core/proxy/vless/inbound"
 	vout "github.com/xtls/xray-core/proxy/vless/outbound"
 	testingtcp "github.com/xtls/xray-core/testing/servers/tcp"
 	"github.com/xtls/xray-core/transport/internet"
-	hytransport "github.com/xtls/xray-core/transport/internet/hysteria"
+
 	"github.com/xtls/xray-core/transport/internet/reality"
 	splithttp "github.com/xtls/xray-core/transport/internet/splithttp"
 	transtcp "github.com/xtls/xray-core/transport/internet/tcp"
-	xtls "github.com/xtls/xray-core/transport/internet/tls"
+
 	"google.golang.org/protobuf/proto"
 )
 
@@ -102,18 +101,6 @@ type tcpCapture struct {
 	s2c []byte
 }
 
-type udpRelay struct {
-	conn      stdnet.PacketConn
-	target    *stdnet.UDPAddr
-	clientMu  sync.Mutex
-	client    *stdnet.UDPAddr
-	stopCh    chan struct{}
-	wg        sync.WaitGroup
-	captureMu sync.Mutex
-	c2s       [][]byte
-	s2c       [][]byte
-}
-
 type tlsDecoy struct {
 	ln   stdnet.Listener
 	done chan struct{}
@@ -155,9 +142,6 @@ func TestSudokuE2ETemp(t *testing.T) {
 	cases := []protocolCase{
 		{name: "vless-reality", transport: "tcp", run: func(t *testing.T, bin string, mode trafficMode) caseResult {
 			return runVLESSRealityCase(t, bin, mode, payloadSize)
-		}},
-		{name: "hysteria2", transport: "udp", run: func(t *testing.T, bin string, mode trafficMode) caseResult {
-			return runHysteria2Case(t, bin, mode, payloadSize)
 		}},
 		{name: "vless-enc", transport: "tcp", run: func(t *testing.T, bin string, mode trafficMode) caseResult {
 			return runVLesseEncCase(t, bin, mode, payloadSize)
@@ -344,127 +328,6 @@ func runVLESSRealityCase(t *testing.T, bin string, mode trafficMode, payloadSize
 	exerciseTCPClient(t, int(clientPort), payloadSize)
 
 	return analyzeTCPRelay(t, "vless-reality", mode, relay.Snapshots())
-}
-
-func runHysteria2Case(t *testing.T, bin string, mode trafficMode, payloadSize int) caseResult {
-	backend := startXOREchoServer(t)
-	defer backend.Close()
-
-	serverPort := testingtcp.PickPort()
-	relayPort := testingtcp.PickPort()
-	clientPort := testingtcp.PickPort()
-
-	relay := startUDPRelay(t, int(relayPort), int(serverPort))
-	defer relay.Close()
-
-	ct, ctHash := cert.MustGenerate(nil, cert.CommonName("localhost"), cert.DNSNames("localhost"))
-	auth := "hy2-auth-secret"
-
-	serverConfig := defaultApps(&core.Config{
-		Inbound: []*core.InboundHandlerConfig{
-			{
-				ReceiverSettings: serial.ToTypedMessage(&proxyman.ReceiverConfig{
-					PortList: &xnet.PortList{Range: []*xnet.PortRange{xnet.SinglePortRange(serverPort)}},
-					Listen:   xnet.NewIPOrDomain(xnet.LocalHostIP),
-					StreamSettings: &internet.StreamConfig{
-						ProtocolName: "hysteria",
-						TransportSettings: []*internet.TransportConfig{
-							{
-								ProtocolName: "hysteria",
-								Settings: serial.ToTypedMessage(&hytransport.Config{
-									Auth:           auth,
-									UdpIdleTimeout: 60,
-								}),
-							},
-						},
-						SecurityType: serial.GetMessageType(&xtls.Config{}),
-						SecuritySettings: []*serial.TypedMessage{
-							serial.ToTypedMessage(&xtls.Config{
-								Certificate:  []*xtls.Certificate{xtls.ParseCertificate(ct)},
-								NextProtocol: []string{"h3"},
-							}),
-						},
-						Udpmasks: []*serial.TypedMessage{serial.ToTypedMessage(cloneConfig(mode.config))},
-					},
-				}),
-				ProxySettings: serial.ToTypedMessage(&hyproxy.ServerConfig{
-					Users: []*protocol.User{
-						{
-							Account: serial.ToTypedMessage(&hyaccount.Account{Auth: auth}),
-						},
-					},
-				}),
-			},
-		},
-		Outbound: []*core.OutboundHandlerConfig{
-			{ProxySettings: serial.ToTypedMessage(&freedom.Config{
-				FinalRules: []*freedom.FinalRuleConfig{{Action: freedom.RuleAction_Allow}},
-			})},
-		},
-	})
-
-	clientConfig := defaultApps(&core.Config{
-		Inbound: []*core.InboundHandlerConfig{
-			{
-				ReceiverSettings: serial.ToTypedMessage(&proxyman.ReceiverConfig{
-					PortList: &xnet.PortList{Range: []*xnet.PortRange{xnet.SinglePortRange(clientPort)}},
-					Listen:   xnet.NewIPOrDomain(xnet.LocalHostIP),
-				}),
-				ProxySettings: serial.ToTypedMessage(&dokodemo.Config{
-					RewriteAddress:  xnet.NewIPOrDomain(backend.Address()),
-					RewritePort:     uint32(backend.Port()),
-					AllowedNetworks: []xnet.Network{xnet.Network_TCP},
-				}),
-			},
-		},
-		Outbound: []*core.OutboundHandlerConfig{
-			{
-				ProxySettings: serial.ToTypedMessage(&hyproxy.ClientConfig{
-					Server: &protocol.ServerEndpoint{
-						Address: xnet.NewIPOrDomain(xnet.LocalHostIP),
-						Port:    uint32(relayPort),
-						User: &protocol.User{
-							Account: serial.ToTypedMessage(&hyaccount.Account{Auth: auth}),
-						},
-					},
-				}),
-				SenderSettings: serial.ToTypedMessage(&proxyman.SenderConfig{
-					StreamSettings: &internet.StreamConfig{
-						ProtocolName: "hysteria",
-						TransportSettings: []*internet.TransportConfig{
-							{
-								ProtocolName: "hysteria",
-								Settings: serial.ToTypedMessage(&hytransport.Config{
-									Auth:           auth,
-									UdpIdleTimeout: 60,
-								}),
-							},
-						},
-						SecurityType: serial.GetMessageType(&xtls.Config{}),
-						SecuritySettings: []*serial.TypedMessage{
-							serial.ToTypedMessage(&xtls.Config{
-								ServerName:           "localhost",
-								PinnedPeerCertSha256: [][]byte{ctHash[:]},
-								NextProtocol:         []string{"h3"},
-							}),
-						},
-						Udpmasks: []*serial.TypedMessage{serial.ToTypedMessage(cloneConfig(mode.config))},
-					},
-				}),
-			},
-		},
-	})
-
-	serverCmd, clientCmd := runXrayPair(t, bin, serverConfig, clientConfig)
-	defer stopCmd(clientCmd)
-	defer stopCmd(serverCmd)
-	if err := exerciseTCPClientErr(t, int(clientPort), payloadSize); err != nil {
-		c2s, s2c := relay.Snapshots()
-		t.Fatalf("hy2 traffic failed: %v (udp packets c2s=%d s2c=%d first_c2s=%d first_s2c=%d)", err, len(c2s), len(s2c), firstChunkLen(c2s), firstChunkLen(s2c))
-	}
-
-	c2s, s2c := relay.Snapshots()
-	return analyzeUDPRelay(t, "hysteria2", mode, c2s, s2c)
 }
 
 func runVLesseEncCase(t *testing.T, bin string, mode trafficMode, payloadSize int) caseResult {
@@ -721,57 +584,6 @@ func analyzeTCPRelay(t *testing.T, protocol string, mode trafficMode, captures [
 		},
 		ServerToClient: directionResult{
 			RawBytes:       len(flattenChunks(allS2C)),
-			ASCIIBytes:     s2cMetrics.asciiBytes,
-			ASCIIRatio:     s2cMetrics.asciiRatio,
-			AvgHammingOnes: s2cMetrics.avgOnes,
-			RotationSeen:   len(s2cUsed),
-			DecodedUnits:   s2cDecoded,
-		},
-	}
-}
-
-func analyzeUDPRelay(t *testing.T, protocol string, mode trafficMode, c2s [][]byte, s2c [][]byte) caseResult {
-	tables, err := getTables(mode.config)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	c2sMetrics := metricFromBytes(flattenChunks(c2s))
-	s2cMetrics := metricFromBytes(flattenChunks(s2c))
-
-	c2sUsed, c2sDecoded, err := analyzePureChunks(tables, c2s)
-	if err != nil {
-		t.Fatalf("%s %s udp c2s decode failed: %v", protocol, mode.name, err)
-	}
-	s2cUsed, s2cDecoded, err := analyzePureChunks(tables, s2c)
-	if err != nil {
-		t.Fatalf("%s %s udp s2c decode failed: %v", protocol, mode.name, err)
-	}
-
-	allBytes := append(append([]byte{}, flattenChunks(c2s)...), flattenChunks(s2c)...)
-	totalMetrics := metricFromBytes(allBytes)
-	rotationSeen := len(unionKeys(c2sUsed, s2cUsed))
-
-	return caseResult{
-		Protocol:         protocol,
-		Mode:             mode.name,
-		TotalBytes:       len(allBytes),
-		ASCIIBytes:       totalMetrics.asciiBytes,
-		ASCIIRatio:       totalMetrics.asciiRatio,
-		AvgHammingOnes:   totalMetrics.avgOnes,
-		RotationSeen:     rotationSeen,
-		RotationExpected: expectedRotation(mode.config),
-		DecodedUnits:     c2sDecoded + s2cDecoded,
-		ClientToServer: directionResult{
-			RawBytes:       len(flattenChunks(c2s)),
-			ASCIIBytes:     c2sMetrics.asciiBytes,
-			ASCIIRatio:     c2sMetrics.asciiRatio,
-			AvgHammingOnes: c2sMetrics.avgOnes,
-			RotationSeen:   len(c2sUsed),
-			DecodedUnits:   c2sDecoded,
-		},
-		ServerToClient: directionResult{
-			RawBytes:       len(flattenChunks(s2c)),
 			ASCIIBytes:     s2cMetrics.asciiBytes,
 			ASCIIRatio:     s2cMetrics.asciiRatio,
 			AvgHammingOnes: s2cMetrics.avgOnes,
@@ -1126,78 +938,6 @@ func (w *captureWriter) Write(p []byte) (int, error) {
 		w.capture.s2c = append(w.capture.s2c, p...)
 	}
 	return len(p), nil
-}
-
-func startUDPRelay(t *testing.T, listenPort, targetPort int) *udpRelay {
-	t.Helper()
-	conn, err := stdnet.ListenPacket("udp", fmt.Sprintf("127.0.0.1:%d", listenPort))
-	if err != nil {
-		t.Fatal(err)
-	}
-	targetAddr := &stdnet.UDPAddr{IP: stdnet.IPv4(127, 0, 0, 1), Port: targetPort}
-	r := &udpRelay{
-		conn:   conn,
-		target: targetAddr,
-		stopCh: make(chan struct{}),
-	}
-	r.wg.Add(1)
-	go func() {
-		defer r.wg.Done()
-		buf := make([]byte, 64*1024)
-		for {
-			n, addr, err := conn.ReadFrom(buf)
-			if err != nil {
-				select {
-				case <-r.stopCh:
-					return
-				default:
-				}
-				return
-			}
-			payload := append([]byte{}, buf[:n]...)
-			udpAddr := addr.(*stdnet.UDPAddr)
-			if udpAddr.IP.Equal(r.target.IP) && udpAddr.Port == r.target.Port {
-				r.captureMu.Lock()
-				r.s2c = append(r.s2c, payload)
-				r.captureMu.Unlock()
-				r.clientMu.Lock()
-				client := r.client
-				r.clientMu.Unlock()
-				if client != nil {
-					_, _ = conn.WriteTo(payload, client)
-				}
-				continue
-			}
-			r.clientMu.Lock()
-			r.client = udpAddr
-			r.clientMu.Unlock()
-			r.captureMu.Lock()
-			r.c2s = append(r.c2s, payload)
-			r.captureMu.Unlock()
-			_, _ = conn.WriteTo(payload, r.target)
-		}
-	}()
-	return r
-}
-
-func (r *udpRelay) Close() {
-	close(r.stopCh)
-	_ = r.conn.Close()
-	r.wg.Wait()
-}
-
-func (r *udpRelay) Snapshots() ([][]byte, [][]byte) {
-	r.captureMu.Lock()
-	defer r.captureMu.Unlock()
-	c2s := make([][]byte, 0, len(r.c2s))
-	s2c := make([][]byte, 0, len(r.s2c))
-	for _, packet := range r.c2s {
-		c2s = append(c2s, append([]byte{}, packet...))
-	}
-	for _, packet := range r.s2c {
-		s2c = append(s2c, append([]byte{}, packet...))
-	}
-	return c2s, s2c
 }
 
 type xorEchoServer struct {

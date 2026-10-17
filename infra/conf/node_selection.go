@@ -41,10 +41,8 @@ const (
 	NodeVMessBody     NodeAddon = "vmess-legacy-body"
 	NodeSSCipher      NodeAddon = "shadowsocks-added-cipher"
 	NodeSSServerFirst NodeAddon = "shadowsocks-server-first"
-	NodeSOCKS4        NodeAddon = "socks4"
 	NodeHTTP2         NodeAddon = "standalone-http2"
 	NodeQUIC          NodeAddon = "standalone-quic"
-	NodeSSH           NodeAddon = "ssh-tcp-forwarding"
 )
 
 type NodeSelection struct {
@@ -110,12 +108,10 @@ func ResolveNode(node *NodeDescription) (*NodeSelection, error) {
 		fields.values[key] = value
 	}
 	scheme := strings.ToLower(node.Protocol)
-	var stream *StreamConfig
-	if scheme == "ssh" {
-		stream, err = nodeSSHStream(fields)
-	} else {
-		stream, err = nodeStream(fields, scheme)
+	if !supportedNodeProtocol(scheme) {
+		return nil, errors.New("node: protocol is outside this core's supported scope")
 	}
+	stream, err := nodeStream(fields, scheme)
 	if err != nil {
 		return nil, err
 	}
@@ -186,32 +182,6 @@ func ResolveNode(node *NodeDescription) (*NodeSelection, error) {
 			return nil, errors.New("node: invalid Trojan credentials")
 		}
 		settings["password"] = password
-	case "hy2", "hysteria2":
-		if credentials.ID != "" || credentials.Method != "" || credentials.Username != "" || credentials.Password == nil || password == "" || len(password) > 4096 || strings.ContainsAny(password, "\r\n\x00") {
-			return nil, errors.New("node: invalid Hysteria2 credentials")
-		}
-		protocol = "hysteria"
-		settings["version"] = 2
-		stream.HysteriaSettings.Auth = password
-	case "ssh":
-		if credentials.ID != "" || credentials.Method != "" || credentials.Username == "" || credentials.Password == nil || password == "" {
-			return nil, errors.New("node: SSH username and password are required")
-		}
-		settings["username"], settings["password"] = credentials.Username, password
-		settings["hostKey"] = fields.take("hostkey", "host-key")
-		selection.Addons = append(selection.Addons, NodeSSH)
-	case "socks", "socks5", "socks4", "socks4a", "http", "https":
-		if credentials.ID != "" || credentials.Method != "" || (credentials.Username == "" && password != "") {
-			return nil, errors.New("node: invalid proxy credentials")
-		}
-		if scheme == "socks5" {
-			protocol = "socks"
-		} else if scheme == "http" || scheme == "https" {
-			protocol = "http"
-		} else if scheme == "socks4" || scheme == "socks4a" {
-			selection.Addons = append(selection.Addons, NodeSOCKS4)
-		}
-		settings["user"], settings["pass"] = credentials.Username, password
 	default:
 		return nil, errors.New("node: protocol import is not implemented")
 	}
@@ -237,6 +207,17 @@ func ResolveNode(node *NodeDescription) (*NodeSelection, error) {
 		return nil, errors.New("node: unsupported or invalid connection settings")
 	}
 	return selection, nil
+}
+
+// Remote node input supports exactly the owner's four protocol families.
+// Local ingress, DNS and direct/block routing are core services, not nodes.
+func supportedNodeProtocol(protocol string) bool {
+	switch protocol {
+	case "ss", "trojan", "vless", "vmess":
+		return true
+	default:
+		return false
+	}
 }
 
 func ParseNodeURI(input string) (*OutboundDetourConfig, error) {

@@ -166,6 +166,9 @@ func DescribeNodeURI(input string) (*NodeDescription, error) {
 		return nil, errors.New("node URI: missing scheme")
 	}
 	scheme = strings.ToLower(scheme)
+	if !supportedNodeProtocol(scheme) {
+		return nil, errors.New("node: protocol is outside this core's supported scope")
+	}
 	fields := &nodeFields{values: make(map[string]string)}
 	var host, port, user, password, tag string
 	var hasPassword bool
@@ -230,12 +233,6 @@ func DescribeNodeURI(input string) (*NodeDescription, error) {
 			return nil, errors.New("node URI: invalid URL")
 		}
 		host, port, tag = u.Hostname(), u.Port(), u.Fragment
-		if port == "" && (scheme == "hy2" || scheme == "hysteria2") {
-			port = "443"
-		}
-		if port == "" && scheme == "ssh" {
-			port = "22"
-		}
 		if u.User != nil {
 			user = u.User.Username()
 			password, hasPassword = u.User.Password()
@@ -292,7 +289,7 @@ func DescribeNodeURI(input string) (*NodeDescription, error) {
 			return nil, errors.New("node URI: invalid identity")
 		}
 		credentials.ID = user
-	case "trojan", "hy2", "hysteria2":
+	case "trojan":
 		if hasPassword {
 			user += ":" + password
 		}

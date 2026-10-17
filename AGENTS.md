@@ -20,11 +20,15 @@
   releases, workflow dispatch/monitoring or unrelated changes.
 - Distinguish compilation, runtime/race/wire, platform/package and Internet/SDK
   acceptance. A cross-build is not runtime acceptance on the target OS.
-- Do not drop supported protocols to make the binary smaller. Measure size and
-  performance claims against equivalent builds.
+- The owner's 2026-10-17 scope change explicitly limits remote VPN protocols to
+  Shadowsocks (including SS2022), Trojan, VLESS and VMess. Remove other remote
+  proxy implementations instead of expanding the former migration backlog.
+  Preserve local SOCKS/HTTP/TUN ingress, DNS/routing/direct/block services and
+  the transports/security required by these four. HTTP/SOCKS remote clients
+  are excluded. Measure size/performance against equivalent builds.
 - Add support without reinterpreting configurations that work on pinned upstream
   `701af60772cda123492f86e383e1fdba066614a9`. Preserve ignored fields, AUTO
-  fallbacks and working original paths. All implemented additions must be
+  fallbacks and working original paths within the retained scope. Additions must be
   available in the normal distribution, without manual per-feature switches.
   Node-URI input selects its path automatically from protocol/transport/security
   metadata. Original Xray JSON/protobuf keeps its original interpretation;

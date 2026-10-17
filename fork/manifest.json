@@ -27,7 +27,7 @@
     "scope": "All fork Go tests with race detection, full vet, same-fork CLI build and classic Shadowsocks client/server TCP/UDP self-wire",
     "packages_releases_mobile_jobs": false
   },
-  "checkpoint": "ssh-in-path-tcp-forwarding",
+  "checkpoint": "four-remote-protocol-scope",
   "original_behavior_policy": {
     "baseline": "701af60772cda123492f86e383e1fdba066614a9",
     "document": "fork/VERIFICATION-PRESERVATION.md",
@@ -35,12 +35,11 @@
     "vmess_socks_ambiguous_legacy_selection": "Node URI metadata automatically generates matching internal fields; original Xray JSON ignored fields and AUTO fallbacks stay unchanged",
     "shadowsocks_server_first": "Automatic on node URI input; original full JSON retains its prior default and low-level setting",
     "http_settings": "Parsed and built only for an explicitly selected standalone HTTP2 transport",
-    "owner_stability_fixes": "Preserved; no broad reset to upstream"
+    "owner_stability_fixes": "Preserved; no broad reset to upstream",
+    "scope_override": "Owner explicitly removed other remote protocols on 2026-10-17. Retained protocol/security/routing behavior and unchanged original fixture remain protected."
   },
   "verified_custom_additions": [
-    "SSH TCP forwarding: registered inbound/outbound handlers, mandatory SHA256 host-key pin, password or explicit key-file auth, bounded channels and routing; password/pin node input through shared resolver",
-    "Hysteria2 node input: hy2/hysteria2, versioned JSON and Go descriptions select the original upstream implementation, including certificate pins and Salamander; no protocol rewrite",
-    "Unified in-path connection-data selection: URI, versioned JSON node description and Go API share ResolveNode; original full JSON/protobuf semantics preserved",
+    "Unified in-path connection-data selection: URI, versioned JSON node description and Go API share ResolveNode; retained-scope full JSON/protobuf semantics preserved",
     "Standalone legacy QUIC streams: packet NONE/AES128-GCM/ChaCha20-Poly1305 and8 camouflage names, TLS/internal-certificate mode, automatic JSON/URI selection; no XHTTP/H3 alias",
     "Legacy QUIC historical protobuf packet headers: seven original typed messages and field3, bounded conversion independent of JSON/URI selectors; ignored SRTP/uTP fields preserved",
     "Automatic common node-URI input: paths selected from node metadata without per-feature switches; original JSON semantics retained",
@@ -50,7 +49,6 @@
     "Shadowsocks bf-cfb, cast5-cfb, des-cfb, rc4, rc4-md5, salsa20, chacha20, chacha20-ietf, table, none/plain: explicit single-user TCP/UDP",
     "Original ChaCha20 64-bit counter carry, Salsa20 counter exhaustion, per-account immutable table permutations",
     "Shadowsocks camellia-128/192/256-cfb, idea-cfb, rc2-cfb (128 effective bits), seed-cfb (SEED-128): explicit single-user TCP/UDP",
-    "SOCKS4 and SOCKS4a outbound TCP CONNECT: new protocol selectors or legacySettings.version, user ID, local IPv4 versus remote domain resolution; original SOCKS5 semantics retained",
     "VMess legacySettings.security for aes-128-cfb/none framed bodies and TCP-only zero; inbound weak bodies require legacySettings.allowLegacyBody",
     "VMess legacySettings.alterId1..64 timestamp/HMAC headers and MD5 response keys; ignored top-level alterId stays modern; bounded legacy index and replay cache",
     "Standalone legacy HTTP2 TCP carrier: http/h2/http2 selectors with TLS or REALITY, explicit prior-knowledge h2c; independent transport and historical httpSettings schema; original TLS/REALITY paths unchanged"
@@ -59,16 +57,13 @@
   "classic_wire_endpoint_pairs": 32,
   "vendored_primitives": "proxy/shadowsocks/internal/cryptobin/SOURCES.json",
   "runtime_validation_platform": "windows/amd64",
-  "latest_ssh_validation": {
-    "runtime": "windows/amd64",
-    "builds": ["windows/amd64", "linux/amd64", "darwin/arm64"],
-    "document": "fork/VERIFICATION-SSH.md",
-    "remaining": "Known-hosts trust, private-key node import and independent OpenSSH/main compatibility",
-    "internet_foreign_runtime_application_abi": "not validated"
-  },
   "latest_legacy_quic_validation": {
     "runtime": "windows/amd64",
-    "builds": ["windows/amd64", "linux/amd64", "darwin/arm64"],
+    "builds": [
+      "windows/amd64",
+      "linux/amd64",
+      "darwin/arm64"
+    ],
     "document": "fork/VERIFICATION-QUIC-TYPED-HEADERS.md",
     "basic_transport_document": "fork/VERIFICATION-LEGACY-QUIC.md",
     "remaining": "Browser fingerprints, advanced modern tuning and unsupported packet carriers",
@@ -76,25 +71,30 @@
   },
   "latest_http2_reality_validation": {
     "runtime": "windows/amd64",
-    "builds": ["windows/amd64", "linux/amd64", "darwin/arm64"],
+    "builds": [
+      "windows/amd64",
+      "linux/amd64",
+      "darwin/arm64"
+    ],
     "document": "fork/VERIFICATION-HTTP2-REALITY.md",
     "alpn": "Authenticated empty or h2 only for REALITY; ordinary TLS still requires negotiated h2",
     "internet_foreign_runtime_main_wire_application_abi": "not validated"
   },
-  "latest_hysteria2_node_validation": {
-    "runtime": "windows/amd64",
-    "builds": ["windows/amd64", "linux/amd64", "darwin/arm64"],
-    "document": "fork/VERIFICATION-NODE-HYSTERIA2.md",
-    "original_implementation_modified": false,
-    "internet_foreign_runtime_application_abi": "not validated"
-  },
   "latest_node_selection_validation": {
     "runtime": "windows/amd64",
     "build": "windows/amd64",
-    "builds": ["windows/amd64", "linux/amd64", "darwin/arm64"],
+    "builds": [
+      "windows/amd64",
+      "linux/amd64",
+      "darwin/arm64"
+    ],
     "document": "fork/VERIFICATION-IN-PATH-ADDONS.md",
     "previous_document": "fork/VERIFICATION-NODE-SELECTION.md",
-    "entry_points": ["uri", "node", "Go ResolveNode"],
+    "entry_points": [
+      "uri",
+      "node",
+      "Go ResolveNode"
+    ],
     "internet_foreign_runtime_application_abi": "not validated"
   },
   "build_validation_platforms": [
@@ -104,5 +104,42 @@
   ],
   "internet_acceptance": "not tested",
   "application_sdk_acceptance": "Common Go URI entry point implemented; complete native application ABI/mobile integration not implemented or validated",
-  "ss2022_selftest_scope": "SS2022 package tests exist; classic self-wire fixture does not include SS2022"
+  "ss2022_selftest_scope": "SS2022 package tests exist; classic self-wire fixture does not include SS2022",
+  "supported_remote_protocols": [
+    "shadowsocks",
+    "trojan",
+    "vless",
+    "vmess"
+  ],
+  "scope_document": "fork/VERIFICATION-FOUR-PROTOCOL-SCOPE.md",
+  "local_core_services": [
+    "SOCKS/HTTP/mixed/TUN ingress",
+    "dokodemo/tunnel ingress",
+    "DNS/fakeDNS",
+    "direct/freedom",
+    "block/blackhole",
+    "loopback/routing",
+    "retained TCP/UDP transports and TLS/REALITY"
+  ],
+  "latest_four_protocol_validation": {
+    "document": "fork/VERIFICATION-FOUR-PROTOCOL-SCOPE.md",
+    "parent": "9278723cb56199c94b0161ec8613a45e5820ce64",
+    "source_paths": 1144,
+    "source_sha256": "6caceeefe193876c30a8b864ea9cd79db90a8274c5d3b99f0dc5794dd27ef35b",
+    "runtime": "windows/amd64;24 TCP/UDP input pairs plus17 retained original scenarios",
+    "race": "PASS full affected suite; unchanged runtime source across packaging integration; post-integration package/scope checks pass",
+    "whole_tree_compile_vet": "PASS; compilation is not whole-tree runtime acceptance",
+    "fuzz_executions": 40018,
+    "builds": [
+      "windows/amd64",
+      "linux/amd64",
+      "darwin/arm64"
+    ],
+    "windows_cli": "8 supported profiles pass;14 excluded links reject",
+    "windows_binary_bytes": 34062848,
+    "previous_windows_binary_bytes": 35952640,
+    "windows_reduction_percent": 5.26,
+    "internet_foreign_runtime_sdk": "not validated",
+    "packaging": "owner tooling retained unchanged; no packaging/distribution run"
+  }
 }

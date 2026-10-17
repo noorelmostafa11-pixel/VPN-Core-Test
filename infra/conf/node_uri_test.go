@@ -12,7 +12,6 @@ import (
 	"github.com/xtls/xray-core/common/protocol"
 	"github.com/xtls/xray-core/infra/conf"
 	"github.com/xtls/xray-core/proxy/shadowsocks"
-	"github.com/xtls/xray-core/proxy/socks"
 	"github.com/xtls/xray-core/proxy/vmess"
 	"github.com/xtls/xray-core/proxy/vmess/outbound"
 )
@@ -110,25 +109,14 @@ func TestNodeOriginalAndAddedTransports(t *testing.T) {
 			t.Fatal(network, err)
 		}
 	}
-	for _, scheme := range []string{"socks", "socks5", "socks4", "socks4a", "http", "https", "trojan"} {
+	for _, scheme := range []string{"trojan"} {
 		node, err := conf.ParseNodeURI(scheme + "://synthetic@127.0.0.1:443")
 		if err != nil {
 			t.Fatal(scheme, err)
 		}
-		if scheme == "trojan" || scheme == "https" {
+		if scheme == "trojan" {
 			if node.StreamSetting.Security != "tls" || node.StreamSetting.TLSSettings.AllowInsecure {
 				t.Fatal("default TLS policy weakened", scheme)
-			}
-		}
-		if scheme == "socks4" || scheme == "socks4a" {
-			built, _ := node.Build()
-			value, _ := built.ProxySettings.GetInstance()
-			want := socks.ClientVersion_SOCKS4
-			if scheme == "socks4a" {
-				want = socks.ClientVersion_SOCKS4A
-			}
-			if value.(*socks.ClientConfig).Version != want {
-				t.Fatal("SOCKS version substituted")
 			}
 		}
 	}
@@ -191,7 +179,7 @@ func TestNodeConcurrentSelection(t *testing.T) {
 	for range 32 {
 		group.Go(func() {
 			for range 4 {
-				if _, err := conf.ParseNodeURI("socks4a://synthetic@127.0.0.1:1080"); err != nil {
+				if _, err := conf.ParseNodeURI("trojan://synthetic@127.0.0.1:443"); err != nil {
 					t.Error(err)
 				}
 			}

@@ -25,13 +25,11 @@ func TestNodeUnifiedSelection(t *testing.T) {
 	}{
 		{"base-vless", "vless://" + nodeID + "@127.0.0.1:443", conf.NodeCredentials{ID: nodeID}, nil, nil},
 		{"base-vmess", "vmess://" + nodeID + "@127.0.0.1:443?encryption=aes-128-gcm", conf.NodeCredentials{ID: nodeID}, map[string]string{"encryption": "aes-128-gcm"}, nil},
-		{"base-socks", "socks5://synthetic@127.0.0.1:443", conf.NodeCredentials{Username: password}, nil, nil},
 		{"vmess-body", "vmess://" + nodeID + "@127.0.0.1:443?encryption=aes-128-cfb", conf.NodeCredentials{ID: nodeID}, map[string]string{"encryption": "aes-128-cfb"}, []conf.NodeAddon{conf.NodeVMessBody}},
 		{"vmess-header", "vmess://" + nodeID + "@127.0.0.1:443?aid=16", conf.NodeCredentials{ID: nodeID}, map[string]string{"aid": "16"}, []conf.NodeAddon{conf.NodeVMessHeader}},
 		{"vmess-both", "vmess://" + nodeID + "@127.0.0.1:443?aid=64&encryption=none", conf.NodeCredentials{ID: nodeID}, map[string]string{"aid": "64", "encryption": "none"}, []conf.NodeAddon{conf.NodeVMessBody, conf.NodeVMessHeader}},
 		{"added-ss", "ss://aes-192-gcm:synthetic@127.0.0.1:443", conf.NodeCredentials{Method: "aes-192-gcm", Password: &password}, nil, []conf.NodeAddon{conf.NodeSSCipher, conf.NodeSSServerFirst}},
 		{"original-ss-node-contract", "ss://aes-128-gcm:synthetic@127.0.0.1:443", conf.NodeCredentials{Method: "aes-128-gcm", Password: &password}, nil, []conf.NodeAddon{conf.NodeSSServerFirst}},
-		{"socks4a", "socks4a://synthetic@127.0.0.1:443", conf.NodeCredentials{Username: password}, nil, []conf.NodeAddon{conf.NodeSOCKS4}},
 		{"http2", "vless://" + nodeID + "@127.0.0.1:443?type=h2c", conf.NodeCredentials{ID: nodeID}, map[string]string{"type": "h2c"}, []conf.NodeAddon{conf.NodeHTTP2}},
 		{"http2-reality", "vless://" + nodeID + "@127.0.0.1:443?type=h2&security=reality&sni=example.invalid&pbk=" + key + "&sid=ab", conf.NodeCredentials{ID: nodeID}, map[string]string{"type": "h2", "security": "reality", "sni": "example.invalid", "pbk": key, "sid": "ab"}, []conf.NodeAddon{conf.NodeHTTP2}},
 		{"quic", "vless://" + nodeID + "@127.0.0.1:443?type=quic&quicsecurity=aes-128-gcm&headerType=dtls", conf.NodeCredentials{ID: nodeID}, map[string]string{"type": "quic", "quicsecurity": "aes-128-gcm", "headertype": "dtls"}, []conf.NodeAddon{conf.NodeQUIC}},
@@ -103,7 +101,6 @@ func TestNodeBaseDescriptionMatchesOriginal(t *testing.T) {
 	for _, test := range []struct{ uri, settings, protocol string }{
 		{"vless://" + nodeID + "@127.0.0.1:443", `{"address":"127.0.0.1","port":443,"id":"` + nodeID + `","encryption":"none"}`, "vless"},
 		{"vmess://" + nodeID + "@127.0.0.1:443?cipher=aes-128-gcm", `{"address":"127.0.0.1","port":443,"id":"` + nodeID + `","security":"aes-128-gcm"}`, "vmess"},
-		{"socks5://127.0.0.1:1080", `{"address":"127.0.0.1","port":1080}`, "socks"},
 	} {
 		description, err := conf.DescribeNodeURI(test.uri)
 		if err != nil {
@@ -130,7 +127,7 @@ func TestNodeBaseDescriptionMatchesOriginal(t *testing.T) {
 }
 
 func TestNodeDescriptionRejectsAmbiguity(t *testing.T) {
-	const prefix = `{"version":1,"protocol":"socks4a","address":"127.0.0.1","port":1080`
+	const prefix = `{"version":1,"protocol":"vless","address":"127.0.0.1","port":1080,"credentials":{"id":"` + nodeID + `"}`
 	for _, input := range []string{
 		`null`, `[]`, `{}`, prefix + `,"version":1}`, prefix + `,"PORT":1080}`, prefix + `,"version":2}`,
 		prefix + `,"credentials":{"username":"synthetic","Username":"other"}}`,
@@ -153,8 +150,8 @@ func TestNodeDescriptionRejectsAmbiguity(t *testing.T) {
 		{Version: 2},
 		{Version: 1, Protocol: "tuic", Address: "127.0.0.1", Port: 443},
 		{Version: 1, Protocol: "vmess", Address: "127.0.0.1", Port: 443, Credentials: conf.NodeCredentials{ID: nodeID}, Parameters: map[string]string{"aid": "65"}},
-		{Version: 1, Protocol: "socks", Address: "127.0.0.1", Port: 443, Parameters: map[string]string{"Type": "tcp", "type": "tcp"}},
-		{Version: 1, Protocol: "socks", Address: "127.0.0.1", Port: 443, Name: strings.Repeat("x", conf.MaxNodeURIBytes+1)},
+		{Version: 1, Protocol: "vless", Address: "127.0.0.1", Port: 443, Credentials: conf.NodeCredentials{ID: nodeID}, Parameters: map[string]string{"Type": "tcp", "type": "tcp"}},
+		{Version: 1, Protocol: "vless", Address: "127.0.0.1", Port: 443, Credentials: conf.NodeCredentials{ID: nodeID}, Name: strings.Repeat("x", conf.MaxNodeURIBytes+1)},
 	} {
 		if _, err := conf.ResolveNode(node); err == nil {
 			t.Fatal("invalid Go description accepted")

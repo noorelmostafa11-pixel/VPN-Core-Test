@@ -13,7 +13,7 @@ import (
 
 func TestNodeURIFileAutoAndMergedConfig(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "synthetic.uri")
-	if err := os.WriteFile(path, []byte("socks4a://synthetic@127.0.0.1:1080"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("trojan://synthetic@127.0.0.1:1080"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	config, err := core.LoadConfig("auto", cmdarg.Arg{path})
@@ -21,7 +21,7 @@ func TestNodeURIFileAutoAndMergedConfig(t *testing.T) {
 		t.Fatal("node file needed a feature switch", err)
 	}
 	merged, err := core.GetMergedConfig(cmdarg.Arg{path})
-	if err != nil || !strings.Contains(merged, "socks4a") {
+	if err != nil || !strings.Contains(merged, "trojan") {
 		t.Fatal("node file omitted from explicit merged configuration", err)
 	}
 	previous := *format

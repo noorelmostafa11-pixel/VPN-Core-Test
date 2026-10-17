@@ -1,3 +1,5 @@
+Historical checkpoint: the owner's 2026-10-17 four-protocol scope supersedes the protocol inventory below. See [current scope](VERIFICATION-FOUR-PROTOCOL-SCOPE.md) and [current resolver](VERIFICATION-IN-PATH-ADDONS.md). Removed remote protocols are not available.
+
 # Automatic node selection without replacing original paths
 
 Date: 2026-10-17. Parent: `a76d114b9695ecd2f3fe171cabcd3cfcd2d2c8dc`.

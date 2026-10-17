@@ -8,21 +8,14 @@ import (
 )
 
 func nodeStream(fields *nodeFields, scheme string) (*StreamConfig, error) {
-	hysteria2 := scheme == "hy2" || scheme == "hysteria2"
 	network := strings.ToLower(fields.take("type", "network", "net"))
 	if network == "" {
 		network = "tcp"
-		if hysteria2 {
-			network = "hysteria"
-		}
-	}
-	if hysteria2 && network != "hysteria" {
-		return nil, errors.New("node: Hysteria2 requires its original Hysteria transport")
 	}
 	p := TransportProtocol(network)
 	stream := &StreamConfig{Network: &p}
 	security := strings.ToLower(fields.take("security", "tls"))
-	if security == "" && (scheme == "trojan" || scheme == "https" || hysteria2) {
+	if security == "" && scheme == "trojan" {
 		security = "tls"
 	}
 	switch security {
@@ -54,6 +47,9 @@ func nodeStream(fields *nodeFields, scheme string) (*StreamConfig, error) {
 			return nil, errors.New("node URI: invalid certificate policy")
 		}
 		cfg := &TLSConfig{ServerName: sni, Fingerprint: fingerprint, ECHConfigList: ech, AllowInsecure: insecure == "1" || strings.EqualFold(insecure, "true")}
+		// Explicit trust metadata uses the original TLS verifier/validator.
+		cfg.PinnedPeerCertSha256 = fields.take("pcs", "pinsha256", "pinnedpeercertsha256")
+		cfg.VerifyPeerCertByName = fields.take("vcn", "verifypeercertbyname")
 		if alpn != "" {
 			list := StringList{}
 			for _, value := range strings.Split(alpn, ",") {
@@ -96,13 +92,6 @@ func nodeStream(fields *nodeFields, scheme string) (*StreamConfig, error) {
 		return nil, errors.New("node URI: transport header import is not implemented")
 	}
 	switch network {
-	case "hysteria":
-		if !hysteria2 || host != "" || path != "" {
-			return nil, errors.New("node: incompatible Hysteria2 transport metadata")
-		}
-		if err := nodeHysteria2Stream(fields, stream); err != nil {
-			return nil, err
-		}
 	case "quic":
 		if stream.Security == "tls" && fingerprint != "" && fingerprint != "unsafe" && !strings.EqualFold(fingerprint, "hellogolang") {
 			return nil, errors.New("node URI: QUIC browser TLS fingerprints are not implemented")

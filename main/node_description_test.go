@@ -12,7 +12,7 @@ import (
 
 func TestNodeDescriptionFileAndMerge(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "synthetic.node")
-	input := `{"version":1,"protocol":"socks4a","address":"127.0.0.1","port":1080}`
+	input := `{"version":1,"protocol":"trojan","address":"127.0.0.1","port":1080,"credentials":{"password":"synthetic"}}`
 	if err := os.WriteFile(path, []byte(input), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -25,7 +25,7 @@ func TestNodeDescriptionFileAndMerge(t *testing.T) {
 		t.Fatal(err)
 	}
 	merged, err := core.GetMergedConfig(cmdarg.Arg{base, path})
-	if err != nil || !strings.Contains(merged, "socks4a") || !strings.Contains(merged, "warning") {
+	if err != nil || !strings.Contains(merged, "trojan") || !strings.Contains(merged, "warning") {
 		t.Fatal("node input bypassed ordinary config merging", err)
 	}
 	previous := *format
