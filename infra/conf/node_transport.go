@@ -143,7 +143,7 @@ func nodeStream(fields *nodeFields, scheme string) (*StreamConfig, error) {
 	case "ws", "websocket":
 		stream.WSSettings = &WebSocketConfig{Host: host, Path: path}
 		var err error
-		stream.WSSettings.Headers, err = nodeHTTPTransportHeaders(fields, "wsheaders", "ws-headers", "websocketheaders")
+		stream.WSSettings.Headers, err = nodeHTTPTransportHeaders(fields, "wsheaders", "ws-headers", "websocketheaders", "headers")
 		if err != nil {
 			return nil, err
 		}
@@ -154,7 +154,7 @@ func nodeStream(fields *nodeFields, scheme string) (*StreamConfig, error) {
 	case "httpupgrade":
 		stream.HTTPUPGRADESettings = &HttpUpgradeConfig{Host: host, Path: path}
 		var err error
-		stream.HTTPUPGRADESettings.Headers, err = nodeHTTPTransportHeaders(fields, "httpupgradeheaders", "http-upgrade-headers")
+		stream.HTTPUPGRADESettings.Headers, err = nodeHTTPTransportHeaders(fields, "httpupgradeheaders", "http-upgrade-headers", "headers")
 		if err != nil {
 			return nil, err
 		}
