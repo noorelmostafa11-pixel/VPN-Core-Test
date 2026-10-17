@@ -122,6 +122,16 @@ opaque/userpass authentication, TLS SNI/certificate pins and Salamander.
 This is an input adapter, not a new Hysteria implementation or Hysteria1 alias.
 [Coverage and rejected variants](VERIFICATION-NODE-HYSTERIA2.md).
 
+## SSH TCP forwarding
+
+An added `ssh` inbound/outbound handler runs inside the existing core lifecycle.
+Password and explicit private-key/authorized-key files are supported; outbound
+host-key SHA256 pins are mandatory. URI, versioned node JSON and Go input share
+automatic selection for password/pin nodes. Server channels use Xray routing,
+not a separate target dialer or SSH executable. Known-hosts trust, private-key
+node imports, shell/exec, remote forwarding and UDP are outside this batch.
+[Settings, bounds, local endpoint tests and remaining gaps](VERIFICATION-SSH.md).
+
 ## Still to port or resolve
 
 - SS2022 fork/main interoperability requires a separate key/configuration-aware
@@ -133,8 +143,11 @@ This is an input adapter, not a new Hysteria implementation or Hysteria1 alias.
   variants are rejected, not substituted.
   [Transport scope](VERIFICATION-LEGACY-QUIC.md) and
   [protobuf scope](VERIFICATION-QUIC-TYPED-HEADERS.md).
-- Hysteria 1, TUIC v5, AnyTLS, ShadowTLS v2/v3 and SSH proxy endpoints absent from
+- Hysteria 1, TUIC v5, AnyTLS and ShadowTLS v2/v3 proxy endpoints absent from
   the pinned upstream proxy registrations.
+- SSH known-hosts trust and private-key node import remain pending; current SSH
+  client support requires an explicit SHA256 host-key pin. No general SSH
+  application/agent, command execution or remote forwarding is promised.
 - SIP003 wrapper/plugin semantics and custom health/body validation need a
   deeper comparison before declaring what upstream lacks.
 - Remaining application configuration/subscription import and SDK interfaces

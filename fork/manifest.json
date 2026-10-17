@@ -27,7 +27,7 @@
     "scope": "All fork Go tests with race detection, full vet, same-fork CLI build and classic Shadowsocks client/server TCP/UDP self-wire",
     "packages_releases_mobile_jobs": false
   },
-  "checkpoint": "hysteria2-shared-node-input",
+  "checkpoint": "ssh-in-path-tcp-forwarding",
   "original_behavior_policy": {
     "baseline": "701af60772cda123492f86e383e1fdba066614a9",
     "document": "fork/VERIFICATION-PRESERVATION.md",
@@ -38,6 +38,7 @@
     "owner_stability_fixes": "Preserved; no broad reset to upstream"
   },
   "verified_custom_additions": [
+    "SSH TCP forwarding: registered inbound/outbound handlers, mandatory SHA256 host-key pin, password or explicit key-file auth, bounded channels and routing; password/pin node input through shared resolver",
     "Hysteria2 node input: hy2/hysteria2, versioned JSON and Go descriptions select the original upstream implementation, including certificate pins and Salamander; no protocol rewrite",
     "Unified in-path connection-data selection: URI, versioned JSON node description and Go API share ResolveNode; original full JSON/protobuf semantics preserved",
     "Standalone legacy QUIC streams: packet NONE/AES128-GCM/ChaCha20-Poly1305 and8 camouflage names, TLS/internal-certificate mode, automatic JSON/URI selection; no XHTTP/H3 alias",
@@ -58,6 +59,13 @@
   "classic_wire_endpoint_pairs": 32,
   "vendored_primitives": "proxy/shadowsocks/internal/cryptobin/SOURCES.json",
   "runtime_validation_platform": "windows/amd64",
+  "latest_ssh_validation": {
+    "runtime": "windows/amd64",
+    "builds": ["windows/amd64", "linux/amd64", "darwin/arm64"],
+    "document": "fork/VERIFICATION-SSH.md",
+    "remaining": "Known-hosts trust, private-key node import and independent OpenSSH/main compatibility",
+    "internet_foreign_runtime_application_abi": "not validated"
+  },
   "latest_legacy_quic_validation": {
     "runtime": "windows/amd64",
     "builds": ["windows/amd64", "linux/amd64", "darwin/arm64"],

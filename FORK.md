@@ -104,6 +104,12 @@ existing REALITY transports are unchanged.
 [REALITY pairing, ALPN semantics and checks](fork/VERIFICATION-HTTP2-REALITY.md).
 [Settings, local results and known ECH test failure](fork/VERIFICATION-HTTP2.md).
 
+SSH TCP forwarding is available through ordinary `ssh` inbound/outbound
+handlers and automatic node selection, with mandatory outbound SHA256 host-key
+verification. Both roles support password or explicitly configured key files;
+node imports accept password/pin connection data without reading local files.
+[Settings, independent local peers and limits](fork/VERIFICATION-SSH.md).
+
 This is not complete feature parity, Internet acceptance or stability on all
 platforms. Xray's CLI is not yet a drop-in replacement for the native core's
 application/SDK interfaces. See the [comparison backlog](fork/COMPARISON.md).

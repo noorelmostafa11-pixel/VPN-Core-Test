@@ -32,9 +32,14 @@ dependency, workflow, compatibility runner or shared original fixture is edited.
 
 ## Implemented capability inventory
 
+This inventory includes the later Hysteria2 input adapter and SSH forwarding
+batches. Their linked records contain their own validation; the verification
+section below retains the original refactor checkpoint's results.
+
 | Connection data | Selected responsibility | Core representation and limit |
 | --- | --- | --- |
 | Modern VLESS/VMess, Trojan, SOCKS5, HTTP/HTTPS; original transports | Original registered support | No legacy selector for a base node; original authentication and security validation |
+| Hysteria2 protocol metadata | Original registered support | Existing Hysteria2 handler/transport, TLS, pins and Salamander; [input adapter scope](VERIFICATION-NODE-HYSTERIA2.md) |
 | VMess alterId1..64 | `vmess-legacy-header` | Matching internal legacy account fields; bounded historical header/replay implementation |
 | VMess CFB/NONE/ZERO body | `vmess-legacy-body` | Explicit internal body selector; ZERO remains raw TCP-only semantics |
 | Added classic SS method | `shadowsocks-added-cipher` | Matching method enum/key/IV; unauthenticated methods remain single-user |
@@ -42,6 +47,7 @@ dependency, workflow, compatibility runner or shared original fixture is edited.
 | SOCKS4/4a protocol | `socks4` | Existing registered SOCKS4 CONNECT implementation; no password/UDP/IPv6 substitution |
 | HTTP/H2/H2C transport | `standalone-http2` | Existing separate HTTP2 carrier, with its TLS/REALITY/h2c rules |
 | QUIC transport | `standalone-quic` | Existing separate legacy QUIC carrier; browser fingerprints/unsupported tuning still reject |
+| SSH protocol, username/password and verified host pin | `ssh-tcp-forwarding` | Added registered TCP forwarding handler with existing Xray lifecycle/routing; [SSH bounds and checks](VERIFICATION-SSH.md) |
 
 SS2022 stays in the original SS2022 handler, without the unrelated classic
 server-first selector. Classic SS server-first behavior is a retained node-input
@@ -52,8 +58,9 @@ Metadata can select more than one responsibility (for example legacy VMess body
 and header over QUIC). Unknown ciphers, protocols, transports, conflicting
 aliases and unsupported security pairings reject; capabilities are never tried
 in sequence. The supported vocabulary stays bounded to the already implemented
-common node imports. Missing Hysteria1/TUIC/AnyTLS/ShadowTLS/SSH and remaining
-subscription/plugin variants do not become supported through this refactor.
+common node imports. Missing Hysteria1/TUIC/AnyTLS/ShadowTLS and remaining
+subscription/plugin variants remain unsupported. SSH is a subsequent added
+handler, not an implicit protocol alias created by the original refactor.
 
 The resumed pending QUIC adapter also restores the seven historical typed packet
 headers within the already registered QUIC transport. Its independent wire
@@ -65,7 +72,8 @@ One node description has version1, a protocol/address/nonzero port, optional
 name, protocol-specific credentials and connection `parameters`. Parameters
 are strings with the same meaning and alias/conflict rules as URI query data.
 Credentials use `id` for VMess/VLESS, `method` plus `password` for SS, `password`
-for Trojan, or `username`/optional `password` for SOCKS/HTTP. Mixed credential
+for Trojan/Hysteria2, `username`/optional `password` for SOCKS/HTTP, or required
+`username`/`password` plus a host-key parameter for SSH. Mixed credential
 types reject. This JSON object is never auto-detected inside an original `.json`.
 
 Synthetic example, using metadata instead of a manual legacy enable switch:

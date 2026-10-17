@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package xray.proxy.ssh;
+option go_package = "github.com/xtls/xray-core/proxy/ssh";
+
+import "common/net/address.proto";
+
+message ClientConfig {
+  xray.common.net.IPOrDomain address = 1;
+  uint32 port = 2;
+  string username = 3;
+  string password = 4;
+  string host_key = 5;
+  string private_key_file = 6;
+  string private_key_passphrase = 7;
+  uint32 user_level = 8;
+}
+
+message ServerConfig {
+  string host_key_file = 1;
+  string host_key_passphrase = 2;
+  string username = 3;
+  string password = 4;
+  string authorized_keys_file = 5;
+  uint32 user_level = 6;
+}

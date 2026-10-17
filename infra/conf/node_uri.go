@@ -233,6 +233,9 @@ func DescribeNodeURI(input string) (*NodeDescription, error) {
 		if port == "" && (scheme == "hy2" || scheme == "hysteria2") {
 			port = "443"
 		}
+		if port == "" && scheme == "ssh" {
+			port = "22"
+		}
 		if u.User != nil {
 			user = u.User.Username()
 			password, hasPassword = u.User.Password()

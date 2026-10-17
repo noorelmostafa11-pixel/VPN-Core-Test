@@ -44,6 +44,7 @@ const (
 	NodeSOCKS4        NodeAddon = "socks4"
 	NodeHTTP2         NodeAddon = "standalone-http2"
 	NodeQUIC          NodeAddon = "standalone-quic"
+	NodeSSH           NodeAddon = "ssh-tcp-forwarding"
 )
 
 type NodeSelection struct {
@@ -109,7 +110,12 @@ func ResolveNode(node *NodeDescription) (*NodeSelection, error) {
 		fields.values[key] = value
 	}
 	scheme := strings.ToLower(node.Protocol)
-	stream, err := nodeStream(fields, scheme)
+	var stream *StreamConfig
+	if scheme == "ssh" {
+		stream, err = nodeSSHStream(fields)
+	} else {
+		stream, err = nodeStream(fields, scheme)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -187,6 +193,13 @@ func ResolveNode(node *NodeDescription) (*NodeSelection, error) {
 		protocol = "hysteria"
 		settings["version"] = 2
 		stream.HysteriaSettings.Auth = password
+	case "ssh":
+		if credentials.ID != "" || credentials.Method != "" || credentials.Username == "" || credentials.Password == nil || password == "" {
+			return nil, errors.New("node: SSH username and password are required")
+		}
+		settings["username"], settings["password"] = credentials.Username, password
+		settings["hostKey"] = fields.take("hostkey", "host-key")
+		selection.Addons = append(selection.Addons, NodeSSH)
 	case "socks", "socks5", "socks4", "socks4a", "http", "https":
 		if credentials.ID != "" || credentials.Method != "" || (credentials.Username == "" && password != "") {
 			return nil, errors.New("node: invalid proxy credentials")
