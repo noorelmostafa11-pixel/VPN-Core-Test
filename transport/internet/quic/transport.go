@@ -15,7 +15,6 @@ import (
 	"github.com/xtls/xray-core/transport/internet"
 	"github.com/xtls/xray-core/transport/internet/stat"
 	"github.com/xtls/xray-core/transport/internet/tls"
-	"google.golang.org/protobuf/proto"
 )
 
 func settingsConfig(settings *internet.MemoryStreamConfig) (*Config, error) {
@@ -32,8 +31,8 @@ func settingsConfig(settings *internet.MemoryStreamConfig) (*Config, error) {
 	if (settings.SecuritySettings != nil || settings.SecurityType != "") && tls.ConfigFromStreamSettings(settings) == nil {
 		return nil, errors.New("legacy QUIC: unsupported or missing TLS settings")
 	}
-	if settings.QuicParams != nil && proto.Size(settings.QuicParams) != 0 {
-		return nil, errors.New("legacy QUIC: custom modern QUIC parameters are not supported")
+	if err := ValidateLegacyQUICParams(settings.QuicParams); err != nil {
+		return nil, err
 	}
 	return config, nil
 }
@@ -147,7 +146,7 @@ func Dial(ctx context.Context, dest xnet.Destination, settings *internet.MemoryS
 			packet.Close()
 		}
 	}()
-	parent, err := transport.Dial(handshake, carrier.RemoteAddr(), security, quicConfig())
+	parent, err := transport.Dial(handshake, carrier.RemoteAddr(), security, tunedLegacyQUICConfig(settings.QuicParams))
 	if err != nil {
 		return nil, err
 	}
@@ -274,7 +273,7 @@ func Listen(ctx context.Context, address xnet.Address, port xnet.Port, settings 
 		return nil, err
 	}
 	transport := &q.Transport{Conn: packet, ConnectionIDLength: 12, DisableGSO: true}
-	listener, err := transport.Listen(security, quicConfig())
+	listener, err := transport.Listen(security, tunedLegacyQUICConfig(settings.QuicParams))
 	if err != nil {
 		transport.Close()
 		packet.Close()

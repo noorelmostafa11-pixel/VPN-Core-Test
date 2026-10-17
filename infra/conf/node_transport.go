@@ -117,6 +117,11 @@ func nodeStream(fields *nodeFields, scheme string) (*StreamConfig, error) {
 		domain := fields.take("headerdomain", "header-domain", "header_domain")
 		encoded, _ := json.Marshal(map[string]string{"type": header, "domain": domain})
 		stream.QUICSettings = &QUICConfig{Security: cipher, Key: key, Header: encoded}
+		var err error
+		stream.FinalMask, err = nodeLegacyQUICTuning(fields)
+		if err != nil {
+			return nil, err
+		}
 	case "tcp", "raw":
 		if mode != "" || service != "" || extra != "" {
 			return nil, errors.New("node URI: unsupported raw transport parameters")
