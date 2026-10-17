@@ -102,6 +102,10 @@ func TestAddedLegacyTransportRejectsUnsupportedMetadata(t *testing.T) {
 		"kcp-domain-requires-dns":"mkcp&headerType=srtp&headerdomain=cdn.example.invalid",
 		"kcp-host-requires-dns":"mkcp&headerType=dtls&host=cdn.example.invalid",
 		"unrelated-seed":"tcp&seed=secret",
+		"kcp-empty-mtu": "mkcp&mtu=",
+		"kcp-empty-tti": "mkcp&tti=",
+		"kcp-empty-seed": "mkcp&seed=",
+		"kcp-empty-domain": "mkcp&headerType=dns&headerdomain=",
 	} {
 		t.Run(name,func(t *testing.T){if _,err:=conf.ParseNodeURI(base+suffix);err==nil {t.Fatal("invalid metadata accepted")}})
 	}

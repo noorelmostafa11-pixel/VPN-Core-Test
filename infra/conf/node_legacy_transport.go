@@ -62,8 +62,17 @@ func nodeLegacyKCP(fields *nodeFields, header, host, path string) (*KCPConfig, *
 		{[]string{"cwndmultiplier", "cwnd-multiplier"}, &config.CwndMultiplier},
 		{[]string{"maxsendingwindow", "max-sending-window"}, &config.MaxSendingWindow},
 	} {
+		present := false
+		for _, name := range entry.names {
+			if _, ok := fields.values[name]; ok {
+				present = true
+			}
+		}
 		value := fields.take(entry.names...)
 		if value == "" {
+			if present {
+				return nil, nil, errors.New("node URI: empty mKCP numeric parameter")
+			}
 			continue
 		}
 		number, err := strconv.ParseUint(value, 10, 32)
@@ -74,14 +83,27 @@ func nodeLegacyKCP(fields *nodeFields, header, host, path string) (*KCPConfig, *
 		*entry.target = &num
 		selected = true
 	}
+	_, seedPresent := fields.values["seed"]
 	seed := fields.take("seed")
+	if seedPresent && seed == "" {
+		return nil, nil, errors.New("node URI: empty mKCP seed")
+	}
 	if path != "" {
 		if seed != "" && seed != path {
 			return nil, nil, errors.New("node URI: conflicting mKCP seed")
 		}
 		seed = path // Historical VMess share links put mKCP seed in path.
 	}
+	domainPresent := false
+	for _, name := range []string{"headerdomain", "header-domain", "header_domain"} {
+		if _, ok := fields.values[name]; ok {
+			domainPresent = true
+		}
+	}
 	domain := fields.take("headerdomain", "header-domain", "header_domain")
+	if domainPresent && domain == "" {
+		return nil, nil, errors.New("node URI: empty mKCP DNS domain")
+	}
 	if host != "" {
 		if header != "dns" || (domain != "" && domain != host) {
 			return nil, nil, errors.New("node URI: unsupported mKCP host")
