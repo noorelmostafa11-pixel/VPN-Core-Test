@@ -19,6 +19,12 @@ unchanged to keep upstream imports and future merges compatible.
 
 ## Checkpoint
 
+Hysteria2 `hy2`/`hysteria2` links, structured node JSON and the Go description
+API now reach Xray's existing Hysteria2 handler/transport through the same
+resolver. Authentication, TLS certificate pins and Salamander metadata are
+preserved; original protocol/security code is unchanged.
+[Input scope and live checks](fork/VERIFICATION-NODE-HYSTERIA2.md).
+
 One connection-data integration point now owns automatic capability selection:
 `conf.ResolveNode`. URI input, a versioned JSON node description (`.node`) and
 the Go description API use that same point before the normal Xray configuration

@@ -180,6 +180,13 @@ func ResolveNode(node *NodeDescription) (*NodeSelection, error) {
 			return nil, errors.New("node: invalid Trojan credentials")
 		}
 		settings["password"] = password
+	case "hy2", "hysteria2":
+		if credentials.ID != "" || credentials.Method != "" || credentials.Username != "" || credentials.Password == nil || password == "" || len(password) > 4096 || strings.ContainsAny(password, "\r\n\x00") {
+			return nil, errors.New("node: invalid Hysteria2 credentials")
+		}
+		protocol = "hysteria"
+		settings["version"] = 2
+		stream.HysteriaSettings.Auth = password
 	case "socks", "socks5", "socks4", "socks4a", "http", "https":
 		if credentials.ID != "" || credentials.Method != "" || (credentials.Username == "" && password != "") {
 			return nil, errors.New("node: invalid proxy credentials")

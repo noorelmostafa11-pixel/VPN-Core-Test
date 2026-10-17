@@ -27,7 +27,7 @@
     "scope": "All fork Go tests with race detection, full vet, same-fork CLI build and classic Shadowsocks client/server TCP/UDP self-wire",
     "packages_releases_mobile_jobs": false
   },
-  "checkpoint": "unified-in-path-node-capability-selection",
+  "checkpoint": "hysteria2-shared-node-input",
   "original_behavior_policy": {
     "baseline": "701af60772cda123492f86e383e1fdba066614a9",
     "document": "fork/VERIFICATION-PRESERVATION.md",
@@ -38,6 +38,7 @@
     "owner_stability_fixes": "Preserved; no broad reset to upstream"
   },
   "verified_custom_additions": [
+    "Hysteria2 node input: hy2/hysteria2, versioned JSON and Go descriptions select the original upstream implementation, including certificate pins and Salamander; no protocol rewrite",
     "Unified in-path connection-data selection: URI, versioned JSON node description and Go API share ResolveNode; original full JSON/protobuf semantics preserved",
     "Standalone legacy QUIC streams: packet NONE/AES128-GCM/ChaCha20-Poly1305 and8 camouflage names, TLS/internal-certificate mode, automatic JSON/URI selection; no XHTTP/H3 alias",
     "Legacy QUIC historical protobuf packet headers: seven original typed messages and field3, bounded conversion independent of JSON/URI selectors; ignored SRTP/uTP fields preserved",
@@ -71,6 +72,13 @@
     "document": "fork/VERIFICATION-HTTP2-REALITY.md",
     "alpn": "Authenticated empty or h2 only for REALITY; ordinary TLS still requires negotiated h2",
     "internet_foreign_runtime_main_wire_application_abi": "not validated"
+  },
+  "latest_hysteria2_node_validation": {
+    "runtime": "windows/amd64",
+    "builds": ["windows/amd64", "linux/amd64", "darwin/arm64"],
+    "document": "fork/VERIFICATION-NODE-HYSTERIA2.md",
+    "original_implementation_modified": false,
+    "internet_foreign_runtime_application_abi": "not validated"
   },
   "latest_node_selection_validation": {
     "runtime": "windows/amd64",

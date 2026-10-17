@@ -188,6 +188,7 @@ func TestNodeDescriptionConcurrentReadOnly(t *testing.T) {
 }
 
 func FuzzNodeDescription(f *testing.F) {
+	f.Add([]byte(`{"version":1,"protocol":"hysteria2","address":"127.0.0.1","port":443,"credentials":{"password":"user:synthetic"},"parameters":{"sni":"node-hy.example","obfs":"salamander","obfs-password":"synthetic-obfs"}}`))
 	for _, input := range []string{`{}`, `null`, `{"version":1,"protocol":"socks4a","address":"127.0.0.1","port":1080}`, `{"version":1,"protocol":"vmess","address":"127.0.0.1","port":443,"credentials":{"id":"` + nodeID + `"},"parameters":{"aid":"16","cipher":"aes-128-cfb"}}`} {
 		f.Add([]byte(input))
 	}

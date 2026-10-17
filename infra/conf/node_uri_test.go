@@ -201,6 +201,8 @@ func TestNodeConcurrentSelection(t *testing.T) {
 }
 
 func FuzzNodeURI(f *testing.F) {
+	f.Add("hy2://synthetic@127.0.0.1/?sni=node-hy.example")
+	f.Add("hysteria2://user:synthetic@127.0.0.1:443?obfs=salamander&obfs-password=synthetic-obfs")
 	for _, seed := range []string{"", "socks4a://127.0.0.1:1080", "ss://YWVzLTEyOC1nY206c3ludGhldGlj@127.0.0.1:443", "vless://" + nodeID + "@127.0.0.1:443?type=ws", "vmess://" + nodeID + "@127.0.0.1:443?aid=16&encryption=aes-128-cfb", "trojan://synthetic@127.0.0.1:443"} {
 		f.Add(seed)
 	}

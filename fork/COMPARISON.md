@@ -116,6 +116,12 @@ server-first handling, is retained. This is not complete main URI/SDK parity.
 [Architecture, inventory and current checks](VERIFICATION-IN-PATH-ADDONS.md);
 [earlier URI coverage](VERIFICATION-NODE-SELECTION.md).
 
+Hysteria2 now joins this shared input path using the existing upstream protocol
+and transport. Both URI names, structured descriptions and Go input preserve
+opaque/userpass authentication, TLS SNI/certificate pins and Salamander.
+This is an input adapter, not a new Hysteria implementation or Hysteria1 alias.
+[Coverage and rejected variants](VERIFICATION-NODE-HYSTERIA2.md).
+
 ## Still to port or resolve
 
 - SS2022 fork/main interoperability requires a separate key/configuration-aware
