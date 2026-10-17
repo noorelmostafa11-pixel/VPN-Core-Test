@@ -66,3 +66,11 @@ ehthumbs.db
 # Other common ignores
 *.bak
 *.tmp
+
+# Third-party, checksum-locked runtime files (not built xray binaries)
+/dist/
+!assets/shared/geoip.dat
+!assets/shared/geosite.dat
+!assets/windows/386/wintun.dll
+!assets/windows/amd64/wintun.dll
+!assets/windows/arm64/wintun.dll

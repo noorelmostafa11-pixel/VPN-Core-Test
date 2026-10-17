@@ -135,3 +135,12 @@ go build -trimpath -ldflags="-s -w" -o xray ./main
 
 Stripping debug symbols does not remove protocol implementations. No size or
 performance improvement over upstream is claimed without a measured comparison.
+
+## Offline target packaging (input assets still required)
+
+A Go-only per-target packaging command is provided at [tools/package](tools/package):
+`go run ./tools/package -os windows -arch amd64 -offline`. See
+[PACKAGING.md](PACKAGING.md) for the platform matrix, required checksum-locked
+Geo/Wintun assets and vendored Go dependencies. At this revision these external
+files have not yet been committed; packaging fails closed until they are present.
+The existing manual-only compatibility workflow is unchanged.
