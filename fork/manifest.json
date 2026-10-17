@@ -27,7 +27,7 @@
     "scope": "All fork Go tests with race detection, full vet, same-fork CLI build and classic Shadowsocks client/server TCP/UDP self-wire",
     "packages_releases_mobile_jobs": false
   },
-  "checkpoint": "automatic-node-uri-selection",
+  "checkpoint": "standalone-http2-reality-pairing",
   "original_behavior_policy": {
     "baseline": "701af60772cda123492f86e383e1fdba066614a9",
     "document": "fork/VERIFICATION-PRESERVATION.md",
@@ -48,12 +48,19 @@
     "SOCKS4 and SOCKS4a outbound TCP CONNECT: new protocol selectors or legacySettings.version, user ID, local IPv4 versus remote domain resolution; original SOCKS5 semantics retained",
     "VMess legacySettings.security for aes-128-cfb/none framed bodies and TCP-only zero; inbound weak bodies require legacySettings.allowLegacyBody",
     "VMess legacySettings.alterId1..64 timestamp/HMAC headers and MD5 response keys; ignored top-level alterId stays modern; bounded legacy index and replay cache",
-    "Standalone legacy HTTP2 TCP carrier: http/h2/http2 selectors with TLS, explicit prior-knowledge h2c; independent transport and historical httpSettings schema; REALITY pairing pending and rejected"
+    "Standalone legacy HTTP2 TCP carrier: http/h2/http2 selectors with TLS or REALITY, explicit prior-knowledge h2c; independent transport and historical httpSettings schema; original TLS/REALITY paths unchanged"
   ],
   "classic_wire_method_names": 32,
   "classic_wire_endpoint_pairs": 32,
   "vendored_primitives": "proxy/shadowsocks/internal/cryptobin/SOURCES.json",
   "runtime_validation_platform": "windows/amd64",
+  "latest_http2_reality_validation": {
+    "runtime": "windows/amd64",
+    "builds": ["windows/amd64", "linux/amd64", "darwin/arm64"],
+    "document": "fork/VERIFICATION-HTTP2-REALITY.md",
+    "alpn": "Authenticated empty or h2 only for REALITY; ordinary TLS still requires negotiated h2",
+    "internet_foreign_runtime_main_wire_application_abi": "not validated"
+  },
   "latest_node_selection_validation": {
     "runtime": "windows/amd64",
     "build": "windows/amd64",

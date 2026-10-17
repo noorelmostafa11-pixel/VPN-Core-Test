@@ -91,7 +91,9 @@ and exact120003-byte streams. A configured VLESS core-to-core h2c case passes to
 These are not independent main/private-node or foreign-platform acceptance.
 Host/method/path matching is exact (not the old upstream prefix-path listener),
 reserved transport headers are rejected, and no global client pool is introduced.
-HTTP/2 + REALITY is explicitly pending, not silently changed to TLS or cleartext.
+HTTP/2 + REALITY is now an additional pairing, not changed to TLS or cleartext.
+Pinned REALITY's authenticated empty ALPN uses an explicit H2 preface; ordinary
+TLS still requires negotiated `h2`. [Pairing checks](VERIFICATION-HTTP2-REALITY.md).
 The broad TLS suite still fails its unchanged external ECH test; offline checks
 pass, not the whole TLS suite. [Full evidence and limits](VERIFICATION-HTTP2.md).
 
@@ -115,8 +117,6 @@ meaning. This is a bounded input importer, not complete main URI/SDK parity.
 - SS2022 fork/main interoperability requires a separate key/configuration-aware
   fixture. The existing upstream package race suite passes; that is not proof
   of compatibility with main, private nodes or every application setting.
-- Complete and verify the standalone HTTP/2 + REALITY pairing. This batch restores
-  TLS and h2c only; the existing REALITY/TCP/XHTTP implementations are retained.
 - Legacy standalone QUIC removed from upstream. XHTTP is not an interchangeable
   wire-level alias for that protocol.
 - Hysteria 1, TUIC v5, AnyTLS, ShadowTLS v2/v3 and SSH proxy endpoints absent from

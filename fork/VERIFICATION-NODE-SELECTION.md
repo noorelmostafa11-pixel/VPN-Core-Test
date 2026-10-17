@@ -21,7 +21,8 @@ Supported node input in this batch:
 - Existing raw/TCP, WebSocket, HTTPUpgrade, gRPC, XHTTP, HTTP2/h2c and default
   mKCP transport selections. TLS/REALITY metadata is preserved and validated by
   the original builders; an unsupported pairing remains an error, not another
-  transport. HTTP2+REALITY and standalone QUIC are still pending.
+  transport. HTTP2+REALITY is now available in the subsequent
+  [pairing checkpoint](VERIFICATION-HTTP2-REALITY.md); standalone QUIC is pending.
 
 For VMess, cipher and alterId come from the node profile; needed low-level
 legacySettings/protobuf flags are generated internally. SOCKS4/4a selects the

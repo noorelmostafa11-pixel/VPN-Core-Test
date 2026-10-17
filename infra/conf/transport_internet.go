@@ -120,8 +120,8 @@ func (c *StreamConfig) Build() (*internet.StreamConfig, error) {
 	}
 	if config.ProtocolName == "http" {
 		security := strings.ToLower(c.Security)
-		if security != "" && security != "none" && security != "tls" {
-			return nil, errors.New("legacy HTTP/2 currently supports TLS or cleartext h2c only")
+		if security != "" && security != "none" && security != "tls" && security != "reality" {
+			return nil, errors.New("legacy HTTP/2 supports TLS, REALITY or cleartext h2c only")
 		}
 		if c.Network != nil && strings.EqualFold(string(*c.Network), "h2c") && security != "" && security != "none" {
 			return nil, errors.New("h2c requires cleartext security none")
@@ -143,7 +143,7 @@ func (c *StreamConfig) Build() (*internet.StreamConfig, error) {
 		config.SecuritySettings = append(config.SecuritySettings, tm)
 		config.SecurityType = tm.Type
 	case "reality":
-		if config.ProtocolName != "tcp" && config.ProtocolName != "splithttp" && config.ProtocolName != "grpc" {
+		if config.ProtocolName != "tcp" && config.ProtocolName != "splithttp" && config.ProtocolName != "grpc" && config.ProtocolName != "http" {
 			return nil, errors.New("REALITY only supports RAW, XHTTP and gRPC for now.")
 		}
 		if c.REALITYSettings == nil {

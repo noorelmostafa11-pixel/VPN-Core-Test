@@ -11,11 +11,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	goreality "github.com/xtls/reality"
 	"github.com/xtls/xray-core/common"
 	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/net"
 	http_proto "github.com/xtls/xray-core/common/protocol/http"
 	"github.com/xtls/xray-core/transport/internet"
+	"github.com/xtls/xray-core/transport/internet/reality"
 	"github.com/xtls/xray-core/transport/internet/stat"
 	"github.com/xtls/xray-core/transport/internet/tls"
 	"golang.org/x/net/http2"
@@ -97,19 +99,20 @@ func (c *serverConn) SetDeadline(t time.Time) error {
 }
 
 type Listener struct {
-	listener    net.Listener
-	config      *Config
-	tlsConfig   *gotls.Config
-	handler     internet.ConnHandler
-	ctx         context.Context
-	cancel      context.CancelFunc
-	mu          sync.Mutex
-	closed      bool
-	connections map[net.Conn]struct{}
-	streams     map[*serverConn]struct{}
-	workers     sync.WaitGroup
-	done        chan struct{}
-	stopParent  func() bool
+	listener      net.Listener
+	config        *Config
+	tlsConfig     *gotls.Config
+	realityConfig *goreality.Config
+	handler       internet.ConnHandler
+	ctx           context.Context
+	cancel        context.CancelFunc
+	mu            sync.Mutex
+	closed        bool
+	connections   map[net.Conn]struct{}
+	streams       map[*serverConn]struct{}
+	workers       sync.WaitGroup
+	done          chan struct{}
+	stopParent    func() bool
 }
 
 func (l *Listener) Addr() net.Addr { return l.listener.Addr() }
@@ -235,6 +238,19 @@ func (l *Listener) accept(trusted []string) {
 				conn = secure
 				state := secure.(*tls.Conn).ConnectionState()
 				tlsState = &state
+			} else if l.realityConfig != nil {
+				secure, err := goreality.Server(l.ctx, raw, l.realityConfig)
+				if err != nil {
+					return
+				}
+				conn = secure
+				state := secure.ConnectionState()
+				if !state.HandshakeComplete || !realityHTTP2ALPN(state.NegotiatedProtocol) {
+					return
+				}
+				// x/net/http2 expects crypto/tls state, not REALITY's distinct type.
+				// Expose actual negotiated values; never represent this as h2c.
+				tlsState = &gotls.ConnectionState{Version: state.Version, HandshakeComplete: state.HandshakeComplete, CipherSuite: state.CipherSuite, NegotiatedProtocol: state.NegotiatedProtocol, NegotiatedProtocolIsMutual: state.NegotiatedProtocolIsMutual, ServerName: state.ServerName}
 			}
 			raw.SetWriteDeadline(time.Time{})
 			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { l.serveHTTP(w, r, raw, trusted) })
@@ -264,8 +280,9 @@ func Listen(ctx context.Context, address net.Address, port net.Port, settings *i
 		return nil, err
 	}
 	security := tls.ConfigFromStreamSettings(settings)
-	if (settings.SecuritySettings != nil || settings.SecurityType != "") && security == nil {
-		return nil, errors.New("legacy HTTP/2 currently supports TLS or explicit cleartext h2c, not this security type")
+	realitySecurity := reality.ConfigFromStreamSettings(settings)
+	if (settings.SecuritySettings != nil || settings.SecurityType != "") && security == nil && realitySecurity == nil {
+		return nil, errors.New("legacy HTTP/2 supports TLS, REALITY or explicit cleartext h2c, not this security type")
 	}
 	var tlsConfig *gotls.Config
 	if security != nil {
@@ -292,6 +309,14 @@ func Listen(ctx context.Context, address net.Address, port net.Port, settings *i
 	}
 	listenCtx, cancel := context.WithCancel(ctx)
 	l := &Listener{listener: raw, config: config, tlsConfig: tlsConfig, handler: handler, ctx: listenCtx, cancel: cancel, connections: make(map[net.Conn]struct{}), streams: make(map[*serverConn]struct{}), done: make(chan struct{})}
+	if realitySecurity != nil {
+		l.realityConfig = boundedRealityConfig(listenCtx, realitySecurity)
+		if err := waitRealityTarget(listenCtx, l.realityConfig); err != nil {
+			raw.Close()
+			cancel()
+			return nil, err
+		}
+	}
 	var trusted []string
 	if settings.SocketSettings != nil {
 		trusted = slices.Clone(settings.SocketSettings.TrustedXForwardedFor)

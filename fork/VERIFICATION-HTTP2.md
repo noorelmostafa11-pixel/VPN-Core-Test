@@ -1,5 +1,9 @@
 # Standalone legacy HTTP/2 and h2c
 
+Later checkpoint: [HTTP/2 with REALITY](VERIFICATION-HTTP2-REALITY.md) is now an
+additional pairing. The original TLS/h2c behavior described here is preserved;
+the pending-REALITY statements below describe this initial historical batch.
+
 Base: `8ef6465870c7c6e1964d353b65b0078cfa198fd5` plus this batch. Before the
 patch, all four selector tests failed: `http`/`h2` were removed, while
 `http2`/`h2c` were unknown. The failing log is retained outside Git.

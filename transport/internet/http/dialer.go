@@ -14,6 +14,7 @@ import (
 	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/transport/internet"
+	"github.com/xtls/xray-core/transport/internet/reality"
 	"github.com/xtls/xray-core/transport/internet/stat"
 	"github.com/xtls/xray-core/transport/internet/tls"
 	"golang.org/x/net/http2"
@@ -86,8 +87,9 @@ func Dial(ctx context.Context, dest net.Destination, settings *internet.MemorySt
 	if err := config.Validate(); err != nil {
 		return nil, err
 	}
-	if (settings.SecuritySettings != nil || settings.SecurityType != "") && tls.ConfigFromStreamSettings(settings) == nil {
-		return nil, errors.New("legacy HTTP/2 currently supports TLS or explicit cleartext h2c, not this security type")
+	realitySecurity := reality.ConfigFromStreamSettings(settings)
+	if (settings.SecuritySettings != nil || settings.SecurityType != "") && tls.ConfigFromStreamSettings(settings) == nil && realitySecurity == nil {
+		return nil, errors.New("legacy HTTP/2 supports TLS, REALITY or explicit cleartext h2c, not this security type")
 	}
 	u, _ := config.requestURL()
 	u.Scheme, u.Host = "http", dest.NetAddr()
@@ -126,6 +128,22 @@ func Dial(ctx context.Context, dest net.Destination, settings *internet.MemorySt
 		}
 		if secure.NegotiatedProtocol() != http2.NextProtoTLS {
 			return nil, errors.New("legacy HTTP/2 TLS did not negotiate h2")
+		}
+		u.Scheme = "https"
+	} else if realitySecurity != nil {
+		// Keep the original REALITY authentication/fingerprint implementation.
+		// Closing the underlying socket also bounds a stalled handshake on cancel.
+		handshakeSocket := raw
+		stop := context.AfterFunc(handshake, func() { handshakeSocket.Close() })
+		defer stop()
+		secure, err := reality.UClient(raw, realitySecurity, handshake, dest)
+		if err != nil {
+			return nil, err
+		}
+		raw = secure
+		state, ok := secure.(*reality.UConn)
+		if !ok || !state.Verified || !realityHTTP2ALPN(state.ConnectionState().NegotiatedProtocol) {
+			return nil, errors.New("legacy HTTP/2 REALITY authentication or ALPN mismatch")
 		}
 		u.Scheme = "https"
 	}
