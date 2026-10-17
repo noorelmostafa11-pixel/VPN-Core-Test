@@ -121,7 +121,7 @@ func wrapPacket(raw net.PacketConn, config *Config) (*packetConn, error) {
 	if err := config.Validate(); err != nil {
 		return nil, err
 	}
-	header, err := newHeader(config.HeaderType, config.HeaderDomain)
+	header, err := config.packetHeader()
 	if err != nil {
 		return nil, err
 	}

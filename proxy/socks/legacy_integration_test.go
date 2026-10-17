@@ -15,6 +15,7 @@ import (
 	"github.com/xtls/xray-core/common/buf"
 	"github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/core"
+	"github.com/xtls/xray-core/infra/conf"
 	_ "github.com/xtls/xray-core/main/distro/all"
 )
 
@@ -28,7 +29,7 @@ func TestForkLegacySocksOutboundWire(t *testing.T) {
 		{"socks4a", "127.0.0.1", false},
 		{"socks4a", "no-local-dns.invalid", true},
 	} {
-		for _, inputFormat := range []string{"json", "uri"} {
+		for _, inputFormat := range []string{"json", "uri", "node"} {
 			t.Run(test.version+"/"+test.target+"/"+inputFormat, func(t *testing.T) {
 				listener, err := stdnet.Listen("tcp4", "127.0.0.1:0")
 				if err != nil {
@@ -114,6 +115,12 @@ func TestForkLegacySocksOutboundWire(t *testing.T) {
 				}
 				if inputFormat == "uri" {
 					config = []byte(fmt.Sprintf("%s://synthetic@%s", test.version, listener.Addr().String()))
+				}
+				if inputFormat == "node" {
+					config, err = json.Marshal(&conf.NodeDescription{Version: 1, Protocol: test.version, Address: "127.0.0.1", Port: uint16(listener.Addr().(*stdnet.TCPAddr).Port), Credentials: conf.NodeCredentials{Username: "synthetic"}})
+					if err != nil {
+						t.Fatal(err)
+					}
 				}
 				instance, err := core.StartInstance(inputFormat, config)
 				if err != nil {

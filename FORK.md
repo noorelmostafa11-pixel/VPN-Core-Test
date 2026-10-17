@@ -19,11 +19,19 @@ unchanged to keep upstream imports and future merges compatible.
 
 ## Checkpoint
 
+One connection-data integration point now owns automatic capability selection:
+`conf.ResolveNode`. URI input, a versioned JSON node description (`.node`) and
+the Go description API use that same point before the normal Xray configuration
+and runtime lifecycle. Original full JSON/protobuf readers keep their meaning.
+[Architecture, supported capabilities and checks](fork/VERIFICATION-IN-PATH-ADDONS.md).
+
 Standalone legacy QUIC is now an independent registered transport with packet
 AEAD/camouflage, normal TLS or its explicitly selected historical internal-
-certificate mode. URI metadata selects it automatically. Browser fingerprint
-and historical typed-header protobuf variants remain explicitly unsupported,
-not substituted. [Checks and limits](fork/VERIFICATION-LEGACY-QUIC.md).
+certificate mode. URI metadata selects it automatically. Historical protobuf
+packet-header messages are also accepted without changing the JSON/URI path.
+Browser fingerprints and advanced tuning remain unsupported, not substituted.
+[Transport checks](fork/VERIFICATION-LEGACY-QUIC.md) and
+[typed-header checks](fork/VERIFICATION-QUIC-TYPED-HEADERS.md).
 
 Original-behavior preservation is a prerequisite for further additions.
 Existing upstream configurations retain their ignored fields and AUTO fallbacks;

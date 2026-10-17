@@ -75,6 +75,7 @@ func init() {
 	ReaderDecoderByFormat["yaml"] = DecodeYAMLConfig
 	ReaderDecoderByFormat["toml"] = DecodeTOMLConfig
 	ReaderDecoderByFormat["uri"] = DecodeURIConfig
+	ReaderDecoderByFormat["node"] = DecodeNodeConfig
 
 	core.ConfigBuilderForFiles = BuildConfig
 	core.ConfigMergedFormFiles = MergeConfigFromFiles

@@ -27,7 +27,7 @@
     "scope": "All fork Go tests with race detection, full vet, same-fork CLI build and classic Shadowsocks client/server TCP/UDP self-wire",
     "packages_releases_mobile_jobs": false
   },
-  "checkpoint": "standalone-legacy-quic-streams",
+  "checkpoint": "unified-in-path-node-capability-selection",
   "original_behavior_policy": {
     "baseline": "701af60772cda123492f86e383e1fdba066614a9",
     "document": "fork/VERIFICATION-PRESERVATION.md",
@@ -38,7 +38,9 @@
     "owner_stability_fixes": "Preserved; no broad reset to upstream"
   },
   "verified_custom_additions": [
+    "Unified in-path connection-data selection: URI, versioned JSON node description and Go API share ResolveNode; original full JSON/protobuf semantics preserved",
     "Standalone legacy QUIC streams: packet NONE/AES128-GCM/ChaCha20-Poly1305 and8 camouflage names, TLS/internal-certificate mode, automatic JSON/URI selection; no XHTTP/H3 alias",
+    "Legacy QUIC historical protobuf packet headers: seven original typed messages and field3, bounded conversion independent of JSON/URI selectors; ignored SRTP/uTP fields preserved",
     "Automatic common node-URI input: paths selected from node metadata without per-feature switches; original JSON semantics retained",
     "Shadowsocks AES-192-GCM: explicit client/server/multi-user configuration, TCP and UDP",
     "Shadowsocks AES-128/192/256-CFB, CTR and OFB: explicit single-user client/server, TCP and UDP",
@@ -58,8 +60,9 @@
   "latest_legacy_quic_validation": {
     "runtime": "windows/amd64",
     "builds": ["windows/amd64", "linux/amd64", "darwin/arm64"],
-    "document": "fork/VERIFICATION-LEGACY-QUIC.md",
-    "remaining": "Browser fingerprints, historical typed-header protobuf conversion and advanced modern tuning",
+    "document": "fork/VERIFICATION-QUIC-TYPED-HEADERS.md",
+    "basic_transport_document": "fork/VERIFICATION-LEGACY-QUIC.md",
+    "remaining": "Browser fingerprints, advanced modern tuning and unsupported packet carriers",
     "internet_foreign_runtime_main_wire_application_abi": "not validated"
   },
   "latest_http2_reality_validation": {
@@ -72,7 +75,10 @@
   "latest_node_selection_validation": {
     "runtime": "windows/amd64",
     "build": "windows/amd64",
-    "document": "fork/VERIFICATION-NODE-SELECTION.md",
+    "builds": ["windows/amd64", "linux/amd64", "darwin/arm64"],
+    "document": "fork/VERIFICATION-IN-PATH-ADDONS.md",
+    "previous_document": "fork/VERIFICATION-NODE-SELECTION.md",
+    "entry_points": ["uri", "node", "Go ResolveNode"],
     "internet_foreign_runtime_application_abi": "not validated"
   },
   "build_validation_platforms": [

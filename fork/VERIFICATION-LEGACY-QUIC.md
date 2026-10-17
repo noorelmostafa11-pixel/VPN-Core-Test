@@ -3,6 +3,9 @@
 Date: 2026-10-17. Parent: `e41f9c3b02345246e5aac24cf0f6d04441b8f755`.
 This adds an independent `quic` transport. It is not an HTTP/3, XHTTP, Hysteria
 or UDP-proxy alias. Existing transports and their security defaults are unchanged.
+This is the basic-transport batch's evidence record. The later
+[typed-header batch](VERIFICATION-QUIC-TYPED-HEADERS.md) adds historical protobuf
+input and records its own final-source validation.
 
 ## Sources and wire contract
 
@@ -71,11 +74,11 @@ their negative assertion while allowing the newly implemented transport.
 - Explicit client browser/uTLS fingerprints in QUIC are not implemented. They are
   rejected, not silently mapped to stdlib TLS or ChromeParrot. Default/stdlib
   QUIC TLS and its original certificate settings are supported.
-- Historical QUIC protobuf fields1/2 retain their meaning. Typed-header field3
-  is recognized but rejected pending its full historical message conversion;
-  new generated header selectors use fields4/5. JSON/URI conversion generates
-  these internally, so users need no header activation flag. This is not full
-  old protobuf/application/mobile ABI compatibility.
+- Historical QUIC protobuf fields1/2 retain their meaning. The follow-up batch
+  implements the seven known typed-header messages in field3, independently of
+  the JSON/URI selectors in fields4/5. No activation flag is needed. See its
+  separate record for bounds and historical DNS semantics; this still does not
+  establish full old protobuf/application/mobile ABI compatibility.
 - Custom modern `quicParams` tuning is not implemented for this legacy carrier;
   it is rejected rather than silently ignored. Existing modern paths retain it.
 - Packet keys are bounded to1024 bytes and DNS camouflage domains to254 bytes.
@@ -113,7 +116,7 @@ Final-source environment: Go1.27.1 Windows/amd64, GCC16.2 for race detection.
   REALITY scenario retains its public target; this is not general Internet,
   private-node or full-TLS-suite acceptance. No KCP/ECH scenario selected.
 
-Current source fingerprint
+Basic-transport batch source fingerprint
 for1205 Go/protobuf/module paths:
 `407f7ba74b2f0f4eaeef9629d78c91f5eea5ac0e8f41262256f113a05f63b53b`.
 

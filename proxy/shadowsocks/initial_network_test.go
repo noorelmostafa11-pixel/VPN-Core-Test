@@ -15,6 +15,7 @@ import (
 	"github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/common/protocol"
 	"github.com/xtls/xray-core/core"
+	"github.com/xtls/xray-core/infra/conf"
 	_ "github.com/xtls/xray-core/main/distro/all"
 	"github.com/xtls/xray-core/proxy/shadowsocks"
 )
@@ -22,7 +23,7 @@ import (
 func TestForkShadowsocksOriginalAndServerFirst(t *testing.T) {
 	for _, method := range []shadowsocks.CipherType{shadowsocks.CipherType_AES_128_GCM, shadowsocks.CipherType_AES_256_GCM, shadowsocks.CipherType_CHACHA20_POLY1305, shadowsocks.CipherType_XCHACHA20_POLY1305, shadowsocks.CipherType_AES_192_GCM, shadowsocks.CipherType_AES_128_CFB} {
 		for _, serverFirst := range []bool{false, true} {
-			for _, inputFormat := range []string{"json", "uri"} {
+			for _, inputFormat := range []string{"json", "uri", "node"} {
 				t.Run(fmt.Sprintf("%s/serverFirst%t/%s", method, serverFirst, inputFormat), func(t *testing.T) {
 					listener, err := stdnet.Listen("tcp4", "127.0.0.1:0")
 					if err != nil {
@@ -99,6 +100,13 @@ func TestForkShadowsocksOriginalAndServerFirst(t *testing.T) {
 					}
 					if inputFormat == "uri" {
 						config = []byte("ss://" + url.UserPassword(methodName, "synthetic").String() + "@" + listener.Addr().String())
+					}
+					if inputFormat == "node" {
+						password := "synthetic"
+						config, err = json.Marshal(&conf.NodeDescription{Version: 1, Protocol: "ss", Address: "127.0.0.1", Port: uint16(listener.Addr().(*stdnet.TCPAddr).Port), Credentials: conf.NodeCredentials{Method: methodName, Password: &password}})
+						if err != nil {
+							t.Fatal(err)
+						}
 					}
 					instance, err := core.StartInstance(inputFormat, config)
 					if err != nil {

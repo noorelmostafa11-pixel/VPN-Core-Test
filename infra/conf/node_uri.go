@@ -151,10 +151,9 @@ func nodeJSONFields(body string) (*nodeFields, error) {
 	return fields, nil
 }
 
-// ParseNodeURI selects the implemented path from a node's own protocol,
-// transport and security metadata. No feature-enable flag or network probing
-// is involved. Original Xray JSON/protobuf interpretation is not changed.
-func ParseNodeURI(input string) (*OutboundDetourConfig, error) {
+// DescribeNodeURI reads connection data only. All capability decisions and
+// construction are owned by ResolveNode, shared with structured node input.
+func DescribeNodeURI(input string) (*NodeDescription, error) {
 	if len(input) > MaxNodeURIBytes {
 		return nil, errors.New("node URI: profile too large")
 	}
@@ -280,91 +279,28 @@ func ParseNodeURI(input string) (*OutboundDetourConfig, error) {
 	if len(tag) > 256 || strings.ContainsFunc(tag, unicode.IsControl) {
 		return nil, errors.New("node URI: invalid label")
 	}
-	stream, err := nodeStream(fields, scheme)
-	if err != nil {
-		return nil, err
-	}
-	settings := map[string]any{"address": host, "port": n}
-	protocol := scheme
+	credentials := NodeCredentials{}
 	switch scheme {
-	case "vmess":
+	case "vmess", "vless":
 		if user == "" || hasPassword {
-			return nil, errors.New("node URI: invalid VMess identity")
+			return nil, errors.New("node URI: invalid identity")
 		}
-		cipher := strings.ToLower(fields.take("scy", "cipher", "encryption"))
-		if cipher == "" {
-			cipher = "auto"
-		}
-		alter := fields.take("aid", "alterid")
-		var count uint64
-		if alter != "" {
-			count, err = strconv.ParseUint(alter, 10, 32)
-		}
-		if err != nil || count > 64 {
-			return nil, errors.New("node URI: unsupported VMess alterId")
-		}
-		settings["id"], settings["security"] = user, cipher
-		switch cipher {
-		case "auto", "aes-128-gcm", "chacha20-poly1305":
-			if count != 0 {
-				settings["legacySettings"] = &VMessLegacySettings{AlterID: uint32(count), Security: cipher}
-			}
-		case "aes-128-cfb", "none", "zero":
-			settings["legacySettings"] = &VMessLegacySettings{AlterID: uint32(count), Security: cipher}
-		default:
-			return nil, errors.New("node URI: unsupported VMess body security")
-		}
-	case "vless":
-		if user == "" || hasPassword {
-			return nil, errors.New("node URI: invalid VLESS identity")
-		}
-		encryption := fields.take("encryption")
-		if encryption == "" {
-			encryption = "none"
-		}
-		settings["id"], settings["encryption"], settings["flow"] = user, encryption, fields.take("flow")
+		credentials.ID = user
 	case "trojan":
 		if hasPassword {
 			user += ":" + password
 		}
-		settings["password"] = user
+		credentials.Password = &user
 	case "ss":
-		protocol = "shadowsocks"
-		settings["method"], settings["password"] = strings.ToLower(user), password
-		// This importer owns a new node-input path: include the added behavior
-		// automatically, without changing original Xray JSON defaults.
-		settings["serverFirstCompatibility"] = true
-	case "socks", "socks5", "socks4", "socks4a":
-		if user == "" && password != "" {
-			return nil, errors.New("node URI: password without a proxy username")
-		}
-		if scheme == "socks5" {
-			protocol = "socks"
-		}
-		settings["user"], settings["pass"] = user, password
-	case "http", "https":
-		if user == "" && password != "" {
-			return nil, errors.New("node URI: password without a proxy username")
-		}
-		protocol = "http"
-		settings["user"], settings["pass"] = user, password
+		credentials.Method, credentials.Password = user, &password
 	default:
-		return nil, errors.New("node URI: protocol import is not implemented")
+		credentials.Username = user
+		if hasPassword {
+			credentials.Password = &password
+		}
 	}
-	fields.take("ps", "name", "remarks", "group")
-	if err := fields.finish(); err != nil {
-		return nil, err
+	if fields.err != nil {
+		return nil, fields.err
 	}
-	encoded, err := json.Marshal(settings)
-	if err != nil {
-		return nil, errors.New("node URI: unable to build settings")
-	}
-	raw := json.RawMessage(encoded)
-	outbound := &OutboundDetourConfig{Protocol: protocol, Tag: tag, Settings: &raw, StreamSetting: stream}
-	if _, err := outbound.Build(); err != nil {
-		// Upstream validation messages may echo PSKs/IDs; keep them out of an
-		// import error (and never fall back to another security mode).
-		return nil, errors.New("node URI: unsupported or invalid connection settings")
-	}
-	return outbound, nil
+	return &NodeDescription{Version: 1, Protocol: scheme, Address: host, Port: n, Name: tag, Credentials: credentials, Parameters: fields.values}, nil
 }

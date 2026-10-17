@@ -20,20 +20,21 @@ import (
 	goreality "github.com/xtls/reality"
 	"github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/core"
+	"github.com/xtls/xray-core/infra/conf"
 	_ "github.com/xtls/xray-core/main/distro/all"
 	"github.com/xtls/xray-core/testing/servers/tcp"
 	"github.com/xtls/xray-core/transport/internet/reality"
 )
 
 func TestForkLegacyHTTP2CoreVLESS(t *testing.T) {
-	for _, inputFormat := range []string{"json", "uri"} {
+	for _, inputFormat := range []string{"json", "uri", "node"} {
 		t.Run(inputFormat, func(t *testing.T) { testLegacyHTTP2CoreVLESS(t, inputFormat, "h2c") })
 	}
 }
 
 func TestForkHTTP2RealityCoreVLESS(t *testing.T) {
 	for _, mode := range []string{"h2", "tcp"} {
-		for _, format := range []string{"json", "uri"} {
+		for _, format := range []string{"json", "uri", "node"} {
 			t.Run(mode+"/"+format, func(t *testing.T) { testLegacyHTTP2CoreVLESS(t, format, mode) })
 		}
 	}
@@ -135,6 +136,16 @@ func testLegacyHTTP2CoreVLESS(t *testing.T, inputFormat, mode string) {
 	})
 	if inputFormat == "uri" {
 		clientConfig = []byte(fmt.Sprintf("vless://%s@127.0.0.1:%d?%s", id, tunnelPort, query.Encode()))
+	}
+	if inputFormat == "node" {
+		parameters := make(map[string]string)
+		for key, values := range query {
+			parameters[key] = values[0]
+		}
+		clientConfig, err = json.Marshal(&conf.NodeDescription{Version: 1, Protocol: "vless", Address: "127.0.0.1", Port: uint16(tunnelPort), Credentials: conf.NodeCredentials{ID: id}, Parameters: parameters})
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	client, err := core.StartInstance(inputFormat, clientConfig)
 	if err != nil {

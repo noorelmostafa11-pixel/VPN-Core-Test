@@ -106,11 +106,15 @@ support and exact settings still require compatibility checks where used.
 
 ## Automatic node input
 
-The URI boundary automatically selects existing/added paths from common
-VMess/VLESS/Trojan/Shadowsocks/SOCKS/HTTP node metadata. No per-feature switches
-are required in these links. Original full Xray configurations retain their
-meaning. This is a bounded input importer, not complete main URI/SDK parity.
-[Entry points, validation and limits](VERIFICATION-NODE-SELECTION.md).
+URI syntax, the versioned JSON node description and the Go description API now
+share `conf.ResolveNode`. It identifies the required implemented capabilities,
+emits their matching internal selectors, and validates the ordinary Xray
+outbound/stream configuration. It neither runs a second engine nor retries a
+failed connection with another protocol. Original full JSON/protobuf keeps its
+meaning. The earlier node-reader contract, including classic Shadowsocks
+server-first handling, is retained. This is not complete main URI/SDK parity.
+[Architecture, inventory and current checks](VERIFICATION-IN-PATH-ADDONS.md);
+[earlier URI coverage](VERIFICATION-NODE-SELECTION.md).
 
 ## Still to port or resolve
 
@@ -118,9 +122,11 @@ meaning. This is a bounded input importer, not complete main URI/SDK parity.
   fixture. The existing upstream package race suite passes; that is not proof
   of compatibility with main, private nodes or every application setting.
 - Standalone legacy QUIC is implemented as a separate carrier, not an XHTTP/H3
-  alias. Browser/uTLS fingerprints, historical typed-header protobuf conversion
-  and advanced modern tuning are still pending; unknown variants are rejected.
-  [Implemented packet/TLS/stream scope](VERIFICATION-LEGACY-QUIC.md).
+  alias. Its seven historical protobuf packet-header types are also supported;
+  browser/uTLS fingerprints and advanced modern tuning remain pending. Unknown
+  variants are rejected, not substituted.
+  [Transport scope](VERIFICATION-LEGACY-QUIC.md) and
+  [protobuf scope](VERIFICATION-QUIC-TYPED-HEADERS.md).
 - Hysteria 1, TUIC v5, AnyTLS, ShadowTLS v2/v3 and SSH proxy endpoints absent from
   the pinned upstream proxy registrations.
 - SIP003 wrapper/plugin semantics and custom health/body validation need a

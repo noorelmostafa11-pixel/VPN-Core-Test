@@ -45,13 +45,10 @@ func (c *Config) Validate() error {
 	if c == nil || len(c.Key) > 1024 {
 		return errors.New("legacy QUIC: missing or oversized settings")
 	}
-	if c.Header != nil {
-		return errors.New("legacy QUIC: historical typed header requires explicit conversion")
-	}
 	if _, err := c.auth(); err != nil {
 		return err
 	}
-	_, err := newHeader(c.HeaderType, c.HeaderDomain)
+	_, err := c.packetHeader()
 	return err
 }
 

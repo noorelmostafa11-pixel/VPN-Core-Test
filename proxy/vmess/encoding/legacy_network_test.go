@@ -15,6 +15,7 @@ import (
 	"github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/common/protocol"
 	"github.com/xtls/xray-core/core"
+	"github.com/xtls/xray-core/infra/conf"
 	_ "github.com/xtls/xray-core/main/distro/all"
 	"github.com/xtls/xray-core/proxy/vmess"
 	"github.com/xtls/xray-core/proxy/vmess/encoding"
@@ -27,7 +28,7 @@ func TestForkVMessLegacyOutboundServerFirst(t *testing.T) {
 			for _, legacy := range []bool{false, true} {
 				formats := []string{"json"}
 				if legacy {
-					formats = append(formats, "uri")
+					formats = append(formats, "uri", "node")
 				}
 				for _, inputFormat := range formats {
 					t.Run(fmt.Sprintf("%s/alter%d/legacy%t/%s", security, alter, legacy, inputFormat), func(t *testing.T) {
@@ -133,6 +134,12 @@ func TestForkVMessLegacyOutboundServerFirst(t *testing.T) {
 								t.Fatal(err)
 							}
 							config = []byte("vmess://" + base64.RawStdEncoding.EncodeToString(profile))
+						}
+						if inputFormat == "node" {
+							config, err = json.Marshal(&conf.NodeDescription{Version: 1, Protocol: "vmess", Address: "127.0.0.1", Port: uint16(listener.Addr().(*stdnet.TCPAddr).Port), Credentials: conf.NodeCredentials{ID: id}, Parameters: map[string]string{"scy": security, "aid": fmt.Sprint(alter)}})
+							if err != nil {
+								t.Fatal(err)
+							}
 						}
 						instance, err := core.StartInstance(inputFormat, config)
 						if err != nil {
