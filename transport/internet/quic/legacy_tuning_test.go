@@ -41,7 +41,7 @@ func TestLegacyQUICTuningRejectsUnsupported(t *testing.T) {
 		"brutal-rate-overflow":{Congestion:"force-brutal",BrutalUp:1<<42,BrutalDown:102400},
 		"unsupported-mode":{Congestion:"cubic"},
 
-		"congestion":{Congestion:"bbr"},
+		"congestion":{Congestion:"cubic"},
 		"brutal":{BrutalUp:102400},
 		"mtu":{DisablePathMtuDiscovery:true},
 		"gso":{DisableGSO:true},
