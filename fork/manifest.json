@@ -39,6 +39,7 @@
     "scope_override": "Owner explicitly removed other remote protocols on 2026-10-17. Retained protocol/security/routing behavior and unchanged original fixture remain protected."
   },
   "verified_custom_additions": [
+    "Reviewed four-protocol carrier metadata, explicit subscription/node-list input and focused transport lifecycle corrections; see VERIFICATION-ADDITIVE-TRANSPORT-MERGE.md for wire/race evidence and limits",
     "Unified in-path connection-data selection: URI, versioned JSON node description and Go API share ResolveNode; retained-scope full JSON/protobuf semantics preserved",
     "Standalone legacy QUIC streams: packet NONE/AES128-GCM/ChaCha20-Poly1305 and8 camouflage names, TLS/internal-certificate mode, automatic JSON/URI selection; no XHTTP/H3 alias",
     "Legacy QUIC historical protobuf packet headers: seven original typed messages and field3, bounded conversion independent of JSON/URI selectors; ignored SRTP/uTP fields preserved",
@@ -121,6 +122,23 @@
     "loopback/routing",
     "retained TCP/UDP transports and TLS/REALITY"
   ],
+  "latest_additive_transport_validation": {
+    "document": "fork/VERIFICATION-ADDITIVE-TRANSPORT-MERGE.md",
+    "owner_parent": "cdc8e0cc3cd6d12a748f0b128aec316f1e74c642",
+    "reviewed_branch": "feature/tcp-mkcp-additive-review-20261017",
+    "reviewed_commit": "ea89e85630f611c3a80ad198364b832150941d49",
+    "source_paths": 1179,
+    "source_sha256": "fbe8d752d959c11c250c0240aeb33ca31d4735eefeb6ae6c63a078b0bf8f6ce3",
+    "additional_inputs": ["subscription", "sub", "subjson", "node-list"],
+    "plugin_scope": "v2ray-plugin WS TCP with explicit mux=0 only; native in-process transport; default/multiplexed framing rejected",
+    "independent_plugin_reference": "shadowsocks/v2ray-plugin e9af1cdd2549d528deb20a4ab8d61c5fbe51f306",
+    "runtime_matrix": "120 carrier/input cases, 25 split-download/input cases, independent HTTP and QUIC peers, classic SS and SS2022 plugin TCP reference cases",
+    "validation_status": "PASS final affected race suite, original preservation fixture, 17 retained scenarios, whole-tree compile/vet, private CLI builds and Windows CLI input checks",
+    "builds": ["windows/amd64", "linux/amd64", "darwin/amd64", "darwin/arm64"],
+    "windows_binary_bytes": 34136576,
+    "internet_foreign_runtime_sdk": "not validated",
+    "packaging": "not run"
+  },
   "latest_four_protocol_validation": {
     "document": "fork/VERIFICATION-FOUR-PROTOCOL-SCOPE.md",
     "parent": "9278723cb56199c94b0161ec8613a45e5820ce64",

@@ -44,3 +44,10 @@ Current checks and limitations are recorded in
 records describe their historical revisions; they do not enable removed proxies.
 The remaining work is compatibility/import/SDK validation within the four
 families, not restoration of the cancelled protocol migration backlog.
+
+The 2026-10-18 [reviewed transport/import additions](VERIFICATION-ADDITIVE-TRANSPORT-MERGE.md)
+cover TCP HTTP camouflage, mKCP metadata, WS/HTTPUpgrade/HTTP2/gRPC settings,
+separate XHTTP download settings, bounded legacy QUIC congestion/flow settings,
+and explicit subscription formats. The supported v2ray-plugin WS subset requires
+`mux=0`; default multiplexed plugin framing is rejected. The review record also
+documents reproduced transport lifecycle defects and their focused corrections.
