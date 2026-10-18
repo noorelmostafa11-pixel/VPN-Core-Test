@@ -356,7 +356,7 @@ func TestForkLegacyQUICSecurityGuards(t *testing.T) {
 			case "missing-settings":
 				settings.SecuritySettings = nil
 			case "fingerprint":
-				bad.Fingerprint = "chrome"
+				bad.Fingerprint = "firefox"
 			case "version":
 				bad.MaxVersion = "1.2"
 			}

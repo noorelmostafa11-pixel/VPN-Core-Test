@@ -63,6 +63,16 @@ func transportTLS(settings *internet.MemoryStreamConfig, dest xnet.Destination, 
 	return config, nil
 }
 
+
+func applyLegacyQUICChromeProfile(settings *internet.MemoryStreamConfig, transport *q.Transport, config *q.Config) {
+	if profile := tls.ConfigFromStreamSettings(settings); profile != nil && profile.Fingerprint == "chrome" {
+		// Native QUIC profile from the pinned quic-go fork, not a
+		// substitution for uTLS ClientHello wire verification.
+		config.ChromeParrot = true
+		transport.ConnectionIDGenerator = q.ZeroLengthConnectionIDGenerator{}
+	}
+}
+
 func quicConfig() *q.Config {
 	return &q.Config{HandshakeIdleTimeout: 4 * time.Second, MaxIdleTimeout: 60 * time.Second, InitialPacketSize: 1200, DisablePathMTUDiscovery: true, MaxIncomingStreams: 32, MaxIncomingUniStreams: -1}
 }
@@ -140,12 +150,7 @@ func Dial(ctx context.Context, dest xnet.Destination, settings *internet.MemoryS
 	}
 	transport := &q.Transport{Conn: packet, ConnectionIDLength: 12, DisableGSO: true}
 	quicDialConfig := tunedLegacyQUICConfig(settings.QuicParams)
-	if profile := tls.ConfigFromStreamSettings(settings); profile != nil && profile.Fingerprint == "chrome" {
-		// Reuse the Chrome QUIC profile of the bundled apernet/quic-go fork,
-		// already used for XHTTP/HTTP3. Client opt-in only; server unchanged.
-		quicDialConfig.ChromeParrot = true
-		transport.ConnectionIDGenerator = q.ZeroLengthConnectionIDGenerator{}
-	}
+	applyLegacyQUICChromeProfile(settings,transport,quicDialConfig)
 	owned := false
 	defer func() {
 		if !owned {

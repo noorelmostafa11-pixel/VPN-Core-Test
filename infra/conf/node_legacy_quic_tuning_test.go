@@ -165,7 +165,7 @@ func TestNodeLegacyQUICTuningRejectsUnsafe(t *testing.T) {
 	}
 	for name, suffix := range map[string]string{
 		"wrong-carrier":       "?type=tcp&quicParams=" + url.QueryEscape(quicTuningJSON),
-		"browser-fingerprint": "?type=quic&security=tls&fp=chrome&quicParams=" + url.QueryEscape(quicTuningJSON),
+		"unsupported-browser-fingerprint": "?type=quic&security=tls&fp=firefox&quicParams=" + url.QueryEscape(quicTuningJSON),
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := conf.ParseNodeURI("vless://" + quicTuningNodeID + "@127.0.0.1:443" + suffix); err == nil {
@@ -222,6 +222,24 @@ func TestNodeLegacyQUICCongestionRejectsUnsafeRates(t *testing.T) {
 			if _, err := conf.ParseNodeURI(base + url.QueryEscape(raw)); err == nil {
 				t.Fatal("invalid QUIC control metadata accepted")
 			}
+		})
+	}
+}
+
+func TestNodeLegacyQUICChromeNativeOptIn(t *testing.T) {
+	for _, base := range []string{
+		"vless://"+quicTuningNodeID+"@127.0.0.1:443",
+		"vmess://"+quicTuningNodeID+"@127.0.0.1:443",
+		"trojan://synthetic@127.0.0.1:443",
+		"ss://aes-128-gcm:synthetic@127.0.0.1:443",
+	} {
+		t.Run(strings.SplitN(base,"://",2)[0],func(t *testing.T){
+			got,err:=conf.ParseNodeURI(base+"?type=quic&security=tls&fp=chrome")
+			if err!=nil{t.Fatal(err)}
+			if got.StreamSetting.TLSSettings==nil||got.StreamSetting.TLSSettings.Fingerprint!="chrome"{
+				t.Fatal("Chrome fingerprint was discarded")
+			}
+			if _,err:=got.StreamSetting.Build();err!=nil{t.Fatal(err)}
 		})
 	}
 }
