@@ -15,6 +15,10 @@ func DecodeNodeListJSONConfig(reader io.Reader) (*conf.Config,error) {
  data,err:=io.ReadAll(io.LimitReader(reader,maxSubscriptionBytes+1))
  if err!=nil || len(data)>maxSubscriptionBytes{return nil,errors.New("node list: unreadable or oversized input")}
  data=bytes.TrimSpace(data)
+ if len(data)>0 && data[0]=='{' {
+  data,err=validatedNodeListEnvelope(data)
+  if err!=nil{return nil,err}
+ }
  if len(data)==0 || data[0]!='['{return nil,errors.New("node list: expected array")}
  var nodes []json.RawMessage
  if err:=json.Unmarshal(data,&nodes);err!=nil || len(nodes)==0 || len(nodes)>maxSubscriptionNodes {
