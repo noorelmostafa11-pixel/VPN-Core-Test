@@ -97,7 +97,7 @@ func nodeStream(fields *nodeFields, scheme string) (*StreamConfig, error) {
 	}
 	switch network {
 	case "quic":
-		if stream.Security == "tls" && fingerprint != "" && fingerprint != "unsafe" && !strings.EqualFold(fingerprint, "hellogolang") {
+		if stream.Security == "tls" && fingerprint != "" && fingerprint != "unsafe" && !strings.EqualFold(fingerprint, "hellogolang") && fingerprint != "chrome" {
 			return nil, errors.New("node URI: QUIC browser TLS fingerprints are not implemented")
 		}
 		cipher := strings.ToLower(fields.take("quicsecurity", "quic-security", "quic_security"))

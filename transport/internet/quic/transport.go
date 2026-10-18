@@ -48,7 +48,7 @@ func transportTLS(settings *internet.MemoryStreamConfig, dest xnet.Destination, 
 			certificate, _ := cert.MustGenerate(nil, cert.DNSNames(internalDomain), cert.CommonName(internalDomain))
 			security.Certificate = []*tls.Certificate{tls.ParseCertificate(certificate)}
 		}
-	} else if !server && security.Fingerprint != "" && security.Fingerprint != "unsafe" && security.Fingerprint != "hellogolang" {
+	} else if !server && security.Fingerprint != "" && security.Fingerprint != "unsafe" && security.Fingerprint != "hellogolang" && security.Fingerprint != "chrome" {
 		return nil, errors.New("legacy QUIC: explicit browser TLS fingerprints are not implemented")
 	}
 	config := security.GetTLSConfig(tls.WithDestination(dest))
@@ -139,6 +139,13 @@ func Dial(ctx context.Context, dest xnet.Destination, settings *internet.MemoryS
 		return nil, err
 	}
 	transport := &q.Transport{Conn: packet, ConnectionIDLength: 12, DisableGSO: true}
+	quicDialConfig := tunedLegacyQUICConfig(settings.QuicParams)
+	if profile := tls.ConfigFromStreamSettings(settings); profile != nil && profile.Fingerprint == "chrome" {
+		// Reuse the Chrome QUIC profile of the bundled apernet/quic-go fork,
+		// already used for XHTTP/HTTP3. Client opt-in only; server unchanged.
+		quicDialConfig.ChromeParrot = true
+		transport.ConnectionIDGenerator = q.ZeroLengthConnectionIDGenerator{}
+	}
 	owned := false
 	defer func() {
 		if !owned {
@@ -146,7 +153,7 @@ func Dial(ctx context.Context, dest xnet.Destination, settings *internet.MemoryS
 			packet.Close()
 		}
 	}()
-	parent, err := transport.Dial(handshake, carrier.RemoteAddr(), security, tunedLegacyQUICConfig(settings.QuicParams))
+	parent, err := transport.Dial(handshake, carrier.RemoteAddr(), security, quicDialConfig)
 	if err != nil {
 		return nil, err
 	}
