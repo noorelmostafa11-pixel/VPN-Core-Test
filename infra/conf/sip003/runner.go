@@ -31,6 +31,7 @@ type Approved struct {
 	Executable string
 	SHA256 string
 	Args []string
+	LocalOptions string // locally trusted configuration, never remote URL
 	StartupTimeout time.Duration
 }
 
@@ -142,7 +143,7 @@ func Start(ctx context.Context, approved Approved, remoteHost string, remotePort
 		return nil, errors.New("SIP003: could not start locally approved plugin")
 	}
 	running := &Running{LocalPort:uint16(port),cmd:cmd,done:make(chan error,1)}
-	go func(){running.done <- cmd.Wait()}()
+	go func(){running.done <- cmd.Wait(); close(running.done)}()
 
 	timeout := approved.StartupTimeout
 	if timeout == 0 {
