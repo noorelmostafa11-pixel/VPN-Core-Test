@@ -99,6 +99,14 @@ func nodeXHTTPDownloadTransport(raw json.RawMessage) error {
 		Headers              map[string]string `json:"headers"`
 		Path                 string     `json:"path"`
 		Mode                 string     `json:"mode"`
+		UplinkHTTPMethod     string     `json:"uplinkHTTPMethod"`
+		SessionIDPlacement   string     `json:"sessionIDPlacement"`
+		SessionIDKey         string     `json:"sessionIDKey"`
+		SeqPlacement         string     `json:"seqPlacement"`
+		SeqKey               string     `json:"seqKey"`
+		UplinkDataPlacement  string     `json:"uplinkDataPlacement"`
+		UplinkDataKey        string     `json:"uplinkDataKey"`
+		UplinkChunkSize      Int32Range `json:"uplinkChunkSize"`
 		XPaddingBytes        Int32Range `json:"xPaddingBytes"`
 		XPaddingObfsMode     bool       `json:"xPaddingObfsMode"`
 		XPaddingKey          string     `json:"xPaddingKey"`
@@ -119,6 +127,57 @@ func nodeXHTTPDownloadTransport(raw json.RawMessage) error {
 	case "", "auto", "packet-up", "stream-up", "stream-one":
 	default:
 		return errors.New("node URI: unsupported XHTTP download mode")
+	}
+	if transport.UplinkHTTPMethod != "" && transport.UplinkHTTPMethod != "POST" &&
+		transport.UplinkHTTPMethod != "GET" {
+		return errors.New("node URI: unsupported XHTTP download uplink method")
+	}
+	for _, placement := range []string{transport.SessionIDPlacement, transport.SeqPlacement} {
+		switch placement {
+		case "", "path", "cookie", "header", "query":
+		default:
+			return errors.New("node URI: unsupported XHTTP download metadata placement")
+		}
+	}
+	switch transport.UplinkDataPlacement {
+	case "", "auto", "body", "cookie", "header":
+	default:
+		return errors.New("node URI: unsupported XHTTP download data placement")
+	}
+	for _, item := range []struct{ placement, key string }{
+		{transport.SessionIDPlacement, transport.SessionIDKey},
+		{transport.SeqPlacement, transport.SeqKey},
+		{transport.UplinkDataPlacement, transport.UplinkDataKey},
+	} {
+		if len(item.key) > 64 {
+			return errors.New("node URI: oversized XHTTP download metadata key")
+		}
+		if item.key == "" {
+			continue
+		}
+		switch item.placement {
+		case "header":
+			if !nodeHTTPHeaderToken(item.key) || nodeHTTPTransportReservedHeader(item.key) {
+				return errors.New("node URI: invalid XHTTP download header key")
+			}
+		case "cookie", "query":
+			for _, character := range item.key {
+				if !(character >= 'a' && character <= 'z' ||
+					character >= 'A' && character <= 'Z' ||
+					character >= '0' && character <= '9' ||
+					character == '-' || character == '_') {
+					return errors.New("node URI: invalid XHTTP download query/cookie key")
+				}
+			}
+		default:
+			return errors.New("node URI: XHTTP download key without compatible placement")
+		}
+	}
+	if transport.UplinkChunkSize != (Int32Range{}) &&
+		(transport.UplinkChunkSize.From < 1024 ||
+			transport.UplinkChunkSize.To < transport.UplinkChunkSize.From ||
+			transport.UplinkChunkSize.To > 262144) {
+		return errors.New("node URI: invalid XHTTP download chunk-size range")
 	}
 	// HTTP headers on the independent XHTTP download leg use the same
 	// reserved-name and input-safety policy as the original WS/HTTPUpgrade
@@ -155,6 +214,14 @@ func nodeXHTTPDownloadTransport(raw json.RawMessage) error {
 	// fields. This does not instantiate a dialer or touch local files.
 	config := &SplitHTTPConfig{
 		Host: transport.Host, Path: transport.Path, Mode: transport.Mode,
+		UplinkHTTPMethod: transport.UplinkHTTPMethod,
+		SessionIDPlacement: transport.SessionIDPlacement,
+		SessionIDKey: transport.SessionIDKey,
+		SeqPlacement: transport.SeqPlacement,
+		SeqKey: transport.SeqKey,
+		UplinkDataPlacement: transport.UplinkDataPlacement,
+		UplinkDataKey: transport.UplinkDataKey,
+		UplinkChunkSize: transport.UplinkChunkSize,
 		Headers: transport.Headers,
 		XPaddingBytes: transport.XPaddingBytes,
 		XPaddingObfsMode: transport.XPaddingObfsMode,
