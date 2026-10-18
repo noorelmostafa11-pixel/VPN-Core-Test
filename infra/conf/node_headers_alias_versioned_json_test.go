@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/xtls/xray-core/infra/conf"
-	"google.golang.org/protobuf/proto"
 )
 
 func TestAddedHeadersAliasVersionedJSONParity(t *testing.T) {
@@ -15,26 +14,38 @@ func TestAddedHeadersAliasVersionedJSONParity(t *testing.T) {
 	pass := "synthetic"
 	profiles := []struct {
 		scheme, uri string
-		creds conf.NodeCredentials
+		creds       conf.NodeCredentials
 	}{
-		{"vless", "vless://"+id+"@127.0.0.1:443", conf.NodeCredentials{ID:id}},
-		{"vmess", "vmess://"+id+"@127.0.0.1:443", conf.NodeCredentials{ID:id}},
-		{"trojan", "trojan://synthetic@127.0.0.1:443", conf.NodeCredentials{Password:&pass}},
-		{"ss", "ss://aes-128-gcm:synthetic@127.0.0.1:443", conf.NodeCredentials{Method:"aes-128-gcm",Password:&pass}},
+		{"vless", "vless://" + id + "@127.0.0.1:443", conf.NodeCredentials{ID: id}},
+		{"vmess", "vmess://" + id + "@127.0.0.1:443", conf.NodeCredentials{ID: id}},
+		{"trojan", "trojan://synthetic@127.0.0.1:443", conf.NodeCredentials{Password: &pass}},
+		{"ss", "ss://aes-128-gcm:synthetic@127.0.0.1:443", conf.NodeCredentials{Method: "aes-128-gcm", Password: &pass}},
 	}
 	for _, profile := range profiles {
-		for _, network := range []string{"ws","httpupgrade"} {
-			body,err:=json.Marshal(conf.NodeDescription{Version:1,Protocol:profile.scheme,Address:"127.0.0.1",Port:443,Credentials:profile.creds,Parameters:map[string]string{"type":network,"headers":headers}})
-			if err!=nil {t.Fatal(err)}
-			got,err:=conf.ParseNodeJSON(body)
-			if err!=nil {t.Fatal(err)}
-			want,err:=conf.ParseNodeURI(profile.uri+"?type="+network+"&headers="+url.QueryEscape(headers))
-			if err!=nil {t.Fatal(err)}
-			actual,err:=got.StreamSetting.Build()
-			if err!=nil {t.Fatal(err)}
-			expected,err:=want.StreamSetting.Build()
-			if err!=nil {t.Fatal(err)}
-			if !proto.Equal(actual,expected) {t.Fatal("JSON/URI transport mismatch",profile.scheme,network)}
+		for _, network := range []string{"ws", "httpupgrade"} {
+			body, err := json.Marshal(conf.NodeDescription{Version: 1, Protocol: profile.scheme, Address: "127.0.0.1", Port: 443, Credentials: profile.creds, Parameters: map[string]string{"type": network, "headers": headers}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := conf.ParseNodeJSON(body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, err := conf.ParseNodeURI(profile.uri + "?type=" + network + "&headers=" + url.QueryEscape(headers))
+			if err != nil {
+				t.Fatal(err)
+			}
+			actual, err := got.StreamSetting.Build()
+			if err != nil {
+				t.Fatal(err)
+			}
+			expected, err := want.StreamSetting.Build()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !addedConfigEqual(actual, expected) {
+				t.Fatal("JSON/URI transport mismatch", profile.scheme, network)
+			}
 		}
 	}
 }

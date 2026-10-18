@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"encoding/base64"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -159,6 +160,8 @@ func dialWebSocket(ctx context.Context, dest net.Destination, streamSettings *in
 
 type delayDialConn struct {
 	net.Conn
+	mu             sync.Mutex
+	writeMu        sync.Mutex
 	closed         bool
 	dialed         chan bool
 	cancel         context.CancelFunc
@@ -171,62 +174,94 @@ type delayDialConn struct {
 // Without this method, Go promotes LocalAddr from the embedded net.Conn; the
 // embedded interface is nil before the first Write, so the promoted call panics.
 func (d *delayDialConn) LocalAddr() net.Addr {
-	if d.Conn == nil {
+	d.mu.Lock()
+	conn := d.Conn
+	d.mu.Unlock()
+	if conn == nil {
 		return nil
 	}
-	return d.Conn.LocalAddr()
+	return conn.LocalAddr()
 }
 
 // RemoteAddr returns nil until the deferred WebSocket dial has completed.
 // See LocalAddr for why an explicit method is required here.
 func (d *delayDialConn) RemoteAddr() net.Addr {
-	if d.Conn == nil {
+	d.mu.Lock()
+	conn := d.Conn
+	d.mu.Unlock()
+	if conn == nil {
 		return nil
 	}
-	return d.Conn.RemoteAddr()
+	return conn.RemoteAddr()
 }
 
 func (d *delayDialConn) Write(b []byte) (int, error) {
-	if d.closed {
+	d.writeMu.Lock()
+	defer d.writeMu.Unlock()
+	d.mu.Lock()
+	conn, closed := d.Conn, d.closed
+	d.mu.Unlock()
+	if closed {
 		return 0, io.ErrClosedPipe
 	}
-	if d.Conn == nil {
+	if conn == nil {
 		ed := b
 		if len(ed) > int(d.streamSettings.ProtocolSettings.(*Config).Ed) {
 			ed = nil
 		}
 		var err error
-		if d.Conn, err = dialWebSocket(d.ctx, d.dest, d.streamSettings, ed); err != nil {
+		if conn, err = dialWebSocket(d.ctx, d.dest, d.streamSettings, ed); err != nil {
 			d.Close()
 			return 0, errors.New("failed to dial WebSocket").Base(err)
 		}
-		d.dialed <- true
+		d.mu.Lock()
+		if d.closed {
+			d.mu.Unlock()
+			conn.Close()
+			return 0, io.ErrClosedPipe
+		}
+		d.Conn = conn
+		close(d.dialed)
+		d.mu.Unlock()
 		if ed != nil {
 			return len(ed), nil
 		}
 	}
-	return d.Conn.Write(b)
+	return conn.Write(b)
 }
 
 func (d *delayDialConn) Read(b []byte) (int, error) {
-	if d.closed {
+	d.mu.Lock()
+	conn, closed := d.Conn, d.closed
+	d.mu.Unlock()
+	if closed {
 		return 0, io.ErrClosedPipe
 	}
-	if d.Conn == nil {
+	if conn == nil {
 		select {
 		case <-d.ctx.Done():
 			return 0, io.ErrUnexpectedEOF
 		case <-d.dialed:
 		}
+		d.mu.Lock()
+		conn = d.Conn
+		d.mu.Unlock()
 	}
-	return d.Conn.Read(b)
+	return conn.Read(b)
 }
 
 func (d *delayDialConn) Close() error {
-	d.closed = true
-	d.cancel()
-	if d.Conn == nil {
+	d.mu.Lock()
+	if d.closed {
+		d.mu.Unlock()
 		return nil
 	}
-	return d.Conn.Close()
+	d.closed = true
+	conn := d.Conn
+	d.mu.Unlock()
+	d.cancel()
+	if conn == nil {
+		return nil
+	}
+	return conn.Close()
 }

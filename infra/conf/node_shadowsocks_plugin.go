@@ -55,7 +55,7 @@ func nodeShadowsocksPlugin(fields *nodeFields, scheme string) error {
 			if hasValue {
 				return errors.New("node URI: invalid Shadowsocks plugin TLS option")
 			}
-		case "mode", "host", "path":
+		case "mode", "host", "path", "mux":
 			if !hasValue || value == "" {
 				return errors.New("node URI: invalid Shadowsocks plugin option")
 			}
@@ -69,6 +69,15 @@ func nodeShadowsocksPlugin(fields *nodeFields, scheme string) error {
 	}
 	if mode := options["mode"]; mode != "" && mode != "websocket" {
 		return errors.New("node URI: unsupported Shadowsocks plugin mode")
+	}
+	// The plugin defaults to mux=1, which wraps the Shadowsocks stream in
+	// V2Ray mux framing. Raw WS is compatible only with an explicitly mux=0
+	// plugin endpoint; never silently map the default to a different wire.
+	if options["mux"] != "0" {
+		return errors.New("node URI: v2ray-plugin requires explicit mux=0; multiplexed plugin framing is unsupported")
+	}
+	if options["host"] == "" {
+		options["host"] = "cloudfront.com" // v2ray-plugin's original default
 	}
 	if host := options["host"]; host != "" {
 		// A plugin host is a single authority, not an HTTP header or a URL.

@@ -2,13 +2,15 @@ package header
 
 import (
 	"net"
+	"sync"
 
 	"github.com/xtls/xray-core/common/errors"
 )
 
 type headerConn struct {
 	net.PacketConn
-	header Header
+	header  Header
+	writeMu sync.Mutex
 }
 
 func NewConnClient(c *Config, raw net.PacketConn) (net.PacketConn, error) {
@@ -52,6 +54,8 @@ func (c *headerConn) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 }
 
 func (c *headerConn) WriteTo(p []byte, addr net.Addr) (n int, err error) {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
 	c.header.Serialize(p)
 	return len(p), nil
 }

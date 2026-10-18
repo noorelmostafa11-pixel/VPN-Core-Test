@@ -2,9 +2,9 @@ package conf
 
 import (
 	"errors"
-	"unicode/utf8"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // Additive connection-only HTTP header support. The HTTP Host authority stays

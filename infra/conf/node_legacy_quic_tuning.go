@@ -29,18 +29,18 @@ func nodeLegacyQUICTuning(fields *nodeFields) (*FinalMask, error) {
 		return nil, errors.New("node URI: invalid legacy QUIC tuning object")
 	}
 	var data struct {
-		Congestion                   string `json:"congestion"`
-		BbrProfile                   string `json:"bbrProfile"`
-		BrutalUp                     Bandwidth `json:"brutalUp"`
-		BrutalDown                   Bandwidth `json:"brutalDown"`
-		BrutalDisableLossCompensation bool `json:"brutalDisableLossCompensation"`
-		MaxIdleTimeout                int64  `json:"maxIdleTimeout"`
-		KeepAlivePeriod               int64  `json:"keepAlivePeriod"`
-		MaxIncomingStreams            int64  `json:"maxIncomingStreams"`
-		InitStreamReceiveWindow       uint64 `json:"initStreamReceiveWindow"`
-		MaxStreamReceiveWindow        uint64 `json:"maxStreamReceiveWindow"`
-		InitConnectionReceiveWindow   uint64 `json:"initConnectionReceiveWindow"`
-		MaxConnectionReceiveWindow    uint64 `json:"maxConnectionReceiveWindow"`
+		Congestion                    string    `json:"congestion"`
+		BbrProfile                    string    `json:"bbrProfile"`
+		BrutalUp                      Bandwidth `json:"brutalUp"`
+		BrutalDown                    Bandwidth `json:"brutalDown"`
+		BrutalDisableLossCompensation bool      `json:"brutalDisableLossCompensation"`
+		MaxIdleTimeout                int64     `json:"maxIdleTimeout"`
+		KeepAlivePeriod               int64     `json:"keepAlivePeriod"`
+		MaxIncomingStreams            int64     `json:"maxIncomingStreams"`
+		InitStreamReceiveWindow       uint64    `json:"initStreamReceiveWindow"`
+		MaxStreamReceiveWindow        uint64    `json:"maxStreamReceiveWindow"`
+		InitConnectionReceiveWindow   uint64    `json:"initConnectionReceiveWindow"`
+		MaxConnectionReceiveWindow    uint64    `json:"maxConnectionReceiveWindow"`
 	}
 	decoder := json.NewDecoder(bytes.NewReader([]byte(raw)))
 	decoder.DisallowUnknownFields()
@@ -63,13 +63,13 @@ func nodeLegacyQUICTuning(fields *nodeFields) (*FinalMask, error) {
 		Congestion: data.Congestion, BbrProfile: data.BbrProfile,
 		BrutalUp: up, BrutalDown: down,
 		BrutalDisableLossCompensation: data.BrutalDisableLossCompensation,
-		MaxIdleTimeout:           data.MaxIdleTimeout,
-		KeepAlivePeriod:          data.KeepAlivePeriod,
-		MaxIncomingStreams:       data.MaxIncomingStreams,
-		InitStreamReceiveWindow:  data.InitStreamReceiveWindow,
-		MaxStreamReceiveWindow:   data.MaxStreamReceiveWindow,
-		InitConnReceiveWindow:    data.InitConnectionReceiveWindow,
-		MaxConnReceiveWindow:     data.MaxConnectionReceiveWindow,
+		MaxIdleTimeout:                data.MaxIdleTimeout,
+		KeepAlivePeriod:               data.KeepAlivePeriod,
+		MaxIncomingStreams:            data.MaxIncomingStreams,
+		InitStreamReceiveWindow:       data.InitStreamReceiveWindow,
+		MaxStreamReceiveWindow:        data.MaxStreamReceiveWindow,
+		InitConnReceiveWindow:         data.InitConnectionReceiveWindow,
+		MaxConnReceiveWindow:          data.MaxConnectionReceiveWindow,
 	}
 	if err := quic.ValidateLegacyQUICParams(settings); err != nil {
 		return nil, errors.New("node URI: unsupported legacy QUIC tuning values")

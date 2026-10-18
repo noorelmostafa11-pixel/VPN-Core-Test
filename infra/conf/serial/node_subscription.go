@@ -12,8 +12,10 @@ import (
 	"github.com/xtls/xray-core/infra/conf"
 )
 
-const maxSubscriptionBytes = 1 << 20
-const maxSubscriptionNodes = 128
+const (
+	maxSubscriptionBytes = 1 << 20
+	maxSubscriptionNodes = 128
+)
 
 // DecodeSubscriptionConfig imports an explicitly selected newline-delimited
 // four-protocol share-link subscription. Whole-list Base64 encoding is also

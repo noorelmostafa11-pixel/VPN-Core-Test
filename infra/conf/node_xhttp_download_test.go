@@ -8,11 +8,12 @@ import (
 	"testing"
 
 	"github.com/xtls/xray-core/infra/conf"
-	"google.golang.org/protobuf/proto"
 )
 
-const xhttpNodeTestID = "11111111-1111-4111-8111-111111111111"
-const xhttpDownloadTLS = `{"address":"download.example.invalid","port":443,"network":"xhttp","security":"tls","tlsSettings":{"serverName":"download.example.invalid","alpn":["h2"]},"xhttpSettings":{"host":"download.example.invalid","path":"/down"}}`
+const (
+	xhttpNodeTestID  = "11111111-1111-4111-8111-111111111111"
+	xhttpDownloadTLS = `{"address":"download.example.invalid","port":443,"network":"xhttp","security":"tls","tlsSettings":{"serverName":"download.example.invalid","alpn":["h2"]},"xhttpSettings":{"host":"download.example.invalid","path":"/down"}}`
+)
 
 func xhttpNodeProfiles() []string {
 	return []string{
@@ -48,7 +49,7 @@ func TestNodeXHTTPDownloadAdditiveFourProtocolParity(t *testing.T) {
 			if err != nil {
 				t.Fatal("explicit stream:", err)
 			}
-			if !proto.Equal(gotStream, wantedStream) {
+			if !addedConfigEqual(gotStream, wantedStream) {
 				t.Fatal("XHTTP download connection differs from explicit full-JSON settings")
 			}
 			if got.StreamSetting.XHTTPSettings == nil || got.StreamSetting.XHTTPSettings.Extra == nil {
@@ -82,7 +83,7 @@ func TestNodeXHTTPDownloadURIAndNodeJSONParity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !proto.Equal(a, b) {
+	if !addedConfigEqual(a, b) {
 		t.Fatal("URI and JSON-node diverged")
 	}
 }
@@ -128,26 +129,26 @@ func TestNodeXHTTPDownloadRejectsUntrustedNestedConfig(t *testing.T) {
 	prefix := "vless://" + xhttpNodeTestID + "@127.0.0.1:443?type=xhttp&mode=stream-up&extra="
 	base := `"address":"download.example.invalid","port":443,"network":"xhttp","security":"tls"`
 	cases := map[string]string{
-		"bad-port": `{"address":"download.example.invalid","port":0,"network":"xhttp","security":"tls"}`,
-		"missing-address": `{"port":443,"network":"xhttp","security":"tls"}`,
-		"env-address": `{"address":"env:PRIVATE_ADDRESS","port":443,"network":"xhttp","security":"tls"}`,
-		"remote-sockopt": `{` + base + `,"sockopt":{"dialerProxy":"private"}}`,
-		"remote-finalmask": `{` + base + `,"finalmask":{"udp":[]}}`,
-		"non-xhttp-transport": `{"address":"download.example.invalid","port":443,"network":"tcp","security":"tls"}`,
-		"missing-security": `{"address":"download.example.invalid","port":443,"network":"xhttp"}`,
-		"unknown-security": `{"address":"download.example.invalid","port":443,"network":"xhttp","security":"xtls"}`,
-		"insecure-certificate": `{` + base + `,"tlsSettings":{"allowInsecure":true}}`,
-		"local-key-file": `{` + base + `,"tlsSettings":{"certificates":[{"keyFile":"private.key"}]}}`,
-		"local-certificate": `{` + base + `,"tlsSettings":{"certificateFile":"secret.pem"}}`,
+		"bad-port":                  `{"address":"download.example.invalid","port":0,"network":"xhttp","security":"tls"}`,
+		"missing-address":           `{"port":443,"network":"xhttp","security":"tls"}`,
+		"env-address":               `{"address":"env:PRIVATE_ADDRESS","port":443,"network":"xhttp","security":"tls"}`,
+		"remote-sockopt":            `{` + base + `,"sockopt":{"dialerProxy":"private"}}`,
+		"remote-finalmask":          `{` + base + `,"finalmask":{"udp":[]}}`,
+		"non-xhttp-transport":       `{"address":"download.example.invalid","port":443,"network":"tcp","security":"tls"}`,
+		"missing-security":          `{"address":"download.example.invalid","port":443,"network":"xhttp"}`,
+		"unknown-security":          `{"address":"download.example.invalid","port":443,"network":"xhttp","security":"xtls"}`,
+		"insecure-certificate":      `{` + base + `,"tlsSettings":{"allowInsecure":true}}`,
+		"local-key-file":            `{` + base + `,"tlsSettings":{"certificates":[{"keyFile":"private.key"}]}}`,
+		"local-certificate":         `{` + base + `,"tlsSettings":{"certificateFile":"secret.pem"}}`,
 		"unsafe-download-transport": `{` + base + `,"xhttpSettings":{"headers":{"Connection":"close"}}}`,
-		"nested-download": `{` + base + `,"xhttpSettings":{"downloadSettings":{}}}`,
-		"invalid-download-host": `{` + base + `,"xhttpSettings":{"host":"bad\r\nInjected: yes"}}`,
-		"invalid-download-path": `{` + base + `,"xhttpSettings":{"path":"not/absolute"}}`,
-		"duplicate-case": `{` + base + `,"Address":"other.example.invalid"}`,
-		"TLS-and-REALITY": `{` + base + `,"realitySettings":{}}`,
-		"null": `null`,
-		"array": `[]`,
-		"oversized": `{` + base + `,"xhttpSettings":{"path":"/` + strings.Repeat("x", 8500) + `"}}`,
+		"nested-download":           `{` + base + `,"xhttpSettings":{"downloadSettings":{}}}`,
+		"invalid-download-host":     `{` + base + `,"xhttpSettings":{"host":"bad\r\nInjected: yes"}}`,
+		"invalid-download-path":     `{` + base + `,"xhttpSettings":{"path":"not/absolute"}}`,
+		"duplicate-case":            `{` + base + `,"Address":"other.example.invalid"}`,
+		"TLS-and-REALITY":           `{` + base + `,"realitySettings":{}}`,
+		"null":                      `null`,
+		"array":                     `[]`,
+		"oversized":                 `{` + base + `,"xhttpSettings":{"path":"/` + strings.Repeat("x", 8500) + `"}}`,
 	}
 	for label, down := range cases {
 		t.Run(label, func(t *testing.T) {
@@ -159,8 +160,8 @@ func TestNodeXHTTPDownloadRejectsUntrustedNestedConfig(t *testing.T) {
 	}
 	for label, extra := range map[string]string{
 		"download-in-stream-one": `{"downloadSettings":` + xhttpDownloadTLS + `}`,
-		"duplicate-outer-field": `{"downloadSettings":` + xhttpDownloadTLS + `,"DownloadSettings":` + xhttpDownloadTLS + `}`,
-		"non-xhttp-extra": `{"downloadSettings":` + xhttpDownloadTLS + `}`,
+		"duplicate-outer-field":  `{"downloadSettings":` + xhttpDownloadTLS + `,"DownloadSettings":` + xhttpDownloadTLS + `}`,
+		"non-xhttp-extra":        `{"downloadSettings":` + xhttpDownloadTLS + `}`,
 	} {
 		t.Run(label, func(t *testing.T) {
 			u := prefix + url.QueryEscape(extra)
@@ -182,33 +183,45 @@ func TestNodeXHTTPDownloadSafeAdvancedPaddingAndXMux(t *testing.T) {
 		t.Run(strings.SplitN(base, "://", 2)[0], func(t *testing.T) {
 			extra := `{"downloadSettings":` + inner + `}`
 			got, err := conf.ParseNodeURI(base + "?type=xhttp&mode=stream-up&extra=" + url.QueryEscape(extra))
-			if err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
 			a, err := got.StreamSetting.Build()
-			if err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
 			var down conf.StreamConfig
-			if err := json.Unmarshal([]byte(inner), &down); err != nil { t.Fatal(err) }
+			if err := json.Unmarshal([]byte(inner), &down); err != nil {
+				t.Fatal(err)
+			}
 			want := *got.StreamSetting
-			want.XHTTPSettings = &conf.SplitHTTPConfig{Mode:"stream-up",DownloadSettings:&down}
+			want.XHTTPSettings = &conf.SplitHTTPConfig{Mode: "stream-up", DownloadSettings: &down}
 			b, err := want.Build()
-			if err != nil { t.Fatal(err) }
-			if !proto.Equal(a,b) { t.Fatal("nested XHTTP padding/XMux differs from full JSON") }
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !addedConfigEqual(a, b) {
+				t.Fatal("nested XHTTP padding/XMux differs from full JSON")
+			}
 		})
 	}
 }
 
 func TestNodeXHTTPDownloadAdvancedRejectsUnboundedInputs(t *testing.T) {
 	for label, inner := range map[string]string{
-		"too-large-padding":`{"xPaddingBytes":999999}`,
-		"invalid-padding-header":`{"xPaddingHeader":"Bad Header"}`,
-		"oversized-xmux":`{"xmux":{"maxConnections":999999}}`,
-		"bad-placement":`{"xPaddingPlacement":"unknown"}`,
-		"nested-extra":`{"extra":{"downloadSettings":{}}}`,
-		"header-injection":`{"headers":{"Host":"override.example"}}`,
+		"too-large-padding":      `{"xPaddingBytes":999999}`,
+		"invalid-padding-header": `{"xPaddingHeader":"Bad Header"}`,
+		"oversized-xmux":         `{"xmux":{"maxConnections":999999}}`,
+		"bad-placement":          `{"xPaddingPlacement":"unknown"}`,
+		"nested-extra":           `{"extra":{"downloadSettings":{}}}`,
+		"header-injection":       `{"headers":{"Host":"override.example"}}`,
 	} {
-		t.Run(label,func(t *testing.T){
+		t.Run(label, func(t *testing.T) {
 			profile := `{"downloadSettings":{"address":"download.example.invalid","port":443,"network":"xhttp","security":"tls","xhttpSettings":` + inner + `}}`
 			u := "vless://" + xhttpNodeTestID + "@127.0.0.1:443?type=xhttp&mode=stream-up&extra=" + url.QueryEscape(profile)
-			if _,err:=conf.ParseNodeURI(u);err==nil{t.Fatal("unbounded XHTTP metadata accepted")}
+			if _, err := conf.ParseNodeURI(u); err == nil {
+				t.Fatal("unbounded XHTTP metadata accepted")
+			}
 		})
 	}
 }
@@ -216,37 +229,49 @@ func TestNodeXHTTPDownloadAdvancedRejectsUnboundedInputs(t *testing.T) {
 func TestNodeXHTTPDownloadOrdinaryHeaderParity(t *testing.T) {
 	inner := `{"address":"download.example.invalid","port":443,"network":"xhttp","security":"tls","tlsSettings":{"serverName":"download.example.invalid"},"xhttpSettings":{"path":"/down","headers":{"X-Route":"synthetic","X-Edge":"test"}}}`
 	for _, base := range xhttpNodeProfiles() {
-		t.Run(strings.SplitN(base,"://",2)[0],func(t *testing.T){
-			raw := `{"downloadSettings":`+inner+`}`
-			got,err:=conf.ParseNodeURI(base+"?type=xhttp&mode=stream-up&extra="+url.QueryEscape(raw))
-			if err!=nil{t.Fatal(err)}
-			fromURI,err:=got.StreamSetting.Build()
-			if err!=nil{t.Fatal(err)}
+		t.Run(strings.SplitN(base, "://", 2)[0], func(t *testing.T) {
+			raw := `{"downloadSettings":` + inner + `}`
+			got, err := conf.ParseNodeURI(base + "?type=xhttp&mode=stream-up&extra=" + url.QueryEscape(raw))
+			if err != nil {
+				t.Fatal(err)
+			}
+			fromURI, err := got.StreamSetting.Build()
+			if err != nil {
+				t.Fatal(err)
+			}
 			var down conf.StreamConfig
-			if err:=json.Unmarshal([]byte(inner),&down);err!=nil{t.Fatal(err)}
-			expected:=*got.StreamSetting
-			expected.XHTTPSettings=&conf.SplitHTTPConfig{Mode:"stream-up",DownloadSettings:&down}
-			fromJSON,err:=expected.Build()
-			if err!=nil{t.Fatal(err)}
-			if !proto.Equal(fromURI,fromJSON){t.Fatal("download-only XHTTP header mismatch")}
+			if err := json.Unmarshal([]byte(inner), &down); err != nil {
+				t.Fatal(err)
+			}
+			expected := *got.StreamSetting
+			expected.XHTTPSettings = &conf.SplitHTTPConfig{Mode: "stream-up", DownloadSettings: &down}
+			fromJSON, err := expected.Build()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !addedConfigEqual(fromURI, fromJSON) {
+				t.Fatal("download-only XHTTP header mismatch")
+			}
 		})
 	}
 }
 
 func TestNodeXHTTPDownloadRejectsControlHeaders(t *testing.T) {
-	for name,headers:=range map[string]string{
-		"host":`{"Host":"override.example"}`,
-		"connection":`{"Connection":"upgrade"}`,
-		"upgrade":`{"Upgrade":"websocket"}`,
-		"content-length":`{"Content-Length":"999"}`,
-		"duplicate-case":`{"X-Route":"one","x-route":"two"}`,
-		"bad-name":`{"Bad Key":"value"}`,
-		"header-newline":`{"X-Route":"one\r\nX-Bad:yes"}`,
+	for name, headers := range map[string]string{
+		"host":           `{"Host":"override.example"}`,
+		"connection":     `{"Connection":"upgrade"}`,
+		"upgrade":        `{"Upgrade":"websocket"}`,
+		"content-length": `{"Content-Length":"999"}`,
+		"duplicate-case": `{"X-Route":"one","x-route":"two"}`,
+		"bad-name":       `{"Bad Key":"value"}`,
+		"header-newline": `{"X-Route":"one\r\nX-Bad:yes"}`,
 	} {
-		t.Run(name,func(t *testing.T){
-			inner:=`{"downloadSettings":{"address":"download.example.invalid","port":443,"network":"xhttp","security":"tls","xhttpSettings":{"headers":`+headers+`}}}`
-			u:="vless://"+xhttpNodeTestID+"@127.0.0.1:443?type=xhttp&mode=stream-up&extra="+url.QueryEscape(inner)
-			if _,err:=conf.ParseNodeURI(u);err==nil{t.Fatal("unsafe nested XHTTP HTTP header accepted")}
+		t.Run(name, func(t *testing.T) {
+			inner := `{"downloadSettings":{"address":"download.example.invalid","port":443,"network":"xhttp","security":"tls","xhttpSettings":{"headers":` + headers + `}}}`
+			u := "vless://" + xhttpNodeTestID + "@127.0.0.1:443?type=xhttp&mode=stream-up&extra=" + url.QueryEscape(inner)
+			if _, err := conf.ParseNodeURI(u); err == nil {
+				t.Fatal("unsafe nested XHTTP HTTP header accepted")
+			}
 		})
 	}
 }

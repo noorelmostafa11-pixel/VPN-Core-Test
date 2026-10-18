@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/xtls/xray-core/infra/conf"
-	"google.golang.org/protobuf/proto"
 )
 
 func ssPluginURI(base, plugin string) string {
@@ -23,9 +22,9 @@ func TestSSPluginBasicWSParityAndSS2022(t *testing.T) {
 		"ss://" + url.UserPassword("2022-blake3-aes-128-gcm", key).String() + "@127.0.0.1:443",
 	} {
 		for _, plugin := range []string{
-			"v2ray-plugin",
-			"v2ray-plugin;mode=websocket;host=front.example.invalid;path=/edge",
-			"v2ray-plugin;tls;mode=websocket;host=front.example.invalid;path=/edge",
+			"v2ray-plugin;mux=0",
+			"v2ray-plugin;mux=0;mode=websocket;host=front.example.invalid;path=/edge",
+			"v2ray-plugin;mux=0;tls;mode=websocket;host=front.example.invalid;path=/edge",
 		} {
 			t.Run(strings.Split(base, "@")[0]+"/"+plugin, func(t *testing.T) {
 				got, err := conf.ParseNodeURI(ssPluginURI(base, plugin))
@@ -33,6 +32,9 @@ func TestSSPluginBasicWSParityAndSS2022(t *testing.T) {
 					t.Fatal(err)
 				}
 				expected := base + "?type=ws"
+				if !strings.Contains(plugin, "host=") {
+					expected += "&host=cloudfront.com"
+				}
 				if strings.Contains(plugin, "host=") {
 					expected += "&host=front.example.invalid"
 				}
@@ -54,7 +56,7 @@ func TestSSPluginBasicWSParityAndSS2022(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if !proto.Equal(a, b) {
+				if !addedConfigEqual(a, b) {
 					t.Fatal("plugin mapped to different wire transport settings")
 				}
 			})
@@ -64,7 +66,7 @@ func TestSSPluginBasicWSParityAndSS2022(t *testing.T) {
 
 func TestSSPluginNodeJSONAndURIParity(t *testing.T) {
 	base := "ss://aes-128-gcm:synthetic@127.0.0.1:443"
-	plugin := "v2ray-plugin;tls;host=front.example.invalid;path=/secure"
+	plugin := "v2ray-plugin;mux=0;tls;host=front.example.invalid;path=/secure"
 	got, err := conf.ParseNodeURI(ssPluginURI(base, plugin))
 	if err != nil {
 		t.Fatal(err)
@@ -91,7 +93,7 @@ func TestSSPluginNodeJSONAndURIParity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !proto.Equal(a, b) {
+	if !addedConfigEqual(a, b) {
 		t.Fatal("URI and structured node plugin selection differ")
 	}
 }
@@ -114,24 +116,28 @@ func TestSSPluginExistingNodesUnchanged(t *testing.T) {
 func TestSSPluginRejectsUnsafeAndUnsupported(t *testing.T) {
 	base := "ss://aes-128-gcm:synthetic@127.0.0.1:443"
 	cases := map[string]string{
-		"empty":                 "",
-		"binary-name":           "../../shell",
-		"unknown-plugin":        "obfs-local;obfs=http",
-		"unknown-simple-obfs":   "simple-obfs;obfs=tls",
-		"unsupported-quic-mode": "v2ray-plugin;mode=quic",
-		"external-tls-key":      "v2ray-plugin;cert=/private.key",
-		"mux":                   "v2ray-plugin;mux",
-		"unlisted-option":       "v2ray-plugin;server=127.0.0.1",
-		"unknown-flag":          "v2ray-plugin;tls=true",
-		"empty-segment":         "v2ray-plugin;;tls",
-		"duplicate-flag":        "v2ray-plugin;tls;tls",
-		"duplicate-host":        "v2ray-plugin;host=a.example;host=b.example",
-		"injection-host":        "v2ray-plugin;host=good.example\r\nInjected: 1",
-		"file-host":             "v2ray-plugin;host=env:SECRET",
-		"path-with-query":       "v2ray-plugin;path=/edge?ed=1024",
-		"path-with-fragment":    "v2ray-plugin;path=/edge#fragment",
-		"path-with-authority":   "v2ray-plugin;path=//unexpected.example/path",
-		"oversize":              "v2ray-plugin;host=" + strings.Repeat("a", 2049),
+		"implicit-multiplexing":  "v2ray-plugin",
+		"enabled-multiplexing":   "v2ray-plugin;mux=1",
+		"negative-multiplexing":  "v2ray-plugin;mux=-1",
+		"duplicate-multiplexing": "v2ray-plugin;mux=0;mux=0",
+		"empty":                  "",
+		"binary-name":            "../../shell",
+		"unknown-plugin":         "obfs-local;obfs=http",
+		"unknown-simple-obfs":    "simple-obfs;obfs=tls",
+		"unsupported-quic-mode":  "v2ray-plugin;mode=quic",
+		"external-tls-key":       "v2ray-plugin;cert=/private.key",
+		"mux":                    "v2ray-plugin;mux",
+		"unlisted-option":        "v2ray-plugin;server=127.0.0.1",
+		"unknown-flag":           "v2ray-plugin;tls=true",
+		"empty-segment":          "v2ray-plugin;;tls",
+		"duplicate-flag":         "v2ray-plugin;mux=0;tls;tls",
+		"duplicate-host":         "v2ray-plugin;host=a.example;host=b.example",
+		"injection-host":         "v2ray-plugin;host=good.example\r\nInjected: 1",
+		"file-host":              "v2ray-plugin;host=env:SECRET",
+		"path-with-query":        "v2ray-plugin;mux=0;path=/edge?ed=1024",
+		"path-with-fragment":     "v2ray-plugin;mux=0;path=/edge#fragment",
+		"path-with-authority":    "v2ray-plugin;mux=0;path=//unexpected.example/path",
+		"oversize":               "v2ray-plugin;host=" + strings.Repeat("a", 2049),
 	}
 	for name, p := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -148,7 +154,7 @@ func TestSSPluginRejectsUnsafeAndUnsupported(t *testing.T) {
 		"explicit-fingerprint": "&fp=chrome",
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := conf.ParseNodeURI(ssPluginURI(base, "v2ray-plugin;tls;host=front.example.invalid") + tail); err == nil {
+			if _, err := conf.ParseNodeURI(ssPluginURI(base, "v2ray-plugin;mux=0;tls;host=front.example.invalid") + tail); err == nil {
 				t.Fatal("conflicting settings accepted")
 			}
 		})
@@ -168,7 +174,7 @@ func TestSSPluginRejectsUnsafeAndUnsupported(t *testing.T) {
 
 func TestSSPluginBase64ShareURIParity(t *testing.T) {
 	plain := "ss://aes-128-gcm:synthetic@127.0.0.1:443"
-	plugin := "v2ray-plugin;tls;host=front.example.invalid;path=/edge"
+	plugin := "v2ray-plugin;mux=0;tls;host=front.example.invalid;path=/edge"
 	want, err := conf.ParseNodeURI(ssPluginURI(plain, plugin))
 	if err != nil {
 		t.Fatal(err)
@@ -192,7 +198,7 @@ func TestSSPluginBase64ShareURIParity(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !proto.Equal(a, b) {
+			if !addedConfigEqual(a, b) {
 				t.Fatal("base64 Shadowsocks share-link plugin conversion differs")
 			}
 		})

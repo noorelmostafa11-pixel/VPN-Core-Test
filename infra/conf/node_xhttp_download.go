@@ -95,19 +95,19 @@ func nodeXHTTPDownloadTransport(raw json.RawMessage) error {
 		return nil
 	}
 	var transport struct {
-		Host                 string     `json:"host"`
-		Headers              map[string]string `json:"headers"`
-		Path                 string     `json:"path"`
-		Mode                 string     `json:"mode"`
-		XPaddingBytes        Int32Range `json:"xPaddingBytes"`
-		XPaddingObfsMode     bool       `json:"xPaddingObfsMode"`
-		XPaddingKey          string     `json:"xPaddingKey"`
-		XPaddingHeader       string     `json:"xPaddingHeader"`
-		XPaddingPlacement    string     `json:"xPaddingPlacement"`
-		XPaddingMethod       string     `json:"xPaddingMethod"`
-		NoGRPCHeader         bool       `json:"noGRPCHeader"`
-		NoSSEHeader          bool       `json:"noSSEHeader"`
-		Xmux                 XmuxConfig `json:"xmux"`
+		Host              string            `json:"host"`
+		Headers           map[string]string `json:"headers"`
+		Path              string            `json:"path"`
+		Mode              string            `json:"mode"`
+		XPaddingBytes     Int32Range        `json:"xPaddingBytes"`
+		XPaddingObfsMode  bool              `json:"xPaddingObfsMode"`
+		XPaddingKey       string            `json:"xPaddingKey"`
+		XPaddingHeader    string            `json:"xPaddingHeader"`
+		XPaddingPlacement string            `json:"xPaddingPlacement"`
+		XPaddingMethod    string            `json:"xPaddingMethod"`
+		NoGRPCHeader      bool              `json:"noGRPCHeader"`
+		NoSSEHeader       bool              `json:"noSSEHeader"`
+		Xmux              XmuxConfig        `json:"xmux"`
 	}
 	if err := nodeXHTTPDecodeObject(raw, &transport); err != nil {
 		return errors.New("node URI: unsupported XHTTP download transport settings")
@@ -155,16 +155,16 @@ func nodeXHTTPDownloadTransport(raw json.RawMessage) error {
 	// fields. This does not instantiate a dialer or touch local files.
 	config := &SplitHTTPConfig{
 		Host: transport.Host, Path: transport.Path, Mode: transport.Mode,
-		Headers: transport.Headers,
-		XPaddingBytes: transport.XPaddingBytes,
-		XPaddingObfsMode: transport.XPaddingObfsMode,
-		XPaddingKey: transport.XPaddingKey,
-		XPaddingHeader: transport.XPaddingHeader,
+		Headers:           transport.Headers,
+		XPaddingBytes:     transport.XPaddingBytes,
+		XPaddingObfsMode:  transport.XPaddingObfsMode,
+		XPaddingKey:       transport.XPaddingKey,
+		XPaddingHeader:    transport.XPaddingHeader,
 		XPaddingPlacement: transport.XPaddingPlacement,
-		XPaddingMethod: transport.XPaddingMethod,
-		NoGRPCHeader: transport.NoGRPCHeader,
-		NoSSEHeader: transport.NoSSEHeader,
-		Xmux: transport.Xmux,
+		XPaddingMethod:    transport.XPaddingMethod,
+		NoGRPCHeader:      transport.NoGRPCHeader,
+		NoSSEHeader:       transport.NoSSEHeader,
+		Xmux:              transport.Xmux,
 	}
 	if _, err := config.Build(); err != nil {
 		return errors.New("node URI: invalid XHTTP download transport settings")

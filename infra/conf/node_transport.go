@@ -143,7 +143,9 @@ func nodeStream(fields *nodeFields, scheme string) (*StreamConfig, error) {
 	case "ws", "websocket":
 		var earlyErr error
 		path, earlyErr = nodeEarlyDataPath(fields, path)
-		if earlyErr != nil { return nil, earlyErr }
+		if earlyErr != nil {
+			return nil, earlyErr
+		}
 		stream.WSSettings = &WebSocketConfig{Host: host, Path: path}
 		var err error
 		stream.WSSettings.Headers, err = nodeHTTPTransportHeaders(fields, "wsheaders", "ws-headers", "websocketheaders", "headers")
@@ -157,7 +159,9 @@ func nodeStream(fields *nodeFields, scheme string) (*StreamConfig, error) {
 	case "httpupgrade":
 		var earlyErr error
 		path, earlyErr = nodeEarlyDataPath(fields, path)
-		if earlyErr != nil { return nil, earlyErr }
+		if earlyErr != nil {
+			return nil, earlyErr
+		}
 		stream.HTTPUPGRADESettings = &HttpUpgradeConfig{Host: host, Path: path}
 		var err error
 		stream.HTTPUPGRADESettings.Headers, err = nodeHTTPTransportHeaders(fields, "httpupgradeheaders", "http-upgrade-headers", "headers")
@@ -181,7 +185,9 @@ func nodeStream(fields *nodeFields, scheme string) (*StreamConfig, error) {
 			list := StringList(strings.Split(host, ","))
 			stream.HTTPSettings.Host = &list
 		}
-		if err := nodeHTTP2Extensions(fields, stream.HTTPSettings); err != nil { return nil, err }
+		if err := nodeHTTP2Extensions(fields, stream.HTTPSettings); err != nil {
+			return nil, err
+		}
 	case "xhttp", "splithttp":
 		stream.XHTTPSettings = &SplitHTTPConfig{Host: host, Path: path, Mode: mode}
 		if extra != "" {

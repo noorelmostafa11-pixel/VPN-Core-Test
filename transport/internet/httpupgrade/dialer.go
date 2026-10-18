@@ -20,17 +20,16 @@ import (
 
 type ConnRF struct {
 	net.Conn
-	Req   *http.Request
-	First bool
+	Req    *http.Request
+	First  bool
+	reader *bufio.Reader
 }
 
 func (c *ConnRF) Read(b []byte) (int, error) {
 	if c.First {
 		c.First = false
-		// create reader capped to size of `b`, so it can be fully drained into
-		// `b` later with a single Read call
-		reader := bufio.NewReaderSize(c.Conn, len(b))
-		resp, err := http.ReadResponse(reader, c.Req) // nolint:bodyclose
+		c.reader = bufio.NewReaderSize(c.Conn, len(b))
+		resp, err := http.ReadResponse(c.reader, c.Req) // nolint:bodyclose
 		if err != nil {
 			return 0, err
 		}
@@ -39,8 +38,15 @@ func (c *ConnRF) Read(b []byte) (int, error) {
 			strings.ToLower(resp.Header.Get("Connection")) != "upgrade" {
 			return 0, errors.New("unrecognized reply")
 		}
-		// drain remaining bufreader
-		return reader.Read(b[:reader.Buffered()])
+		// The eager dial uses an empty read to consume only the handshake.
+		// A real read must wait for application bytes instead of returning
+		// (0, nil) when the response did not contain read-ahead data.
+		if len(b) == 0 {
+			return 0, nil
+		}
+	}
+	if c.reader != nil {
+		return c.reader.Read(b)
 	}
 	return c.Conn.Read(b)
 }

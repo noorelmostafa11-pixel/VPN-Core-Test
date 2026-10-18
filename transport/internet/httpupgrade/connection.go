@@ -1,10 +1,21 @@
 package httpupgrade
 
-import "net"
+import (
+	"io"
+	"net"
+)
 
 type connection struct {
 	net.Conn
 	remoteAddr net.Addr
+	reader     io.Reader
+}
+
+func (c *connection) Read(p []byte) (int, error) {
+	if c.reader != nil {
+		return c.reader.Read(p)
+	}
+	return c.Conn.Read(p)
 }
 
 func newConnection(conn net.Conn, remoteAddr net.Addr) *connection {

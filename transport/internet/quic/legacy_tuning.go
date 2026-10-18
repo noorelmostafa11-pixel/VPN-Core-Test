@@ -5,9 +5,9 @@ import (
 	"time"
 
 	q "github.com/apernet/quic-go"
+	"github.com/xtls/xray-core/transport/internet"
 	"github.com/xtls/xray-core/transport/internet/quic/congestion"
 	"github.com/xtls/xray-core/transport/internet/quic/congestion/bbr"
-	"github.com/xtls/xray-core/transport/internet"
 )
 
 // ValidateLegacyQUICParams admits only bounded, explicitly requested flow

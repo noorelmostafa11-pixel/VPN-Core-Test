@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/xtls/xray-core/infra/conf"
-	"google.golang.org/protobuf/proto"
 )
 
 // VMess JSON share envelopes accept object-form headers only through the same
@@ -37,7 +36,7 @@ func TestAddedVMessJSONHeadersObjectMatchesStringWireConfig(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !proto.Equal(objectStream, stringStream) {
+			if !addedConfigEqual(objectStream, stringStream) {
 				t.Fatal("object and string headers changed transport wire settings")
 			}
 			if _, err := fromObject.Build(); err != nil {

@@ -2,6 +2,7 @@ package serial
 
 import (
 	"context"
+	"fmt"
 	"io"
 
 	"github.com/xtls/xray-core/common/errors"
@@ -48,6 +49,17 @@ func mergeConfigs(files []*core.ConfigSource) (*conf.Config, error) {
 		c, err := decoder(r)
 		if err != nil {
 			return nil, errors.New("failed to decode config: ", file).Base(err)
+		}
+		if len(files) > 1 {
+			switch file.Format {
+			case "subscription", "sub", "subjson", "node-list":
+				// These formats generate advisory tags starting at 001 in
+				// every file. Scope them by input position before applying
+				// the original merge rules, which replace equal tags.
+				for j := range c.OutboundConfigs {
+					c.OutboundConfigs[j].Tag = fmt.Sprintf("%s-file-%03d", c.OutboundConfigs[j].Tag, i+1)
+				}
+			}
 		}
 		if i == 0 {
 			*cf = *c

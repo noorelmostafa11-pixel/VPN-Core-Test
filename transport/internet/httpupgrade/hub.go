@@ -2,6 +2,7 @@ package httpupgrade
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha1"
 	"crypto/tls"
@@ -100,7 +101,17 @@ func (s *server) upgrade(conn net.Conn) (stat.Connection, error) {
 	}
 	remoteAddr = http_proto.ApplyTrustedXForwardedFor(req.Header, trustedXFF, remoteAddr)
 
-	return stat.Connection(newConnection(conn, remoteAddr)), nil
+	upgraded := newConnection(conn, remoteAddr)
+	if buffered := connReader.Buffered(); buffered > 0 {
+		// Detach read-ahead application bytes from the header-limited reader.
+		// Keeping that reader would cap the entire tunnel at 12288 bytes.
+		prefix := make([]byte, buffered)
+		if _, err := io.ReadFull(connReader, prefix); err != nil {
+			return nil, err
+		}
+		upgraded.reader = io.MultiReader(bytes.NewReader(prefix), conn)
+	}
+	return stat.Connection(upgraded), nil
 }
 
 func (s *server) keepAccepting() {
